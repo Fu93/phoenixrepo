@@ -1,0 +1,8 @@
+{
+  "run_id": "example-contradiction",
+  "input": {
+    "repo_url": "https://github.com/REPLACE/readme-disagrees-with-code",
+    "note": "Contradiction candidate. Fill after repo selection."
+  },
+  "options": {"sample_mode": true}
+}

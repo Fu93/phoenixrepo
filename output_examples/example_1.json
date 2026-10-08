@@ -1,0 +1,8 @@
+{
+  "run_id": "example-go",
+  "status": "error",
+  "error": {
+    "type": "NotImplemented",
+    "message": "Placeholder. Replace with a real run output during the build window."
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "run_id": "example-go",
+  "input": {
+    "repo_url": "https://github.com/REPLACE/abandoned-repo",
+    "note": "GO candidate. Fill after repo selection."
+  },
+  "options": {"sample_mode": true}
+}
