@@ -34,6 +34,20 @@ class FoundationOrchestrator:
         self.graph.add_claim(claim)
         for evidence in evidence_items:
             self.graph.link_support(claim.id, evidence.id)
+        verification = self.graph.verify_claim(claim.id)
+        self.audit.record(
+            actor="evidence_engine",
+            event_type="CLAIM_VERIFIED",
+            reason=f"Claim verification completed: {verification['status']}",
+            evidence_ids=verification["supporting_evidence_ids"] + verification["contradicting_evidence_ids"],
+            metadata=verification,
+        )
+        self.trace.event(
+            "CLAIM_VERIFIED",
+            claim_id=claim.id,
+            status=verification["status"],
+            confidence=verification["confidence"],
+        )
 
         self.state.transition(
             PhoenixState.RECONNAISSANCE_COMPLETE,
@@ -65,5 +79,6 @@ class FoundationOrchestrator:
             "claims_count": len(self.graph.graph.claims),
             "audit_events": len(self.audit.events),
             "decision": None,
+            "claim_verification": verification,
             "log_file": str(self.trace.path),
         }

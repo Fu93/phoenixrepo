@@ -19,5 +19,6 @@ class RunResponse(BaseModel):
     claims_count: int
     audit_events: int
     decision: str | None = None
+    claim_verification: dict[str, Any] | None = None
     log_file: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

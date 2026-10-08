@@ -1,4 +1,4 @@
-from evidence.models import Claim, Evidence, EvidenceGraph, EvidenceRelation, VerificationStatus
+from evidence.models import Claim, ClaimStatus, Evidence, EvidenceGraph, EvidenceRelation, VerificationStatus
 
 
 class EvidenceGraphEngine:
@@ -60,15 +60,35 @@ class EvidenceGraphEngine:
     def calculate_confidence(self, claim_id: str) -> float:
         self._require_claim(claim_id)
         supporting = self.supporting_evidence(claim_id)
-        contradicting = self.contradicting_evidence(claim_id)
         if not supporting:
             return 0.0
-        support_score = sum(self._weight(item) for item in supporting) / len(supporting)
-        if not contradicting:
-            return round(support_score, 4)
-        contradiction_score = sum(self._weight(item) for item in contradicting) / len(contradicting)
-        confidence = support_score * (1 - contradiction_score)
-        return round(max(0.0, min(1.0, confidence)), 4)
+        return round(sum(self._weight(item) for item in supporting) / len(supporting), 4)
+
+    def verify_claim(self, claim_id: str) -> dict:
+        claim = self._require_claim(claim_id)
+        supporting = self.supporting_evidence(claim_id)
+        contradicting = self.contradicting_evidence(claim_id)
+        if not supporting and not contradicting:
+            status = ClaimStatus.UNRESOLVED
+            confidence = 0.0
+        elif supporting and not contradicting:
+            status = ClaimStatus.SUPPORTED
+            confidence = self.calculate_confidence(claim_id)
+        elif contradicting and not supporting:
+            status = ClaimStatus.CONTRADICTED
+            confidence = 0.0
+        else:
+            status = ClaimStatus.MIXED
+            confidence = self.calculate_confidence(claim_id) * 0.5
+        claim.status = status
+        claim.confidence = max(0.0, min(1.0, confidence))
+        return {
+            "claim_id": claim.id,
+            "status": claim.status.value,
+            "confidence": claim.confidence,
+            "supporting_evidence_ids": [item.id for item in supporting],
+            "contradicting_evidence_ids": [item.id for item in contradicting],
+        }
 
     def export(self) -> dict:
         return self.graph.model_dump(mode="json")

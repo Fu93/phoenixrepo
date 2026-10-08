@@ -23,6 +23,13 @@ class VerificationStatus(str, Enum):
     REJECTED = "REJECTED"
 
 
+class ClaimStatus(str, Enum):
+    UNRESOLVED = "UNRESOLVED"
+    SUPPORTED = "SUPPORTED"
+    CONTRADICTED = "CONTRADICTED"
+    MIXED = "MIXED"
+
+
 class EvidenceProvenance(BaseModel):
     source_type: str
     collector: str
@@ -47,6 +54,7 @@ class Evidence(BaseModel):
 class Claim(BaseModel):
     id: str
     statement: str
+    status: ClaimStatus = ClaimStatus.UNRESOLVED
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     evidence_ids: list[str] = Field(default_factory=list)
     contradiction_ids: list[str] = Field(default_factory=list)
