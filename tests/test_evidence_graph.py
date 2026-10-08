@@ -32,3 +32,34 @@ def test_claim_without_evidence_has_zero_confidence():
     graph = EvidenceGraphEngine(run_id="test-run-003")
     graph.add_claim(claim)
     assert graph.calculate_confidence("CLM-001") == 0.0
+
+
+def test_evidence_has_provenance():
+    _, documentation, _ = build_conflict_fixture()
+    assert documentation.provenance.collector == "synthetic-fixture"
+    assert documentation.provenance.content_hash is not None
+    assert documentation.provenance.retrieved_at is not None
+
+
+def test_evidence_can_be_verified():
+    _, documentation, _ = build_conflict_fixture()
+    graph = EvidenceGraphEngine(run_id="test-verification")
+    graph.add_evidence(documentation)
+    graph.verify_evidence("EV-DOC-001", verifier="test-validator")
+    evidence = graph.get_evidence("EV-DOC-001")
+    assert evidence is not None
+    assert evidence.verification_status.value == "VERIFIED"
+    assert evidence.verified_by == "test-validator"
+
+
+def test_graph_export():
+    claim, documentation, _ = build_conflict_fixture()
+    graph = EvidenceGraphEngine(run_id="export-test")
+    graph.add_claim(claim)
+    graph.add_evidence(documentation)
+    graph.link_support("CLM-001", "EV-DOC-001")
+    exported = graph.export()
+    assert exported["run_id"] == "export-test"
+    assert len(exported["claims"]) == 1
+    assert len(exported["evidence"]) == 1
+    assert len(exported["relations"]) == 1

@@ -1,4 +1,4 @@
-from evidence.models import Claim, Evidence, EvidenceGraph, EvidenceRelation
+from evidence.models import Claim, Evidence, EvidenceGraph, EvidenceRelation, VerificationStatus
 
 
 class EvidenceGraphEngine:
@@ -47,21 +47,38 @@ class EvidenceGraphEngine:
         claim = self._require_claim(claim_id)
         return [self._require_evidence(evidence_id) for evidence_id in claim.contradiction_ids]
 
+    def verify_evidence(self, evidence_id: str, verifier: str) -> None:
+        evidence = self._require_evidence(evidence_id)
+        evidence.verification_status = VerificationStatus.VERIFIED
+        evidence.verified_by = verifier
+
+    def reject_evidence(self, evidence_id: str, verifier: str) -> None:
+        evidence = self._require_evidence(evidence_id)
+        evidence.verification_status = VerificationStatus.REJECTED
+        evidence.verified_by = verifier
+
     def calculate_confidence(self, claim_id: str) -> float:
         self._require_claim(claim_id)
         supporting = self.supporting_evidence(claim_id)
         contradicting = self.contradicting_evidence(claim_id)
         if not supporting:
             return 0.0
-        support_score = sum(item.confidence for item in supporting) / len(supporting)
+        support_score = sum(self._weight(item) for item in supporting) / len(supporting)
         if not contradicting:
             return round(support_score, 4)
-        contradiction_score = sum(item.confidence for item in contradicting) / len(contradicting)
+        contradiction_score = sum(self._weight(item) for item in contradicting) / len(contradicting)
         confidence = support_score * (1 - contradiction_score)
         return round(max(0.0, min(1.0, confidence)), 4)
 
-    def export_json(self) -> dict:
-        return self.graph.model_dump()
+    def export(self) -> dict:
+        return self.graph.model_dump(mode="json")
+
+    def _weight(self, evidence: Evidence) -> float:
+        if evidence.verification_status == VerificationStatus.VERIFIED:
+            return evidence.confidence
+        if evidence.verification_status == VerificationStatus.UNVERIFIED:
+            return evidence.confidence * 0.7
+        return 0.0
 
     def _require_claim(self, claim_id: str) -> Claim:
         claim = self.get_claim(claim_id)

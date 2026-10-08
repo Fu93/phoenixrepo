@@ -1,21 +1,24 @@
-from evidence.models import Claim, Evidence
+from evidence.factory import create_evidence
+from evidence.models import Claim
 
 
 def build_conflict_fixture():
-    documentation = Evidence(
-        id="EV-DOC-001",
-        type="documentation",
+    documentation = create_evidence(
+        evidence_id="EV-DOC-001",
+        evidence_type="documentation",
         source="README.md",
         locator="README.md:1-20",
         content="This project is an AI interview coach.",
+        collector="synthetic-fixture",
         confidence=0.95,
     )
-    implementation = Evidence(
-        id="EV-SRC-001",
-        type="source_code",
+    implementation = create_evidence(
+        evidence_id="EV-SRC-001",
+        evidence_type="source_code",
         source="src/",
         locator="src/teleprompter/",
         content="The application displays a scrolling teleprompter and speech recognition.",
+        collector="synthetic-fixture",
         confidence=0.90,
     )
     claim = Claim(

@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -15,6 +17,20 @@ EvidenceType = Literal[
 RelationType = Literal["supports", "contradicts", "derived_from"]
 
 
+class VerificationStatus(str, Enum):
+    UNVERIFIED = "UNVERIFIED"
+    VERIFIED = "VERIFIED"
+    REJECTED = "REJECTED"
+
+
+class EvidenceProvenance(BaseModel):
+    source_type: str
+    collector: str
+    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    content_hash: str | None = None
+    parent_evidence_id: str | None = None
+
+
 class Evidence(BaseModel):
     id: str
     type: EvidenceType
@@ -22,6 +38,9 @@ class Evidence(BaseModel):
     locator: str | None = None
     content: str
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    provenance: EvidenceProvenance
+    verification_status: VerificationStatus = VerificationStatus.UNVERIFIED
+    verified_by: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
