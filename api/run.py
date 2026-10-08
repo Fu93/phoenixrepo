@@ -16,7 +16,13 @@ settings = Settings()
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "foundation": True, "sample_mode": settings.sample_mode}
+    return {
+        "status": "ok",
+        "service": "phoenixrepo",
+        "pipeline_version": "0.1.0",
+        "foundation": True,
+        "sample_mode": settings.sample_mode,
+    }
 
 
 @app.post("/run", response_model=RunResponse)
