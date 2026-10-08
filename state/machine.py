@@ -1,5 +1,7 @@
 from enum import Enum
 
+from pydantic import BaseModel, Field
+
 
 class PhoenixState(str, Enum):
     INGESTED = "INGESTED"
@@ -20,7 +22,7 @@ class PhoenixState(str, Enum):
     RESURRECTION_FAILED = "RESURRECTION_FAILED"
 
 
-ALLOWED_TRANSITIONS: dict[PhoenixState, set[PhoenixState]] = {
+ALLOWED_TRANSITIONS = {
     PhoenixState.INGESTED: {PhoenixState.RECONNAISSANCE_COMPLETE},
     PhoenixState.RECONNAISSANCE_COMPLETE: {PhoenixState.EVIDENCE_COMPLETE},
     PhoenixState.EVIDENCE_COMPLETE: {PhoenixState.INTENT_RECONSTRUCTED},
@@ -30,8 +32,44 @@ ALLOWED_TRANSITIONS: dict[PhoenixState, set[PhoenixState]] = {
         PhoenixState.PRODUCT_BLUEPRINT_COMPLETE,
         PhoenixState.NO_GO,
     },
+    PhoenixState.PRODUCT_BLUEPRINT_COMPLETE: {PhoenixState.ENGINEERING_RESEARCH_COMPLETE},
+    PhoenixState.ENGINEERING_RESEARCH_COMPLETE: {PhoenixState.IMPLEMENTATION_CONTRACT_READY},
+    PhoenixState.IMPLEMENTATION_CONTRACT_READY: {PhoenixState.BUILDING},
+    PhoenixState.BUILDING: {PhoenixState.VALIDATING},
+    PhoenixState.VALIDATING: {
+        PhoenixState.RESURRECTED,
+        PhoenixState.DIAGNOSING,
+        PhoenixState.RESURRECTION_FAILED,
+    },
+    PhoenixState.DIAGNOSING: {PhoenixState.REPAIRING},
+    PhoenixState.REPAIRING: {
+        PhoenixState.VALIDATING,
+        PhoenixState.RESURRECTION_FAILED,
+    },
 }
 
 
-def can_transition(current: PhoenixState, nxt: PhoenixState) -> bool:
-    return nxt in ALLOWED_TRANSITIONS.get(current, set())
+class InvalidTransition(Exception):
+    pass
+
+
+class StateMachine:
+    def __init__(self, initial_state: PhoenixState) -> None:
+        self.current_state = initial_state
+
+    def can_transition(self, next_state: PhoenixState) -> bool:
+        return next_state in ALLOWED_TRANSITIONS.get(self.current_state, set())
+
+    def transition(self, next_state: PhoenixState, evidence_ids: list[str] | None = None) -> None:
+        if not self.can_transition(next_state):
+            raise InvalidTransition(
+                f"Invalid transition: {self.current_state.value} -> {next_state.value}"
+            )
+        if next_state == PhoenixState.VALUE_DECISION and not evidence_ids:
+            raise InvalidTransition("VALUE_DECISION requires evidence.")
+        self.current_state = next_state
+
+
+class RunState(BaseModel):
+    state: PhoenixState
+    evidence_ids: list[str] = Field(default_factory=list)
