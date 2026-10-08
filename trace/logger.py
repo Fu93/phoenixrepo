@@ -4,7 +4,7 @@ from pathlib import Path
 
 from audit.events import AuditEvent
 
-LOG_DIR = Path("logs")
+LOG_DIR = Path("run_artifacts/logs")
 
 
 class TraceLogger:
@@ -12,6 +12,7 @@ class TraceLogger:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         self.run_id = run_id
         self.path = LOG_DIR / f"trace-{run_id}.jsonl"
+        self.lines: list[str] = []
 
     def event(self, event: str, **data) -> None:
         record = {
@@ -22,8 +23,15 @@ class TraceLogger:
         }
         line = json.dumps(record, ensure_ascii=False)
         print(line, flush=True)
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(line + "\n")
+        self.lines.append(line)
+        body = "\n".join(self.lines) + "\n"
+        try:
+            self.path.write_text(body, encoding="utf-8")
+        except OSError:
+            fallback = Path("/tmp/phoenixrepo-logs")
+            fallback.mkdir(parents=True, exist_ok=True)
+            self.path = fallback / f"trace-{self.run_id}.jsonl"
+            self.path.write_text(body, encoding="utf-8")
 
     def audit_event(self, event: AuditEvent) -> None:
         self.event("AUDIT", **event.model_dump(mode="json"))

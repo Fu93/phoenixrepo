@@ -11,6 +11,7 @@ class Decision(BaseModel):
 
 class RunResponse(BaseModel):
     run_id: str
+    run_fingerprint: str
     mode: str
     foundation_only: bool
     status: str

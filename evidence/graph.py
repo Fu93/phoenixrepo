@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from evidence.integrity import content_hash
+from evidence.integrity import content_hash, pack_payload
 from evidence.models import Claim, ClaimStatus, Evidence, EvidenceGraph, EvidenceRelation, VerificationStatus
 from evidence.pack import EvidencePack
 
@@ -107,7 +107,7 @@ class EvidenceGraphEngine:
             relations=graph["relations"],
             metadata=metadata or {},
         )
-        payload = pack.model_dump(mode="json", exclude={"integrity_hash"})
+        payload = pack_payload(pack)
         pack.integrity_hash = content_hash(payload)
         return pack
 

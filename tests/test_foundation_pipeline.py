@@ -2,7 +2,7 @@ from foundation.orchestrator import FoundationOrchestrator
 
 
 def test_foundation_pipeline_runs():
-    result = FoundationOrchestrator().run()
+    result = FoundationOrchestrator("sample://phoenix", "sample", 0).run()
     assert result["foundation_only"] is True
     assert result["status"] == "FOUNDATION_COMPLETE"
     assert result["state"] == "EVIDENCE_COMPLETE"

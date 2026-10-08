@@ -19,6 +19,16 @@ class ArtifactStore:
         )
         return path
 
+    def save_run_context(self, context) -> Path:
+        run_dir = self.root / context.run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        path = run_dir / "run-context.json"
+        path.write_text(
+            json.dumps(context.model_dump(mode="json"), indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return path
+
     def load_evidence_pack(self, run_id: str) -> EvidencePack:
         path = self.root / run_id / "evidence-pack.json"
         return EvidencePack.model_validate(json.loads(path.read_text(encoding="utf-8")))

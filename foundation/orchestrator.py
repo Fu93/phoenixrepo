@@ -1,9 +1,8 @@
-from uuid import uuid4
-
 from artifacts.store import ArtifactStore
 from audit.trail import AuditTrail
 from evidence.graph import EvidenceGraphEngine
 from evidence.models import Claim
+from run.context import RunContext
 from sample_data.source import SampleEvidenceSource
 from state.machine import PhoenixState, StateMachine
 from trace.logger import TraceLogger
@@ -12,8 +11,9 @@ from trace.logger import TraceLogger
 class FoundationOrchestrator:
     """Stops before market judgment, GO/NO-GO, build, or validation."""
 
-    def __init__(self) -> None:
-        self.run_id = f"phoenix-{uuid4().hex[:8]}"
+    def __init__(self, repository: str, mode: str, max_repair_iterations: int) -> None:
+        self.context = RunContext.create(repository, mode, max_repair_iterations)
+        self.run_id = self.context.run_id
         self.trace = TraceLogger(self.run_id)
         self.audit = AuditTrail(self.run_id)
         self.graph = EvidenceGraphEngine(self.run_id)
@@ -21,7 +21,15 @@ class FoundationOrchestrator:
         self.artifacts = ArtifactStore()
 
     def run(self) -> dict:
-        self.trace.event("RUN_STARTED", run_id=self.run_id, mode="sample")
+        self.trace.event(
+            "RUN_STARTED",
+            run_id=self.run_id,
+            repository=self.context.repository,
+            mode=self.context.mode,
+            max_repair_iterations=self.context.max_repair_iterations,
+            pipeline_version=self.context.pipeline_version,
+            foundation_only=self.context.foundation_only,
+        )
         source = SampleEvidenceSource()
         evidence_items = source.collect()
         self.trace.event("EVIDENCE_COLLECTION_STARTED", count=len(evidence_items))
@@ -65,9 +73,16 @@ class FoundationOrchestrator:
         )
         pack = self.graph.export_pack(
             run_id=self.run_id,
-            metadata={"mode": "sample", "foundation_only": True},
+            metadata={
+                "repository": self.context.repository,
+                "mode": self.context.mode,
+                "foundation_only": self.context.foundation_only,
+                "pipeline_version": self.context.pipeline_version,
+                "max_repair_iterations": self.context.max_repair_iterations,
+            },
         )
         artifact_path = self.artifacts.save_evidence_pack(pack)
+        context_path = self.artifacts.save_run_context(self.context)
         self.trace.event(
             "EVIDENCE_PACK_CREATED",
             path=str(artifact_path),
@@ -83,7 +98,8 @@ class FoundationOrchestrator:
         )
         return {
             "run_id": self.run_id,
-            "mode": "sample",
+            "run_fingerprint": self.context.fingerprint,
+            "mode": self.context.mode,
             "foundation_only": True,
             "status": "FOUNDATION_COMPLETE",
             "state": self.state.current_state.value,
@@ -92,6 +108,10 @@ class FoundationOrchestrator:
             "audit_events": len(self.audit.events),
             "decision": None,
             "claim_verification": verification,
-            "evidence_pack": {"path": str(artifact_path), "integrity_hash": pack.integrity_hash},
+            "evidence_pack": {
+                "path": str(artifact_path),
+                "context_path": str(context_path),
+                "integrity_hash": pack.integrity_hash,
+            },
             "log_file": str(self.trace.path),
         }

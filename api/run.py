@@ -26,8 +26,11 @@ def run(request: RunRequest) -> RunResponse:
             status_code=400,
             detail="Live repository execution is not available before the hackathon opening.",
         )
-    result = FoundationOrchestrator().run()
-    result["metadata"] = {"repository": request.repository}
+    result = FoundationOrchestrator(
+        repository=request.repository,
+        mode=request.mode,
+        max_repair_iterations=request.max_repair_iterations,
+    ).run()
     return RunResponse(**result)
 
 
