@@ -60,6 +60,23 @@ The Agent That Can Explain Why. One builder.
 
 No model is called by this skeleton. When the build window opens, reasoning is planned on xAI Grok. Partner adapters for Zetaris and Meterless are stubs until those credentials exist.
 
-## Limitations
+## Evaluator
 
-`/run` returns a structured `not_implemented` payload. That is intentional.
+```bash
+docker build -t phoenixrepo .
+docker run --rm -p 8000:8000 -e SAMPLE_MODE=true phoenixrepo
+```
+
+```bash
+curl http://localhost:8000/health
+curl -X POST http://localhost:8000/run \
+  -H "Content-Type: application/json" \
+  -d '{"repository":"sample://foundation","mode":"sample","max_repair_iterations":3}'
+```
+
+Sample mode returns `FOUNDATION_COMPLETE`, `decision: null`, and writes `run_artifacts/<run_id>/`. It does not need sponsor keys. `mode=live` returns 400 before 22 October 2026 00:00 UTC.
+
+```bash
+python scripts/compliance_check.py
+pytest -q
+```
