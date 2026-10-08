@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from audit.events import AuditEvent
+
 LOG_DIR = Path("logs")
 
 
@@ -22,3 +24,6 @@ class TraceLogger:
         print(line, flush=True)
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
+
+    def audit_event(self, event: AuditEvent) -> None:
+        self.event("AUDIT", **event.model_dump(mode="json"))

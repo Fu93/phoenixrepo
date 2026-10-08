@@ -2,6 +2,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from audit.trail import AuditTrail
+
 
 class PhoenixState(str, Enum):
     INGESTED = "INGESTED"
@@ -54,20 +56,38 @@ class InvalidTransition(Exception):
 
 
 class StateMachine:
-    def __init__(self, initial_state: PhoenixState) -> None:
+    def __init__(self, initial_state: PhoenixState, audit_trail: AuditTrail | None = None) -> None:
         self.current_state = initial_state
+        self.audit_trail = audit_trail
 
     def can_transition(self, next_state: PhoenixState) -> bool:
         return next_state in ALLOWED_TRANSITIONS.get(self.current_state, set())
 
-    def transition(self, next_state: PhoenixState, evidence_ids: list[str] | None = None) -> None:
+    def transition(
+        self,
+        next_state: PhoenixState,
+        *,
+        actor: str = "orchestrator",
+        reason: str | None = None,
+        evidence_ids: list[str] | None = None,
+    ) -> None:
         if not self.can_transition(next_state):
             raise InvalidTransition(
                 f"Invalid transition: {self.current_state.value} -> {next_state.value}"
             )
         if next_state == PhoenixState.VALUE_DECISION and not evidence_ids:
             raise InvalidTransition("VALUE_DECISION requires evidence.")
+        previous_state = self.current_state
         self.current_state = next_state
+        if self.audit_trail:
+            self.audit_trail.record(
+                actor=actor,
+                event_type="STATE_TRANSITION",
+                from_state=previous_state.value,
+                to_state=next_state.value,
+                reason=reason,
+                evidence_ids=evidence_ids,
+            )
 
 
 class RunState(BaseModel):
