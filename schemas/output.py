@@ -11,8 +11,13 @@ class Decision(BaseModel):
 
 class RunResponse(BaseModel):
     run_id: str
+    mode: str
+    foundation_only: bool
     status: str
-    stage: str
-    confidence: float | None = None
-    decision: Decision | None = None
+    state: str
+    evidence_count: int
+    claims_count: int
+    audit_events: int
+    decision: str | None = None
+    log_file: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

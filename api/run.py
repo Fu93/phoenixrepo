@@ -1,13 +1,14 @@
-"""Foundation entry point. Does not resurrect a repository."""
+"""Foundation entry point. Sample pipeline only. No resurrection."""
 
-from uuid import uuid4
+import os
 
-from fastapi import FastAPI
+import uvicorn
+from fastapi import FastAPI, HTTPException
 
 from config.settings import Settings
+from foundation.orchestrator import FoundationOrchestrator
 from schemas.input import RunRequest
 from schemas.output import RunResponse
-from trace.logger import TraceLogger
 
 app = FastAPI(title="PhoenixRepo", version="0.1.0-foundation")
 settings = Settings()
@@ -20,20 +21,15 @@ def health() -> dict:
 
 @app.post("/run", response_model=RunResponse)
 def run(request: RunRequest) -> RunResponse:
-    run_id = f"phoenix-{uuid4().hex[:8]}"
-    mode = "sample" if settings.sample_mode or request.mode == "sample" else request.mode
-    trace = TraceLogger(run_id)
-    trace.event("RUN_STARTED", repository=request.repository, mode=mode)
-    trace.event("STATE_ENTERED", state="INGESTED")
-    return RunResponse(
-        run_id=run_id,
-        status="RUNNING",
-        stage="INGESTED",
-        confidence=None,
-        decision=None,
-        metadata={
-            "mode": mode,
-            "repository": request.repository,
-            "log_file": str(trace.path),
-        },
-    )
+    if request.mode != "sample":
+        raise HTTPException(
+            status_code=400,
+            detail="Live repository execution is not available before the hackathon opening.",
+        )
+    result = FoundationOrchestrator().run()
+    result["metadata"] = {"repository": request.repository}
+    return RunResponse(**result)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
