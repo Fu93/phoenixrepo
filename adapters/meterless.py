@@ -1,15 +1,13 @@
-"""Interface only. No scored memory path before 22 October 2026 00:00 UTC."""
+from abc import ABC, abstractmethod
+from typing import Any
 
 
-class MeterlessAdapter:
-    def __init__(self, api_key: str | None) -> None:
-        self.api_key = api_key
+class ExecutionObserver(ABC):
+    @abstractmethod
+    def record(self, event: str, data: dict[str, Any]) -> None:
+        raise NotImplementedError
 
-    def configured(self) -> bool:
-        return bool(self.api_key)
 
-    def write(self, key: str, value: dict) -> None:
-        raise NotImplementedError("Meterless write is wired after the build window opens.")
-
-    def read(self, key: str) -> dict | None:
-        raise NotImplementedError("Meterless read is wired after the build window opens.")
+class MeterlessAdapter(ExecutionObserver):
+    def record(self, event: str, data: dict[str, Any]) -> None:
+        raise NotImplementedError("Meterless integration is not active yet.")

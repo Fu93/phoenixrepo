@@ -1,5 +1,3 @@
-"""Launcher. The API lives in api/run.py."""
-
 import os
 
 import uvicorn

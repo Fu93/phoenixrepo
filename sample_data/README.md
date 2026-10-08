@@ -1,3 +1,15 @@
-# Cached evidence for SAMPLE_MODE.
+# Sample Evidence
 
-Sample mode must change the data source only. Do not store a finished GO, NO-GO, or resurrection result here. Files added during the build window should be raw evidence snapshots, not decisions.
+Sample mode must use the same PhoenixRepo reasoning pipeline as live mode. The only difference is the evidence source.
+
+```text
+SAMPLE_MODE=true
+    -> Cached Evidence
+    -> Normal Evidence Pipeline
+    -> Evidence Graph
+    -> Normal Reasoning
+    -> Normal Decision
+    -> Normal Output
+```
+
+Sample mode must never bypass reasoning by returning hardcoded final decisions.

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from api.run import app
@@ -15,3 +17,8 @@ def test_run_endpoint():
     assert data["status"] == "RUNNING"
     assert data["stage"] == "INGESTED"
     assert data["run_id"].startswith("phoenix-")
+    log = Path(data["metadata"]["log_file"])
+    assert log.exists()
+    text = log.read_text(encoding="utf-8")
+    assert "RUN_STARTED" in text
+    assert "STATE_ENTERED" in text

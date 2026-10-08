@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -16,4 +16,4 @@ RUN mkdir -p /app/logs
 
 EXPOSE 8000
 
-CMD ["python", "run.py"]
+CMD ["python", "main.py"]
