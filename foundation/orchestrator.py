@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from artifacts.store import ArtifactStore
 from audit.trail import AuditTrail
 from evidence.graph import EvidenceGraphEngine
 from evidence.models import Claim
@@ -17,6 +18,7 @@ class FoundationOrchestrator:
         self.audit = AuditTrail(self.run_id)
         self.graph = EvidenceGraphEngine(self.run_id)
         self.state = StateMachine(PhoenixState.INGESTED, audit_trail=self.audit)
+        self.artifacts = ArtifactStore()
 
     def run(self) -> dict:
         self.trace.event("RUN_STARTED", run_id=self.run_id, mode="sample")
@@ -61,6 +63,16 @@ class FoundationOrchestrator:
             reason="Synthetic evidence collection completed.",
             evidence_ids=[evidence.id for evidence in evidence_items],
         )
+        pack = self.graph.export_pack(
+            run_id=self.run_id,
+            metadata={"mode": "sample", "foundation_only": True},
+        )
+        artifact_path = self.artifacts.save_evidence_pack(pack)
+        self.trace.event(
+            "EVIDENCE_PACK_CREATED",
+            path=str(artifact_path),
+            integrity_hash=pack.integrity_hash,
+        )
         for event in self.audit.events:
             self.trace.audit_event(event)
         self.trace.event(
@@ -80,5 +92,6 @@ class FoundationOrchestrator:
             "audit_events": len(self.audit.events),
             "decision": None,
             "claim_verification": verification,
+            "evidence_pack": {"path": str(artifact_path), "integrity_hash": pack.integrity_hash},
             "log_file": str(self.trace.path),
         }

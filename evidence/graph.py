@@ -1,4 +1,8 @@
+from datetime import datetime, timezone
+
+from evidence.integrity import content_hash
 from evidence.models import Claim, ClaimStatus, Evidence, EvidenceGraph, EvidenceRelation, VerificationStatus
+from evidence.pack import EvidencePack
 
 
 class EvidenceGraphEngine:
@@ -92,6 +96,20 @@ class EvidenceGraphEngine:
 
     def export(self) -> dict:
         return self.graph.model_dump(mode="json")
+
+    def export_pack(self, run_id: str, metadata: dict | None = None) -> EvidencePack:
+        graph = self.export()
+        pack = EvidencePack(
+            run_id=run_id,
+            created_at=datetime.now(timezone.utc),
+            evidence=graph["evidence"],
+            claims=graph["claims"],
+            relations=graph["relations"],
+            metadata=metadata or {},
+        )
+        payload = pack.model_dump(mode="json", exclude={"integrity_hash"})
+        pack.integrity_hash = content_hash(payload)
+        return pack
 
     def _weight(self, evidence: Evidence) -> float:
         if evidence.verification_status == VerificationStatus.VERIFIED:

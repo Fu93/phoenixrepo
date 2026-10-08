@@ -6,6 +6,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 logs/*.jsonl
+run_artifacts/
 *.pem
 *.key
 secrets/
