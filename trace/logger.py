@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from audit.events import AuditEvent
+from security.sanitizer import sanitize_metadata
 
 LOG_DIR = Path("run_artifacts/logs")
 
@@ -19,7 +20,7 @@ class TraceLogger:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "run_id": self.run_id,
             "event": event,
-            "data": data,
+            "data": sanitize_metadata(data),
         }
         line = json.dumps(record, ensure_ascii=False)
         print(line, flush=True)

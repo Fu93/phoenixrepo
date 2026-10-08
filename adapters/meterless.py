@@ -28,6 +28,7 @@ class MeterlessAdapter:
             "configured": self.configured(),
             "enabled": self.enabled(),
             "integrated": False,
+            "integration": "INTERFACE_ONLY",
             "mode": self.mode(),
         }
 
