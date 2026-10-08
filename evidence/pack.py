@@ -3,9 +3,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from config.versions import SCHEMA_VERSION
+
 
 class EvidencePack(BaseModel):
-    schema_version: str = "1.0"
+    schema_version: str = SCHEMA_VERSION
     run_id: str
     created_at: datetime
     evidence: list[dict[str, Any]] = Field(default_factory=list)

@@ -4,8 +4,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from run.fingerprint import run_fingerprint
-
-PIPELINE_VERSION = "0.1.0"
+from config.versions import PIPELINE_VERSION
 
 
 class RunContext(BaseModel):
