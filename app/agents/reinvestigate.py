@@ -27,9 +27,10 @@ class ReinvestigationResult:
     scorecard: Scorecard
     evidence: list[dict[str, Any]]
     rounds_executed: int
-    status: str  # "ok", "LLM_FALLBACK", "BUDGET_EXHAUSTED"
+    status: str  # "ok", "LLM_FALLBACK", "BUDGET_EXHAUSTED", "RATE_LIMITED"
     rework_requests: list[ReworkRequest] = field(default_factory=list)
     subagents_used: int = 0
+    flags: list[str] = field(default_factory=list)
 
     def __iter__(self):
         """Allow unpacking as (scorecard, evidence)."""
@@ -66,6 +67,10 @@ def reinvestigate(
     # Check initial budget
     if toolbox.budget.is_exhausted():
         scorecard.metadata["status"] = "BUDGET_EXHAUSTED"
+        unsupported = any(c.status == "UNSUPPORTED" for c in scorecard.criteria.values())
+        flags = ["BUDGET_EXHAUSTED"]
+        if unsupported:
+            flags.append("UNSUPPORTED")
         return ReinvestigationResult(
             scorecard=scorecard,
             evidence=evidence_list,
@@ -73,6 +78,7 @@ def reinvestigate(
             status="BUDGET_EXHAUSTED",
             rework_requests=review_scorecard(scorecard, evidence_set=evidence_set),
             subagents_used=manager.spawned_count,
+            flags=flags,
         )
 
     status = "ok"
@@ -110,7 +116,8 @@ def reinvestigate(
                 break
 
             # Let subagent gather new evidence
-            new_items = subagent.investigate(query=scorecard.repo_id)
+            alts = scorecard.metadata.get("alternative_repos")
+            new_items = subagent.investigate(query=scorecard.repo_id, alternative_repos=alts)
 
             if new_items:
                 for item in new_items:
@@ -151,7 +158,11 @@ def reinvestigate(
                 clamp_criterion(crit, evidence_set)
                 scorecard.criteria[canonical] = crit
 
-        if status in {"BUDGET_EXHAUSTED", "LLM_FALLBACK"}:
+            if getattr(subagent, "rate_limited", False):
+                status = "RATE_LIMITED"
+                break
+
+        if status in {"BUDGET_EXHAUSTED", "LLM_FALLBACK", "RATE_LIMITED"}:
             break
 
         # Re-clamp the entire scorecard against the updated evidence set
@@ -173,6 +184,15 @@ def reinvestigate(
             status = "LLM_FALLBACK"
 
     scorecard.metadata["status"] = status
+    flags: list[str] = []
+    if any(c.status == "UNSUPPORTED" for c in scorecard.criteria.values()):
+        flags.append("UNSUPPORTED")
+    if status in {"BUDGET_EXHAUSTED", "LLM_FALLBACK", "RATE_LIMITED"}:
+        flags.append(status)
+    if any(getattr(sub, "rate_limited", False) for sub in manager.subagents):
+        if "RATE_LIMITED" not in flags:
+            flags.append("RATE_LIMITED")
+
     return ReinvestigationResult(
         scorecard=scorecard,
         evidence=evidence_list,
@@ -180,4 +200,5 @@ def reinvestigate(
         status=status,
         rework_requests=final_rework,
         subagents_used=manager.spawned_count,
+        flags=flags,
     )

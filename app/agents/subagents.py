@@ -76,6 +76,7 @@ class SubAgent:
         # Carve child toolbox with allowed tools only and child budget
         self.toolbox = toolbox.child_box(allowed_tools=allowed, max_calls=max_calls)
         self.gathered_evidence: list[dict[str, Any]] = []
+        self.rate_limited = False
 
     def spawn_subagent(self, *args: Any, **kwargs: Any) -> Any:
         """In-rule: sub-agents cannot spawn sub-agents."""
@@ -107,6 +108,9 @@ class SubAgent:
                     queries.append(f"repo:{alt} is:issue")
                 for q in queries:
                     res = self.toolbox.call("github", {"query": q})
+                    if not res.ok and "RATE_LIMITED" in (res.error or ""):
+                        self.rate_limited = True
+                        break
                     if res.ok and res.data:
                         # Validate external source: never candidate repo
                         if not is_candidate_repo_url(res.source_url, self.repo_id):
@@ -138,11 +142,15 @@ class SubAgent:
             if "github" in self.allowed_tools:
                 # Check candidate repo metadata or readme for test/CI info
                 res = self.toolbox.call("github", {"repo": self.repo_id, "action": "readme"})
-                if res.ok and res.data:
+                if not res.ok and "RATE_LIMITED" in (res.error or ""):
+                    self.rate_limited = True
+                elif res.ok and res.data:
                     evidence_items.append(res.to_evidence_item(repo_id=self.repo_id))
                 else:
                     res_meta = self.toolbox.call("github", {"repo": self.repo_id})
-                    if res_meta.ok and res_meta.data:
+                    if not res_meta.ok and "RATE_LIMITED" in (res_meta.error or ""):
+                        self.rate_limited = True
+                    elif res_meta.ok and res_meta.data:
                         evidence_items.append(res_meta.to_evidence_item(repo_id=self.repo_id))
 
         elif self.criterion in {"moat", "productization_path"}:

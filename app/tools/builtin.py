@@ -62,6 +62,14 @@ class GitHubTool:
         try:
             with httpx.Client(transport=self.transport, timeout=self.timeout_seconds) as client:
                 resp = client.get(url, headers=headers)
+                if resp.status_code in {403, 429}:
+                    return ToolResult(
+                        ok=False,
+                        data="",
+                        error=f"GitHub HTTP {resp.status_code}: RATE_LIMITED: {resp.text[:300]}",
+                        source_url=url,
+                        fetched_at=now,
+                    )
                 if resp.status_code >= 400:
                     return ToolResult(
                         ok=False,
