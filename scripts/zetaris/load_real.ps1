@@ -1,9 +1,12 @@
 # Load data/real into a local Zetaris and point phoenix.repo_evidence at it.
 # UNVERIFIED against a running Zetaris. Prints a status token only, never the body or the key.
-# A HTTP 200 whose JSON body contains an error object is a failure, unless the
-# error text says the schemastore container, view, database, or table already
-# exists. The match is the phrase "already exists" only. The word "duplicate" is
-# not treated as existence. Re-running is then idempotent for those objects.
+# A successful HTTP 200 result set is not an error, even when a cell contains
+# the words "already exists". Exists-detection runs only on an error response
+# (HTTP 400/500, or a 200 body that is an error object rather than headers/data).
+# The match is the phrase "already exists" only. The word "duplicate" is not
+# treated as existence. Re-running is then idempotent for those objects.
+# Error bodies are read from ErrorDetails.Message (pwsh 7) or GetResponseStream
+# (Windows PowerShell 5.1).
 # If a schemastore view already exists, the script prints view-exists and a warning:
 # that view is left in place, and if it came from 04_phoenix_views.sql it is still
 # the GitHub-join view. Dropping it was not verified, so this script does not guess
@@ -13,7 +16,11 @@
 #
 # Requires ZETARIS_API_KEY in the environment. It is sent as a bearer token and
 # is never printed. Optional: ZETARIS_REST_URL (default http://localhost:8888/api/v1.0),
-# ZETARIS_ORG_ID (default 1), and -ContainerPath (default /opt/phoenixrepo/data/real).
+# ZETARIS_ORG_ID (default 1), and -ContainerPath
+# (default /home/zetaris/customer-data/shared/phoenix_real).
+# The user's driver rejects /opt with "Not allowed to access system file path".
+# Files must sit under /home/zetaris/customer-data/shared/. This script was not
+# executed against that install.
 #
 # -Alternative Filestore  (default) CREATE LIGHTNING FILESTORE TABLE ... FORMAT CSV
 # -Alternative SparkCsv   CREATE TABLE ... USING com.databricks.spark.csv
@@ -28,26 +35,12 @@
 param(
     [ValidateSet("Filestore", "SparkCsv")]
     [string]$Alternative = "Filestore",
-    [string]$ContainerPath = "/opt/phoenixrepo/data/real"
+    [string]$ContainerPath = "/home/zetaris/customer-data/shared/phoenix_real"
 )
 
 $ErrorActionPreference = "Stop"
-$key = [Environment]::GetEnvironmentVariable("ZETARIS_API_KEY")
-if ([string]::IsNullOrWhiteSpace($key)) {
-    Write-Error "ZETARIS_API_KEY is missing."
-    exit 2
-}
-$base = [Environment]::GetEnvironmentVariable("ZETARIS_REST_URL")
-if ([string]::IsNullOrWhiteSpace($base)) {
-    $base = "http://localhost:8888/api/v1.0"
-}
-$org = [Environment]::GetEnvironmentVariable("ZETARIS_ORG_ID")
-if ([string]::IsNullOrWhiteSpace($org)) {
-    $org = "1"
-}
-$base = $base.TrimEnd("/")
-$evidence = ($ContainerPath.TrimEnd("/") + "/repo_evidence.csv").Replace("\", "/")
-$signals = ($ContainerPath.TrimEnd("/") + "/revival_signals.csv").Replace("\", "/")
+# Functions are defined before the key check so a test can dot-source them.
+# -File runs the body at the bottom. Dot-sourcing stops before that body.
 
 $profileColumns = @(
     "repo_id", "full_name", "description", "licence_spdx", "primary_language",
@@ -55,6 +48,10 @@ $profileColumns = @(
     "has_license_file", "has_tests", "has_ci", "ci_status", "similar_repo_count",
     "unique_capability", "successor_url", "category", "html_url", "data_origin"
 ) -join ", "
+$evidence = ($ContainerPath.TrimEnd("/") + "/repo_evidence.csv").Replace("\", "/")
+$signals = ($ContainerPath.TrimEnd("/") + "/revival_signals.csv").Replace("\", "/")
+$attempts = ($ContainerPath.TrimEnd("/") + "/revival_attempts.csv").Replace("\", "/")
+$sources = ($ContainerPath.TrimEnd("/") + "/revival_sources.csv").Replace("\", "/")
 
 function New-Statement([string]$Kind, [string]$Sql) {
     return [pscustomobject]@{ Kind = $Kind; Sql = $Sql }
@@ -77,9 +74,25 @@ CREATE LIGHTNING FILESTORE TABLE revival_signals_file FROM PHOENIX_REAL FORMAT C
   delimiter ","
 )
 "@),
+        (New-Statement "table" @"
+CREATE LIGHTNING FILESTORE TABLE revival_attempts_file FROM PHOENIX_REAL FORMAT CSV OPTIONS (
+  path "$attempts",
+  header "true",
+  delimiter ","
+)
+"@),
+        (New-Statement "table" @"
+CREATE LIGHTNING FILESTORE TABLE revival_sources_file FROM PHOENIX_REAL FORMAT CSV OPTIONS (
+  path "$sources",
+  header "true",
+  delimiter ","
+)
+"@),
         (New-Statement "container" "CREATE SCHEMASTORE CONTAINER phoenix"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real.repo_evidence_file"),
-        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real.revival_signals_file")
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real.revival_signals_file"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix_real.revival_attempts_file"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix_real.revival_sources_file")
     )
 }
 else {
@@ -98,18 +111,94 @@ CREATE TABLE phoenix_real_revival_signals USING com.databricks.spark.csv OPTIONS
   inferSchema "false"
 )
 "@),
+        (New-Statement "table" @"
+CREATE TABLE phoenix_real_revival_attempts USING com.databricks.spark.csv OPTIONS (
+  path "$attempts",
+  header "true",
+  inferSchema "false"
+)
+"@),
+        (New-Statement "table" @"
+CREATE TABLE phoenix_real_revival_sources USING com.databricks.spark.csv OPTIONS (
+  path "$sources",
+  header "true",
+  inferSchema "false"
+)
+"@),
         (New-Statement "container" "CREATE SCHEMASTORE CONTAINER phoenix"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real_repo_evidence"),
-        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real_revival_signals")
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real_revival_signals"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix_real_revival_attempts"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix_real_revival_sources")
     )
 }
 
+function Test-SuccessResult([string]$content) {
+    # A 2xx result set is success. The words "already exists" inside a data cell are not an error.
+    if ([string]::IsNullOrWhiteSpace($content)) { return $true }
+    try { $parsed = $content | ConvertFrom-Json } catch { return $true }
+    if ($null -eq $parsed) { return $true }
+    $names = @($parsed.PSObject.Properties.Name)
+    if ($names -contains "headers" -or $names -contains "data") { return $true }
+    foreach ($name in @("error", "msg", "message")) {
+        if ($names -contains $name) { return $false }
+    }
+    return $true
+}
+
 function Get-ZetarisErrorText([string]$content) {
+    # Call this only for an error response. The raw body is included so "already exists"
+    # counts in any field, including msg.
     if ([string]::IsNullOrWhiteSpace($content)) { return "" }
-    try { $parsed = $content | ConvertFrom-Json } catch { return "" }
-    if ($null -eq $parsed.error) { return "" }
-    if ($parsed.error.message) { return [string]$parsed.error.message }
-    return [string]$parsed.error
+    $parts = @($content)
+    try {
+        $parsed = $content | ConvertFrom-Json
+        foreach ($name in @("msg", "message", "error")) {
+            $value = $parsed.$name
+            if ($null -eq $value) { continue }
+            if ($value -is [string]) { $parts += [string]$value }
+            elseif ($value.message) { $parts += [string]$value.message }
+        }
+        foreach ($prop in $parsed.PSObject.Properties) {
+            if ($prop.Value -is [string]) { $parts += [string]$prop.Value }
+        }
+    }
+    catch { }
+    return ($parts -join " ")
+}
+
+function Read-HttpErrorBody($ErrorRecord) {
+    # pwsh 7 puts the response body on ErrorDetails.Message and HttpResponseMessage
+    # has no GetResponseStream. Windows PowerShell 5.1 uses GetResponseStream.
+    if ($null -eq $ErrorRecord) { return "" }
+    $details = $ErrorRecord.ErrorDetails
+    if ($null -ne $details -and -not [string]::IsNullOrWhiteSpace([string]$details.Message)) {
+        return [string]$details.Message
+    }
+    $exception = $ErrorRecord.Exception
+    if ($null -eq $exception) { return "" }
+    $resp = $exception.Response
+    if ($null -eq $resp) { return "" }
+    $streamMethod = $resp.PSObject.Methods["GetResponseStream"]
+    if ($null -ne $streamMethod) {
+        try {
+            $stream = $resp.GetResponseStream()
+            if ($null -eq $stream) { return "" }
+            $reader = New-Object System.IO.StreamReader($stream)
+            try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+        }
+        catch { return "" }
+    }
+    try {
+        $content = $resp.Content
+        if ($null -ne $content) {
+            $task = $content.ReadAsStringAsync()
+            if (-not $task.Wait(5000)) { return "" }
+            return [string]$task.Result
+        }
+    }
+    catch { }
+    return ""
 }
 
 function Test-AlreadyExists([string]$text) {
@@ -140,16 +229,27 @@ function Invoke-ZetarisSql([string]$sql) {
         if ($null -eq $resp) {
             return @{ Code = 0; Content = ""; Unreachable = $true }
         }
-        $code = [int]$resp.StatusCode
-        try {
-            $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
-            $content = $reader.ReadToEnd()
-        }
-        catch { $content = "" }
+        if ($null -ne $resp.StatusCode) { $code = [int]$resp.StatusCode }
+        $content = Read-HttpErrorBody $_
     }
     return @{ Code = $code; Content = $content; Unreachable = $false }
 }
 
+if ($MyInvocation.InvocationName -ne '.') {
+$key = [Environment]::GetEnvironmentVariable("ZETARIS_API_KEY")
+if ([string]::IsNullOrWhiteSpace($key)) {
+    Write-Error "ZETARIS_API_KEY is missing."
+    exit 2
+}
+$base = [Environment]::GetEnvironmentVariable("ZETARIS_REST_URL")
+if ([string]::IsNullOrWhiteSpace($base)) {
+    $base = "http://localhost:8888/api/v1.0"
+}
+$org = [Environment]::GetEnvironmentVariable("ZETARIS_ORG_ID")
+if ([string]::IsNullOrWhiteSpace($org)) {
+    $org = "1"
+}
+$base = $base.TrimEnd("/")
 $failed = $false
 foreach ($statement in $statements) {
     $flat = (($statement.Sql -replace "\s+", " ").Trim())
@@ -160,6 +260,11 @@ foreach ($statement in $statements) {
     }
     $code = [int]$result.Code
     $content = [string]$result.Content
+    # A successful result set is never an error, even when a cell contains "already exists".
+    if ($code -ge 200 -and $code -lt 300 -and (Test-SuccessResult $content)) {
+        Write-Output $code
+        continue
+    }
     $errorText = Get-ZetarisErrorText $content
     $exists = ($statement.Kind -in @("database", "table", "container", "view")) -and (Test-AlreadyExists $errorText)
     if ($exists) {
@@ -194,9 +299,8 @@ if ($check.Unreachable) {
     Write-Output "verify-failed"
     exit 1
 }
-$checkError = Get-ZetarisErrorText ([string]$check.Content)
 $verified = $false
-if (-not $checkError -and [int]$check.Code -ge 200 -and [int]$check.Code -lt 300) {
+if ((Test-SuccessResult ([string]$check.Content)) -and [int]$check.Code -ge 200 -and [int]$check.Code -lt 300) {
     try {
         $parsed = [string]$check.Content | ConvertFrom-Json
         $headers = @($parsed.headers | ForEach-Object { "$_".ToLowerInvariant() })
@@ -216,9 +320,45 @@ if (-not $checkError -and [int]$check.Code -ge 200 -and [int]$check.Code -lt 300
     }
     catch { $verified = $false }
 }
-if ($verified) {
-    Write-Output "verified rows=$expected"
+if (-not $verified) {
+    Write-Output "verify-failed"
+    exit 1
+}
+
+$attemptCsv = Join-Path $root "data/real/revival_attempts.csv"
+$attemptExpected = 0
+if (Test-Path -LiteralPath $attemptCsv) {
+    $attemptExpected = @(Import-Csv -LiteralPath $attemptCsv).Count
+}
+$attemptCheck = Invoke-ZetarisSql "SELECT repo_id, stage, data_origin FROM phoenix.revival_attempts"
+if ($attemptCheck.Unreachable) {
+    Write-Output "verify-failed"
+    exit 1
+}
+$attemptsOk = $false
+if ((Test-SuccessResult ([string]$attemptCheck.Content)) -and [int]$attemptCheck.Code -ge 200 -and [int]$attemptCheck.Code -lt 300) {
+    try {
+        $parsedAttempts = [string]$attemptCheck.Content | ConvertFrom-Json
+        $attemptHeaders = @($parsedAttempts.headers | ForEach-Object { "$_".ToLowerInvariant() })
+        $attemptOrigin = [array]::IndexOf($attemptHeaders, "data_origin")
+        $attemptRows = @($parsedAttempts.data)
+        $attemptsOk = $attemptOrigin -ge 0 -and $attemptRows.Count -eq $attemptExpected
+        if ($attemptsOk -and $attemptExpected -gt 0) {
+            foreach ($line in $attemptRows) {
+                $cells = @($line)
+                if ($attemptOrigin -ge $cells.Count -or -not ([string]$cells[$attemptOrigin]).StartsWith("github_rest_api")) {
+                    $attemptsOk = $false
+                    break
+                }
+            }
+        }
+    }
+    catch { $attemptsOk = $false }
+}
+if ($attemptsOk) {
+    Write-Output "verified rows=$expected attempts=$attemptExpected"
     exit 0
 }
 Write-Output "verify-failed"
 exit 1
+}

@@ -30,6 +30,44 @@ PROFILE_COLUMNS = (
 
 SIGNAL_COLUMNS = ("repo_id", "signal", "detail", "supports_revival")
 
+# One row per stage of a fork revival attempt. commit_sha stays empty until an
+# attempt commit exists. head_sha is the observed default-branch SHA and is not
+# itself an attempt commit.
+ATTEMPT_COLUMNS = (
+    "repo_id",
+    "fork_full_name",
+    "upstream_full_name",
+    "stage",
+    "status",
+    "ci_status",
+    "ci_run_url",
+    "ci_run_name",
+    "ci_run_event",
+    "commit_sha",
+    "compare_url",
+    "default_branch",
+    "head_sha",
+    "upstream_base_sha",
+    "ci_head_repo",
+    "workflow_path",
+    "workflow_steps",
+    "workflow_runs_build",
+    "compare_shas",
+    "data_origin",
+)
+
+# Cited GitHub documents (workflow file, package.json, issue, compare, Actions).
+# The planner may quote excerpt and url. It may not add facts that are not here.
+SOURCE_COLUMNS = (
+    "repo_id",
+    "source_id",
+    "kind",
+    "title",
+    "url",
+    "excerpt",
+    "data_origin",
+)
+
 PERMISSIVE_LICENCES = frozenset(
     {"MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "ISC", "MPL-2.0"}
 )
@@ -64,5 +102,21 @@ def signals_sql(repo_id: str) -> str:
     columns = ", ".join(SIGNAL_COLUMNS)
     return (
         f"SELECT {columns} FROM phoenix.revival_signals "
+        f"WHERE repo_id = '{_quote(require_repo_id(repo_id))}'"
+    )
+
+
+def attempts_sql(repo_id: str) -> str:
+    columns = ", ".join(ATTEMPT_COLUMNS)
+    return (
+        f"SELECT {columns} FROM phoenix.revival_attempts "
+        f"WHERE repo_id = '{_quote(require_repo_id(repo_id))}'"
+    )
+
+
+def sources_sql(repo_id: str) -> str:
+    columns = ", ".join(SOURCE_COLUMNS)
+    return (
+        f"SELECT {columns} FROM phoenix.revival_sources "
         f"WHERE repo_id = '{_quote(require_repo_id(repo_id))}'"
     )

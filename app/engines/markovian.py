@@ -16,9 +16,9 @@ from app.errors import InvestigationError
 
 @dataclass
 class MarkovianConfig:
-    max_chunks: int = 8
+    max_chunks: int = 24
     max_carryover_chars: int = 1200
-    chunk_timeout_seconds: float = 120
+    chunk_timeout_seconds: float = 190
 
 
 @dataclass
@@ -43,6 +43,7 @@ class ChunkManager:
                 status_code=500,
             )
         started = self.clock()
+        self.step_deadline = started + self.config.chunk_timeout_seconds
         incoming = self.carryover
         result, summary = fn(incoming)
         elapsed = self.clock() - started

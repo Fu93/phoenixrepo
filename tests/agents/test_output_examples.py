@@ -5,7 +5,7 @@ from app.investigation import InvestigationOrchestrator
 from config.settings import Settings
 
 CASES = (
-    ("example_1.json", "sample/phoenix-ledger", 0, "RESURRECTED"),
+    ("example_1.json", "sample/phoenix-ledger", 0, "CANDIDATE"),
     ("example_2.json", "sample/generic-qr", 0, "NO_GO"),
     ("example_3.json", "sample/field-notes", 1, "RESURRECTION_FAILED"),
 )

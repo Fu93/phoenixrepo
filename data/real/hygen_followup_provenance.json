@@ -1,0 +1,53 @@
+{
+  "collected_at": "2026-10-22T16:24:45.360904+00:00",
+  "generator": "scripts/collect_hygen_followup.py",
+  "token_used": false,
+  "token_written": false,
+  "note": "This follow-up does not replace revival_attempts_provenance.json. Existing attempt status cells were kept. New columns and source rows come from this run. The cache-400 line is credited to the upstream job log for job 111258182240. The log archive GET was HTTP 403, so the archive bytes were not stored. The attempt workflow cells were cleared in a later offline edit because no fork run was collected.",
+  "statuses": {
+    "workflow": 200,
+    "package": 200,
+    "helper": 200,
+    "advisories_ejs": 200,
+    "advisories_degit": 200,
+    "jobs": 200,
+    "logs": 403
+  },
+  "calls": [
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/contents/.github/workflows/ci.yml",
+      "status": "200",
+      "remaining": "18"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/contents/package.json",
+      "status": "200",
+      "remaining": "16"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/contents/src/__tests__/metaverse-utils.ts",
+      "status": "200",
+      "remaining": "23"
+    },
+    {
+      "url": "https://api.github.com/advisories",
+      "status": "200",
+      "remaining": "17"
+    },
+    {
+      "url": "https://api.github.com/advisories",
+      "status": "200",
+      "remaining": "4"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/actions/runs/37141993934/jobs",
+      "status": "200",
+      "remaining": "8"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/actions/jobs/111258182240/logs",
+      "status": "403",
+      "remaining": "22"
+    }
+  ]
+}

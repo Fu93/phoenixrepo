@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     meterless_max_tokens: int = 8192
     meterless_app: str = "phoenixrepo"
     meterless_timeout_seconds: float = 180
+    meterless_lanes: str = "nvidia/nemotron-3-super-120b-a12b,meterless/auto"
 
     nvidia_api_key: str | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
@@ -59,8 +60,20 @@ class Settings(BaseSettings):
     port: int = 8000
     log_dir: str = "logs"
     hmem_store_path: str = "data/hmem/runtime-store.json"
-    agent_step_timeout_seconds: float = 120
+    agent_step_timeout_seconds: float = 190
+    markovian_max_chunks: int = 24
     run_timeout_seconds: float = 600
+
+    def meterless_lanes_list(self) -> tuple[str, ...]:
+        lanes = tuple(part.strip() for part in (self.meterless_lanes or "").split(",") if part.strip())
+        return lanes or ("nvidia/nemotron-3-super-120b-a12b", "meterless/auto")
+
+    def chat_timeout_seconds(self) -> float:
+        """Chat client budget stays inside the chunk budget so a late reply is not then failed."""
+
+        step = float(self.agent_step_timeout_seconds)
+        chat = float(self.meterless_timeout_seconds)
+        return min(chat, max(1.0, step - 1.0))
 
     @field_validator("zetaris_api_key", "meterless_runtime_token", "nvidia_api_key", mode="before")
     @classmethod

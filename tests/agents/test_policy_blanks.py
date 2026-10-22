@@ -52,7 +52,7 @@ def test_null_successor_does_not_invent_a_successor():
     ]
     assert signals[0]["detail"] == ""
     decision, _reason = decide(profile, signals)
-    assert decision == "RESURRECTED"
+    assert decision == "CANDIDATE"
 
 
 def test_null_capability_and_licence_are_no_go():
@@ -62,14 +62,14 @@ def test_null_capability_and_licence_are_no_go():
 
 def test_a_large_substitute_count_is_a_score_not_a_block():
     decision, reason = decide(_row(similar_repo_count="180"), [])
-    assert decision == "RESURRECTED"
+    assert decision == "CANDIDATE"
     assert "alternatives_factor high" in reason
     assert "does not by itself decide" in reason
 
 
 def test_missing_ci_is_unknown_and_a_real_failure_still_blocks():
     unknown, unknown_reason = decide(_row(ci_status="NULL"), [])
-    assert unknown == "RESURRECTED"
+    assert unknown == "CANDIDATE"
     assert "CI is unknown" in unknown_reason
     failed, failed_reason = decide(_row(ci_status="failure"), [])
     assert failed == "RESURRECTION_FAILED"

@@ -3,7 +3,11 @@
 -- The agent sends exactly:
 --   SELECT <columns> FROM phoenix.repo_evidence WHERE repo_id = '<owner/name>'
 --   SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = '<owner/name>'
+--   SELECT <columns> FROM phoenix.revival_attempts WHERE repo_id = '<owner/name>'
+--   SELECT <columns> FROM phoenix.revival_sources WHERE repo_id = '<owner/name>'
 -- Removing these views breaks the investigation. There is no GitHub fallback in the app.
+-- revival_attempts and revival_sources are file-backed. An empty result is a real
+-- "not yet attempted" / "no cited source" answer, not a missing view.
 
 CREATE SCHEMASTORE CONTAINER phoenix;
 
@@ -39,3 +43,33 @@ JOIN phoenix_files.curated_signals s
 CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS
 SELECT repo_id, signal, detail, supports_revival
 FROM phoenix_files.revival_signals_file;
+
+-- Next statement. Fork attempt rows. One row per stage.
+CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS
+SELECT
+  repo_id,
+  fork_full_name,
+  upstream_full_name,
+  stage,
+  status,
+  ci_status,
+  ci_run_url,
+  ci_run_name,
+  ci_run_event,
+  commit_sha,
+  compare_url,
+  default_branch,
+  head_sha,
+  upstream_base_sha,
+  ci_head_repo,
+  workflow_path,
+  workflow_steps,
+  workflow_runs_build,
+  compare_shas,
+  data_origin
+FROM phoenix_files.revival_attempts_file;
+
+-- Next statement. Documents the planner is allowed to quote.
+CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS
+SELECT repo_id, source_id, kind, title, url, excerpt, data_origin
+FROM phoenix_files.revival_sources_file;

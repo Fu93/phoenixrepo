@@ -1,0 +1,65 @@
+{
+  "collected_at": "2026-10-22T15:53:26.010557+00:00",
+  "generator": "scripts/collect_revival_attempt.py",
+  "token_used": false,
+  "token_written": false,
+  "fork": "Fu93/hygen",
+  "upstream": "jondot/hygen",
+  "fork_default_branch": "master",
+  "upstream_default_branch": "master",
+  "fork_pushed_at": "2024-07-09T11:40:47Z",
+  "issue_number": 450,
+  "stage_rule": "status success or failure is recorded on stage revive only when compare ahead_by is greater than 0 and the fork default branch has an eligible build/test run. Otherwise every stage is not_attempted. Refactor and upgrade are not inferred from commit messages. head_sha is the compare base SHA, not an attempt commit. commit_sha stays empty until an attempt commit is the head of an eligible run.",
+  "calls": [
+    {
+      "url": "https://api.github.com/repos/Fu93/hygen",
+      "status": "200",
+      "remaining": "23"
+    },
+    {
+      "url": "https://api.github.com/repos/Fu93/hygen/actions/runs",
+      "status": "200",
+      "remaining": "51"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen",
+      "status": "200",
+      "remaining": "56"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/compare/master...Fu93:master",
+      "status": "200",
+      "remaining": "56"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/issues/450",
+      "status": "200",
+      "remaining": "50"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/issues",
+      "status": "200",
+      "remaining": "50"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/contents/.github/workflows/ci.yml",
+      "status": "200",
+      "remaining": "56"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/contents/package.json",
+      "status": "200",
+      "remaining": "22"
+    }
+  ],
+  "statuses": {
+    "fork": 200,
+    "upstream": 200,
+    "runs": 200,
+    "compare": 200,
+    "issue": 200,
+    "issues": 200,
+    "workflow": 200,
+    "package": 200
+  }
+}

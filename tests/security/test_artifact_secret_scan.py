@@ -25,4 +25,4 @@ def test_sample_artifacts_do_not_contain_secrets(tmp_path, monkeypatch):
         assert token not in blob
     metadata = json.loads(files[0].read_text())["metadata"]
     assert metadata["foundation_only"] is False
-    assert metadata["decision"] == "RESURRECTED"
+    assert metadata["decision"] == "CANDIDATE"

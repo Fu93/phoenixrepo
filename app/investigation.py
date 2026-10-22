@@ -9,18 +9,39 @@ from typing import Any
 
 from app.adapters.sample_zetaris import SampleZetaris
 from app.adapters.zetaris import ZetarisClient, ZetarisResult
-from app.agents.policy import decide, explanation, normalize_profile, normalize_signal
+from app.agents.planner import (
+    attempt_evidence_id,
+    build_revival_prd,
+    evidence_context,
+    label_prd,
+    prd_basename,
+    render_json,
+    render_markdown,
+    source_evidence_id,
+)
+from app.agents.policy import (
+    apply_revival_attempts,
+    decide,
+    explanation,
+    normalize_attempt,
+    normalize_profile,
+    normalize_signal,
+    normalize_source,
+)
 from app.agents.llm_judge import call_llm_judge, combine
-from app.agents.validate import Critique, critique_archaeologist, critique_builder, critique_judge
+from app.agents.validate import Critique, critique_archaeologist, critique_builder, critique_judge, critique_planner
 from app.engines.hmem.ledger import TrustLedgerService
 from app.engines.hmem.retrieval import MemoryRetrievalService
 from app.engines.hmem.store import MemoryStoreService
 from app.engines.hmem.types import QueryResult
 from app.engines.markovian import ChunkManager, MarkovianConfig
 from app.errors import InvestigationError, ZetarisError
+from app.adapters.meterless import MeterlessError
 from app.llm.parsing import parse_model_json
 from app.llm.provider import BoundLLM, build_llm
-from app.sql_catalog import profile_sql, require_repo_id, signals_sql
+from app.llm.standin import SampleStandIn
+from app.paths import repo_root
+from app.sql_catalog import attempts_sql, profile_sql, require_repo_id, signals_sql, sources_sql
 from app.trace_log import HackathonTrace
 from artifacts.store import ArtifactStore
 from audit.trail import AuditTrail
@@ -83,17 +104,24 @@ class InvestigationOrchestrator:
         self.retrieval = MemoryRetrievalService(self.memory)
         self.chunks = ChunkManager(
             MarkovianConfig(
-                max_chunks=8,
+                max_chunks=settings.markovian_max_chunks,
                 max_carryover_chars=1200,
                 chunk_timeout_seconds=settings.agent_step_timeout_seconds,
             )
         )
         self.started = time.monotonic()
         self.queries: list[dict[str, str]] = []
+        self.upgrade: dict[str, Any] = {
+            "changes_verdict": False,
+            "note": "Refactor and upgrade stages do not change the verdict. The verdict uses stage revive only.",
+            "stages": [],
+        }
+        self.revival_prd: dict[str, Any] = {}
         self.critiques: list[dict[str, Any]] = []
         self.judge_events: list[dict[str, Any]] = []
         self.judge_failure = ""
         self.judge_exhausted = False
+        self.provider_degraded = False
 
     def run(self) -> dict[str, Any]:
         self.trace.event(
@@ -104,13 +132,15 @@ class InvestigationOrchestrator:
             target_agent="archaeologist",
         )
         self.memory.hydrate()
-        profile_result, signal_result, row, signals = self._collect()
+        profile_result, signal_result, attempt_result, source_result, row, signals, attempts, sources = self._collect()
         profile_evidence_id = self._add_row_evidence(profile_result, row, "repository")
         signal_evidence_ids = [
             self._add_signal_evidence(signal_result, signal, index)
             for index, signal in enumerate(signals)
         ]
-        known = {profile_evidence_id, *signal_evidence_ids}
+        attempt_evidence_ids = self._add_attempt_evidence(attempt_result, attempts)
+        source_evidence_ids = self._add_source_evidence(source_result, sources)
+        known = {profile_evidence_id, *signal_evidence_ids, *attempt_evidence_ids, *source_evidence_ids}
         priors = self._prior_verdicts(row["repo_id"])
         prior_evidence_ids = [self._add_prior_evidence(item) for item in priors]
         known.update(prior_evidence_ids)
@@ -125,7 +155,7 @@ class InvestigationOrchestrator:
                 500,
             )
         judgment = self._judge(row, signals, known, recalled)
-        decision, policy_reason = decide(row, signals)
+        decision, policy_reason, self.upgrade = apply_revival_attempts(row, signals, attempts)
         self._advance(PhoenixState.RECONNAISSANCE_COMPLETE, "Repository row loaded from Zetaris.", [profile_evidence_id])
         self._advance(PhoenixState.EVIDENCE_COMPLETE, "Profile and revival signals loaded.", list(known))
         self._advance(PhoenixState.INTENT_RECONSTRUCTED, "Claims are tied to Zetaris rows.", [profile_evidence_id])
@@ -148,7 +178,7 @@ class InvestigationOrchestrator:
                     evidence_id = self._add_signal_evidence(signal_result, signal, index + len(signal_evidence_ids))
                     signal_evidence_ids.append(evidence_id)
                     known.add(evidence_id)
-                decision, policy_reason = decide(row, signals)
+                decision, policy_reason, self.upgrade = apply_revival_attempts(row, signals, attempts)
                 repairs_used += 1
                 self._advance(PhoenixState.REPAIRING, "Signals re-queried from Zetaris.", list(known))
                 self._advance(PhoenixState.VALIDATING, policy_reason, list(known))
@@ -156,12 +186,21 @@ class InvestigationOrchestrator:
                 self._advance(PhoenixState.RESURRECTION_FAILED, policy_reason, list(known))
             elif decision == "RESURRECTED":
                 self._advance(PhoenixState.RESURRECTED, policy_reason, list(known))
+            elif decision == "CANDIDATE":
+                self._advance(PhoenixState.CANDIDATE, policy_reason, list(known))
             else:
                 self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
+            self._planner(row, signals, attempts, sources, known)
         else:
             self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
 
-        verdict_text = judgment["explanation"] if judgment.get("accepted") else explanation(row, decision, policy_reason)
+        row_decision, _row_reason = decide(row, signals)
+        if judgment.get("accepted") and row_decision == decision:
+            verdict_text = judgment["explanation"]
+            if "not yet been attempted" in policy_reason and "not yet been attempted" not in verdict_text:
+                verdict_text = verdict_text.rstrip() + " Revival has not yet been attempted."
+        else:
+            verdict_text = explanation(row, decision, policy_reason)
         judge_note = self._judge_verdict_note()
         if judge_note:
             verdict_text = verdict_text.rstrip() + " " + judge_note
@@ -185,6 +224,16 @@ class InvestigationOrchestrator:
             confidence=verification["confidence"],
             status="ok",
         )
+        run_hash = self.trace.seal()
+        requested = str(getattr(self.llm, "requested_model", "") or "")
+        served = getattr(self.llm, "served_model", None)
+        verdict_text = (
+            verdict_text.rstrip()
+            + f" Run hash {run_hash}."
+            + f" Requested model {requested or 'empty'}."
+            + f" Served model {served or 'empty'}."
+        )
+        self._stamp_run_hash(run_hash)
         return self._response(
             decision=decision,
             reason=policy_reason,
@@ -195,6 +244,7 @@ class InvestigationOrchestrator:
             priors=priors,
             verdict_memory_id=memory.id,
             model_accepted=bool(judgment.get("accepted")),
+            run_hash=run_hash,
         )
 
     def _build_zetaris(self):
@@ -222,6 +272,8 @@ class InvestigationOrchestrator:
         )
         profile_result = self._query(profile_sql(self.repository))
         signal_result = self._query(signals_sql(self.repository))
+        attempt_result = self._query(attempts_sql(self.repository))
+        source_result = self._query(sources_sql(self.repository))
         if not profile_result.rows:
             raise InvestigationError(
                 "RepositoryNotInZetaris",
@@ -230,17 +282,27 @@ class InvestigationOrchestrator:
             )
         row = normalize_profile(profile_result.rows[0])
         signals = [normalize_signal(item) for item in signal_result.rows]
+        attempts = [normalize_attempt(item) for item in attempt_result.rows]
+        sources = [normalize_source(item) for item in source_result.rows]
+        self.profile_result = profile_result
+        self.signal_result = signal_result
+        self.attempt_result = attempt_result
+        self.source_result = source_result
         self.trace.event(
             agent_name="archaeologist",
             action="EVIDENCE_COLLECTION_COMPLETED",
             output_summary={
                 "profile_query_id": profile_result.query_id,
                 "signal_query_id": signal_result.query_id,
+                "attempt_query_id": attempt_result.query_id,
+                "source_query_id": source_result.query_id,
                 "signal_rows": len(signals),
+                "attempt_rows": len(attempts),
+                "source_rows": len(sources),
             },
             target_agent="validator",
         )
-        return profile_result, signal_result, row, signals
+        return profile_result, signal_result, attempt_result, source_result, row, signals, attempts, sources
 
     def _query(self, sql: str) -> ZetarisResult:
         self._check_run_budget()
@@ -251,13 +313,24 @@ class InvestigationOrchestrator:
         except InvestigationError:
             raise
         self.queries.append(
-            {"query_id": result.query_id, "sql": result.sql, "source": result.source, "mode": result.mode}
+            {
+                "query_id": result.query_id,
+                "sql": result.sql,
+                "source": result.source,
+                "mode": result.mode,
+                "content_hash": result.content_hash,
+            }
         )
         self.trace.event(
             agent_name="archaeologist",
             action="ZETARIS_QUERY",
             input_summary=sql,
-            output_summary={"query_id": result.query_id, "rows": len(result.rows), "source": result.source},
+            output_summary={
+                "query_id": result.query_id,
+                "rows": len(result.rows),
+                "source": result.source,
+                "content_hash": result.content_hash,
+            },
             target_agent="validator",
         )
         return result
@@ -290,10 +363,158 @@ class InvestigationOrchestrator:
         self.graph.add_evidence(evidence)
         return evidence_id
 
+    def _add_json_evidence(self, evidence_id: str, result: ZetarisResult, payload: dict) -> str:
+        evidence = create_evidence(
+            evidence_id=evidence_id,
+            evidence_type="external",
+            source=result.source,
+            locator=result.query_id,
+            content=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            collector="zetaris_adapter",
+            metadata=self._evidence_metadata(result),
+        )
+        self.graph.add_evidence(evidence)
+        return evidence_id
+
+    def _add_attempt_evidence(self, result: ZetarisResult, attempts: list[dict]) -> list[str]:
+        if not attempts:
+            return [self._add_json_evidence(attempt_evidence_id(self.repository, "none"), result, {"rows": 0})]
+        return [
+            self._add_json_evidence(attempt_evidence_id(attempt["repo_id"], attempt["stage"]), result, attempt)
+            for attempt in attempts
+        ]
+
+    def _add_source_evidence(self, result: ZetarisResult, sources: list[dict]) -> list[str]:
+        if not sources:
+            return [self._add_json_evidence(source_evidence_id(self.repository, "none"), result, {"rows": 0})]
+        return [
+            self._add_json_evidence(source_evidence_id(source["repo_id"], source["source_id"]), result, source)
+            for source in sources
+        ]
+
+    def _planner(self, row: dict, signals: list[dict], attempts: list[dict], sources: list[dict], known: set[str]) -> None:
+        context = evidence_context(
+            row["repo_id"],
+            signals,
+            attempts,
+            sources,
+            queries={
+                "profile": {
+                    "query_id": self.profile_result.query_id,
+                    "sql": self.profile_result.sql,
+                    "content_hash": self.profile_result.content_hash,
+                },
+                "signals": {
+                    "query_id": self.signal_result.query_id,
+                    "sql": self.signal_result.sql,
+                    "content_hash": self.signal_result.content_hash,
+                },
+                "attempts": {
+                    "query_id": self.attempt_result.query_id,
+                    "sql": self.attempt_result.sql,
+                    "content_hash": self.attempt_result.content_hash,
+                },
+                "sources": {
+                    "query_id": self.source_result.query_id,
+                    "sql": self.source_result.sql,
+                    "content_hash": self.source_result.content_hash,
+                },
+            },
+        )
+        catalog = _evidence_catalog(context)
+        document = build_revival_prd(row, signals, attempts, sources, context)
+        accepted = None
+        critique = Critique(False)
+        for attempt in (1, 2):
+            payload = self.chunks.run(
+                f"planner-{attempt}",
+                lambda carryover, attempt=attempt, document=document: self._role_chunk(
+                    "planner",
+                    attempt,
+                    {"deterministic_prd": document, "row": row},
+                    carryover,
+                    target="validator",
+                ),
+            )
+            critique = critique_planner(
+                payload,
+                known_evidence_ids=known,
+                row=row,
+                evidence_by_id=catalog,
+                evidence_text=_planner_evidence_text(row, signals, attempts, sources),
+            )
+            if not critique.rejected:
+                accepted = label_prd(payload, model_produced=not self.llm.sample_standin)
+                break
+            self._record_critique(critique, attempt - 1)
+        if accepted is None:
+            accepted = label_prd(document, model_produced=False)
+            self.trace.event(
+                agent_name="validator",
+                action="PLANNER_DETERMINISTIC_FALLBACK",
+                input_summary=critique.reason,
+                output_summary="The deterministic PRD replaced the rejected draft.",
+                target_agent="planner",
+                status="ok",
+            )
+        try:
+            self.revival_prd = self._write_prd(accepted)
+        except (KeyError, TypeError) as exc:
+            accepted = label_prd(document, model_produced=False)
+            self.trace.event(
+                agent_name="validator",
+                action="PLANNER_DETERMINISTIC_FALLBACK",
+                input_summary=f"{type(exc).__name__}: {exc}",
+                output_summary="The deterministic PRD replaced a draft that could not be rendered.",
+                target_agent="planner",
+                status="ok",
+            )
+            self.revival_prd = self._write_prd(accepted)
+
+    def _write_prd(self, document: dict) -> dict[str, Any]:
+        import os
+
+        override = os.environ.get("PHOENIX_PRD_DIR")
+        if override:
+            directory = Path(override)
+        else:
+            directory = Path(self.settings.log_dir) / "revival" / self.run_id
+        markdown_path = ""
+        json_path = ""
+        if directory is not None:
+            directory.mkdir(parents=True, exist_ok=True)
+            base = prd_basename(str(document["repo_id"]))
+            markdown_file = directory / f"{base}.prd.md"
+            json_file = directory / f"{base}.prd.json"
+            markdown_file.write_text(render_markdown(document), encoding="utf-8")
+            json_file.write_text(render_json(document), encoding="utf-8")
+            markdown_path = str(markdown_file)
+            json_path = str(json_file)
+        self.trace.event(
+            agent_name="planner",
+            action="PRD_WRITTEN",
+            output_summary={
+                "drafted_by": document.get("drafted_by"),
+                "llm_drafted": document.get("llm_drafted"),
+                "markdown_path": markdown_path,
+                "json_path": json_path,
+            },
+            status="ok",
+        )
+        return {
+            "drafted_by": document.get("drafted_by"),
+            "llm_drafted": document.get("llm_drafted"),
+            "markdown_path": markdown_path,
+            "json_path": json_path,
+            "stages": [stage["id"] for stage in document.get("stages", [])],
+            "document": document,
+        }
+
     def _evidence_metadata(self, result: ZetarisResult) -> dict[str, str]:
         return {
             "query_id": result.query_id,
             "sql": result.sql,
+            "content_hash": result.content_hash,
             "source": result.source,
             "zetaris_mode": result.mode,
         }
@@ -398,6 +619,7 @@ class InvestigationOrchestrator:
                 target_agent="market_judge",
                 status="rejected",
                 retry_count=1,
+                llm=self._llm_trace(),
             )
             return {"accepted": False, "explanation": ""}
         return {"accepted": True, "explanation": accepted_payload["explanation"]}
@@ -468,7 +690,31 @@ class InvestigationOrchestrator:
             },
             {"role": "user", "content": user},
         ]
-        raw = self.llm.complete(messages)
+        try:
+            raw = self.llm.complete(messages, deadline=self._llm_deadline())
+        except MeterlessError as exc:
+            self._flush_llm_fallbacks()
+            self.provider_degraded = True
+            self.trace.event(
+                agent_name=role,
+                action="PROVIDER_DEGRADED",
+                input_summary={
+                    "lane": getattr(self.llm, "lane", ""),
+                    "requested_model": getattr(self.llm, "requested_model", ""),
+                    "served_model": getattr(self.llm, "served_model", None),
+                    "reason": str(exc)[:300],
+                },
+                output_summary="Deterministic stand-in used after Nightshift lanes failed.",
+                target_agent="validator",
+                retry_count=attempt - 1,
+                status="degraded",
+                llm=self._llm_trace(),
+            )
+            raw = SampleStandIn().complete(messages)
+            self.llm.requested_model = SampleStandIn.model_name
+            self.llm.served_model = SampleStandIn.model_name
+        else:
+            self._flush_llm_fallbacks()
         model_trace = {
             "requested_model": self.llm.requested_model,
             "served_model": self.llm.served_model,
@@ -482,6 +728,7 @@ class InvestigationOrchestrator:
                     "architect": ("contract",),
                     "builder": ("steps",),
                     "diagnostician": ("action", "claims", "decision"),
+                    "planner": ("findings", "stages"),
                 }.get(role, ("decision", "claims", "steps", "contract", "explanation")),
             )
         except InvestigationError as exc:
@@ -493,6 +740,7 @@ class InvestigationOrchestrator:
                 target_agent="validator",
                 retry_count=attempt - 1,
                 status="error",
+                llm=model_trace,
             )
             raise
         summary = {key: parsed.get(key) for key in ("decision", "claims", "steps", "contract", "action") if key in parsed}
@@ -504,6 +752,7 @@ class InvestigationOrchestrator:
             target_agent=target,
             retry_count=attempt - 1,
             confidence=0.9 if self.llm.sample_standin else None,
+            llm=model_trace,
         )
         carry = json.dumps({"role": role, "attempt": attempt, "keys": sorted(parsed)}, ensure_ascii=False)
         return parsed, carry
@@ -572,6 +821,7 @@ class InvestigationOrchestrator:
             target_agent=role,
             retry_count=attempt - 1,
             status=status,
+            llm={"requested_model": requested_model, "served_model": served_model},
         )
 
     def _note_judge_exhausted(self, role: str) -> None:
@@ -579,10 +829,16 @@ class InvestigationOrchestrator:
         self.trace.event(
             agent_name="validator",
             action="LLM_JUDGE_EXHAUSTED",
-            input_summary={"role": role, "advisory": True},
+            input_summary={
+                "role": role,
+                "advisory": True,
+                "requested_model": getattr(self.llm, "requested_model", ""),
+                "served_model": getattr(self.llm, "served_model", None),
+            },
             output_summary="The advisory judge kept rejecting after the retry. The deterministic policy verdict is still produced.",
             target_agent=role,
             status="advisory",
+            llm=self._llm_trace(),
         )
 
     def _judge_verdict_note(self) -> str:
@@ -829,6 +1085,7 @@ class InvestigationOrchestrator:
         priors: list,
         verdict_memory_id: str,
         model_accepted: bool,
+        run_hash: str,
     ) -> dict[str, Any]:
         links = []
         for claim in self.graph.graph.claims:
@@ -840,6 +1097,7 @@ class InvestigationOrchestrator:
                         "evidence_id": evidence_id,
                         "query_id": meta.get("query_id"),
                         "sql": meta.get("sql"),
+                        "content_hash": meta.get("content_hash"),
                         "source": meta.get("source"),
                         "zetaris_mode": meta.get("zetaris_mode"),
                     }
@@ -878,6 +1136,9 @@ class InvestigationOrchestrator:
                 "investigation_version": INVESTIGATION_VERSION,
                 "reason": reason,
                 "verdict_text": verdict_text,
+                "run_hash": run_hash,
+                "upgrade": self.upgrade,
+                "revival_prd": self.revival_prd,
                 "claims": links,
                 "zetaris": {
                     "mode": self.queries[0]["mode"] if self.queries else self.zetaris.mode(),
@@ -889,7 +1150,14 @@ class InvestigationOrchestrator:
                     "model": self.llm.model,
                     "requested_model": self.llm.requested_model,
                     "served_model": self.llm.served_model,
+                    "provenance": {
+                        "requested_model": self.llm.requested_model,
+                        "served_model": self.llm.served_model,
+                        "run_hash": run_hash,
+                    },
                     "sample_standin": self.llm.sample_standin,
+                    "degraded": self.provider_degraded,
+                    "fallbacks": list(getattr(self.llm, "fallback_log", []) or []),
                     "label": self.llm.label(),
                     "explanation_accepted": model_accepted,
                     "primary_provider": "meterless",
@@ -922,6 +1190,7 @@ class InvestigationOrchestrator:
                         "builder",
                         "validator",
                         "diagnostician",
+                        "planner",
                     ],
                     "critique_events": self.critiques,
                     "markovian_chunks": [chunk.name for chunk in self.chunks.chunks],
@@ -929,14 +1198,56 @@ class InvestigationOrchestrator:
                 "pre_existing_foundation": "Evidence graph, state machine, audit trail, and API shape from the 8 Oct 2026 skeleton.",
                 "scope": (
                     "The terminal state is an evidence-policy verdict over Zetaris rows. "
-                    "This run does not clone, compile, test, or republish the repository. "
-                    "RESURRECTED means the cited rows satisfy the revival rules. "
-                    "RESURRECTION_FAILED means the rows say it is worth reviving and the recorded "
-                    "tests or CI do not pass inside the repair budget. NO_GO means the rows fail "
-                    "the value rules."
+                    "A repository that is not NO_GO also gets a revival PRD with stage revive, "
+                    "refactor, and upgrade. This run does not clone, compile, test, or push commits. "
+                    "A row that passes the policy with no qualifying stage-1 success is CANDIDATE. "
+                    "RESURRECTED requires a stage-1 success on the fork default branch whose commit "
+                    "is ahead of the upstream base and whose workflow runs the repo's build or test "
+                    "commands. That success can override an upstream CI failure or unknown CI. It "
+                    "cannot override NO_GO, missing tests, or a missing licence file. A qualifying "
+                    "stage-1 failure is RESURRECTION_FAILED and cites that run. The latest attempt "
+                    "wins. Refactor and upgrade are an upgrade result and do not change the verdict. "
+                    "The trace hash chain shows the record was not altered after the run. It does not "
+                    "show that the record is true."
                 ),
             },
         }
+
+    def _flush_llm_fallbacks(self) -> None:
+        events = list(getattr(self.llm, "fallback_log", []) or [])
+        if not events:
+            return
+        self.llm.fallback_log.clear()
+        for event in events:
+            self.trace.event(
+                agent_name="orchestrator",
+                action="LLM_FALLBACK",
+                input_summary={
+                    "lane": event.get("lane"),
+                    "requested_model": event.get("requested_model"),
+                    "served_model": event.get("served_model"),
+                    "reason": event.get("reason"),
+                },
+                output_summary=event.get("reason") or "",
+                status="fallback",
+                llm={
+                    "requested_model": event.get("requested_model"),
+                    "served_model": event.get("served_model"),
+                },
+            )
+
+    def _stamp_run_hash(self, run_hash: str) -> None:
+        document = self.revival_prd.get("document") if isinstance(self.revival_prd, dict) else None
+        if not isinstance(document, dict):
+            return
+        document["run_hash"] = run_hash
+        self.revival_prd["run_hash"] = run_hash
+        markdown_path = self.revival_prd.get("markdown_path") or ""
+        json_path = self.revival_prd.get("json_path") or ""
+        if markdown_path:
+            Path(markdown_path).write_text(render_markdown(document), encoding="utf-8")
+        if json_path:
+            Path(json_path).write_text(render_json(document), encoding="utf-8")
 
     def _advance(self, state: PhoenixState, reason: str, evidence_ids: list[str]) -> None:
         self.state.transition(
@@ -946,9 +1257,65 @@ class InvestigationOrchestrator:
             evidence_ids=evidence_ids,
         )
 
+    def _llm_trace(self) -> dict[str, Any]:
+        return {
+            "requested_model": getattr(self.llm, "requested_model", "") or "",
+            "served_model": getattr(self.llm, "served_model", None),
+        }
+
+    def _llm_deadline(self) -> float | None:
+        step_deadline = getattr(self.chunks, "step_deadline", None)
+        if step_deadline is None:
+            return None
+        budget = float(self.chunks.config.chunk_timeout_seconds)
+        slack = 0.05 if budget >= 5 else min(0.2, budget * 0.3)
+        return float(step_deadline) - slack
+
     def _check_run_budget(self) -> None:
         if time.monotonic() - self.started > self.settings.run_timeout_seconds:
             raise InvestigationError("RunTimeout", "The investigation exceeded its run timeout.", 504)
+
+
+def _planner_evidence_text(row: dict, signals: list[dict], attempts: list[dict], sources: list[dict]) -> str:
+    """Everything the deterministic template is allowed to quote, plus the row itself."""
+
+    parts = [
+        str(row.get("primary_language") or ""),
+        str(row.get("licence_spdx") or ""),
+        str(row.get("description") or ""),
+        str(row.get("ci_status") or ""),
+    ]
+    for signal in signals:
+        parts.append(str(signal.get("detail") or ""))
+        parts.append(str(signal.get("signal") or ""))
+    for attempt in attempts:
+        parts.append(str(attempt.get("workflow_steps") or ""))
+        parts.append(str(attempt.get("workflow_path") or ""))
+    for source in sources:
+        parts.append(str(source.get("excerpt") or ""))
+        parts.append(str(source.get("title") or ""))
+        parts.append(str(source.get("url") or ""))
+    return "\n".join(parts)
+
+
+def _evidence_catalog(context: dict) -> dict[str, dict[str, str]]:
+    catalog: dict[str, dict[str, str]] = {}
+
+    def add(item: dict) -> None:
+        evidence_id = item.get("evidence_id")
+        if not evidence_id:
+            return
+        catalog[str(evidence_id)] = {
+            "query_id": item.get("query_id") or "",
+            "sql": item.get("sql") or "",
+            "content_hash": item.get("content_hash") or "",
+        }
+
+    add(context.get("profile") or {})
+    for key in ("signals", "attempts", "sources"):
+        for item in context.get(key) or []:
+            add(item)
+    return catalog
 
 
 def _slug(value: str) -> str:

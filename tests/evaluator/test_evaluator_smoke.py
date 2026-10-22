@@ -16,9 +16,9 @@ def test_evaluator_can_replay_a_sample_run(tmp_path, monkeypatch):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["decision"] == "RESURRECTED"
+    assert data["decision"] == "CANDIDATE"
     assert data["foundation_only"] is False
-    assert data["state"] == "RESURRECTED"
+    assert data["state"] == "CANDIDATE"
     run_id = data["run_id"]
     context = json.loads((Path("run_artifacts") / run_id / "run-context.json").read_text())
     pack = json.loads((Path("run_artifacts") / run_id / "evidence-pack.json").read_text())

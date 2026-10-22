@@ -200,7 +200,7 @@ def test_committed_snapshot_matches_the_view_schema_and_provenance():
             [normalize_signal(item) for item in signals_by_repo[repo_id]],
         )
         verdicts[repo_id] = (decision, reason)
-    assert set(decision for decision, _reason in verdicts.values()) == {"NO_GO", "RESURRECTION_FAILED", "RESURRECTED"}
+    assert set(decision for decision, _reason in verdicts.values()) == {"NO_GO", "RESURRECTION_FAILED", "CANDIDATE"}
     dep_decision, dep_reason = verdicts["golang/dep"]
     assert dep_decision == "NO_GO"
     assert dep_reason.startswith("a successor URL is recorded")
@@ -224,7 +224,7 @@ def test_committed_snapshot_matches_the_view_schema_and_provenance():
     assert notes["jondot/hygen"]["ci_head_repo"] == "jondot/hygen"
     assert "/jondot/hygen/actions/runs/" in notes["jondot/hygen"]["ci_run_url"]
     bridge_decision, bridge_reason = verdicts["42wim/matterbridge"]
-    assert bridge_decision == "RESURRECTED"
+    assert bridge_decision == "CANDIDATE"
     assert "CI is unknown" in bridge_reason
     assert "successful CI conclusion" not in bridge_reason
     assert rows["42wim/matterbridge"]["ci_status"] == ""

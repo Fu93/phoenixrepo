@@ -158,7 +158,7 @@ def test_always_reject_judge_still_produces_the_policy_verdict(tmp_path):
         return '{"decision":"reject","reason":"advisory reject","claim_ids":["CLM-DECISION"]}'
 
     result = _run_live(tmp_path, "sample/phoenix-ledger", judge_raw)
-    assert result["decision"] == "RESURRECTED"
+    assert result["decision"] == "CANDIDATE"
     assert result["metadata"]["llm"]["judge"]["advisory"] is True
     assert result["metadata"]["llm"]["judge"]["exhausted"] is True
     assert "deterministic policy verdict was kept" in result["metadata"]["verdict_text"]

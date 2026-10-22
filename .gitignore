@@ -5,7 +5,7 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
-logs/*.jsonl
+logs/
 run_artifacts/
 data/hmem/
 output_examples/*.tmp

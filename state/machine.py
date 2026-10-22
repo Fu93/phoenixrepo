@@ -20,6 +20,7 @@ class PhoenixState(str, Enum):
     DIAGNOSING = "DIAGNOSING"
     REPAIRING = "REPAIRING"
     RESURRECTED = "RESURRECTED"
+    CANDIDATE = "CANDIDATE"
     NO_GO = "NO_GO"
     RESURRECTION_FAILED = "RESURRECTION_FAILED"
 
@@ -40,6 +41,7 @@ ALLOWED_TRANSITIONS = {
     PhoenixState.BUILDING: {PhoenixState.VALIDATING},
     PhoenixState.VALIDATING: {
         PhoenixState.RESURRECTED,
+        PhoenixState.CANDIDATE,
         PhoenixState.DIAGNOSING,
         PhoenixState.RESURRECTION_FAILED,
     },

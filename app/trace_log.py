@@ -1,7 +1,13 @@
-"""Judge-facing JSONL trace. Fields are written by the running investigation, never by hand."""
+"""Judge-facing JSONL trace. Fields are written by the running investigation, never by hand.
+
+Each line carries prev_hash and line_hash. line_hash is sha256 of the canonical
+JSON of the line including prev_hash and excluding line_hash. The chain shows
+the file was not edited after the run. It does not show that the text is true.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +42,21 @@ def _redact(value: Any, secrets: list[str]) -> Any:
     return value
 
 
+def canonical_body(record: dict[str, Any]) -> str:
+    """Stable JSON for the hash. line_hash is not part of the hashed body."""
+
+    body = {key: value for key, value in record.items() if key != "line_hash"}
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def canonical_line(record: dict[str, Any]) -> str:
+    return json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def line_hash(record: dict[str, Any]) -> str:
+    return hashlib.sha256(canonical_body(record).encode("utf-8")).hexdigest()
+
+
 def _summary(value: Any, secrets: list[str], limit: int = 500) -> str:
     if value is None:
         return ""
@@ -54,6 +75,8 @@ class HackathonTrace:
         directory.mkdir(parents=True, exist_ok=True)
         self.path = directory / f"trace-{run_id}.jsonl"
         self._lines: list[str] = []
+        self._prev_hash = ""
+        self.run_hash = ""
 
     def event(
         self,
@@ -66,6 +89,7 @@ class HackathonTrace:
         confidence: float | None = None,
         retry_count: int = 0,
         status: str = "ok",
+        llm: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -80,11 +104,19 @@ class HackathonTrace:
             "status": status,
             "event": action,
         }
+        if llm is not None:
+            # Top-level so a truncated input_summary cannot drop them, and so the hash covers them.
+            record["requested_model"] = str(llm.get("requested_model") or "")
+            record["served_model"] = llm.get("served_model")
         record = sanitize_metadata(record)
+        record["prev_hash"] = self._prev_hash
         missing = [field for field in FIELDS if field not in record]
         if missing:
             raise RuntimeError(f"trace record missing {missing}")
-        line = json.dumps(record, ensure_ascii=False)
+        record["line_hash"] = line_hash(record)
+        self._prev_hash = record["line_hash"]
+        self.run_hash = record["line_hash"]
+        line = canonical_line(record)
         print(line, flush=True)
         self._lines.append(line)
         body = "\n".join(self._lines) + "\n"
@@ -96,3 +128,15 @@ class HackathonTrace:
             self.path = fallback / f"trace-{self.run_id}.jsonl"
             self.path.write_text(body, encoding="utf-8")
         return record
+
+    def seal(self) -> str:
+        """Append RUN_SEAL. Its line_hash is the run hash. The hash is not inside the hashed body."""
+
+        record = self.event(
+            agent_name="orchestrator",
+            action="RUN_SEAL",
+            input_summary={"prev_hash": self._prev_hash},
+            output_summary="Final run hash is this line's line_hash.",
+            status="ok",
+        )
+        return str(record["line_hash"])
