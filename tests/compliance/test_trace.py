@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from api.run import app
 
 client = TestClient(app)
-SAMPLE = {"repository": "sample://phoenix", "mode": "sample", "max_repair_iterations": 0}
+SAMPLE = {"repository": "sample/phoenix-ledger", "mode": "sample", "max_repair_iterations": 0}
 
 
 def _trace_path(tmp_path, monkeypatch) -> Path:

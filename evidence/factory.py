@@ -17,6 +17,7 @@ def create_evidence(
     locator: str | None = None,
     confidence: float = 1.0,
     parent_evidence_id: str | None = None,
+    metadata: dict | None = None,
 ) -> Evidence:
     return Evidence(
         id=evidence_id,
@@ -31,4 +32,5 @@ def create_evidence(
             content_hash=content_hash(content),
             parent_evidence_id=parent_evidence_id,
         ),
+        metadata=metadata or {},
     )

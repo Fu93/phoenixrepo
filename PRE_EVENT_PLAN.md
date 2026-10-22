@@ -1,6 +1,6 @@
 # PhoenixRepo pre-event plan
 
-Locked 8 October 2026. Nothing here is a scored run.
+Locked 8 October 2026. Nothing in this file is a scored run. The build-window investigation is described in `README.md`. This plan stays as the declared pre-event boundary.
 
 PhoenixRepo does not assume abandoned software should be saved. It investigates whether it deserves to live again. Every decision must be traceable to evidence.
 

@@ -1,8 +1,5 @@
 {
-  "run_id": "example-nogo",
-  "input": {
-    "repo_url": "https://github.com/REPLACE/saturated-toy",
-    "note": "NO-GO candidate. Fill after repo selection."
-  },
-  "options": {"sample_mode": true}
+  "repository": "sample/generic-qr",
+  "mode": "sample",
+  "max_repair_iterations": 0
 }

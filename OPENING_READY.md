@@ -1,5 +1,7 @@
 # PhoenixRepo
 
+Historical pre-opening note from 8 October 2026. The scored path is `InvestigationOrchestrator` behind `POST /run`. See `README.md`. The foundation orchestrator below is still in the tree and still stops before a verdict.
+
 Pre-opening foundation complete.
 
 Status: OPENING-READY

@@ -1,0 +1,46 @@
+{
+  "name": "PhoenixRepo",
+  "track": "02 The Agent That Can Explain Why",
+  "team": "PhoenixRepo",
+  "summary": "An agent team decides whether an abandoned repository should be revived. Every claim in the verdict cites a Zetaris row. H-MEM remembers those verdicts. Meterless Nightshift is the primary model provider.",
+  "sponsors": {
+    "zetaris": {
+      "role": "Load-bearing evidence source. The agents' only facts are rows from phoenix.repo_evidence and phoenix.revival_signals, fetched with the REST SQL contract.",
+      "setup": "scripts/zetaris/*.sql",
+      "sample": "data/sample/*.csv is a labelled synthetic cache of those view shapes. Sample mode still goes through the Zetaris adapter. There is no GitHub fallback."
+    },
+    "meterless_engine": {
+      "engines": ["H-MEM", "Markovian"],
+      "hmem": "MemoryStoreService, MemoryRetrievalService, and TrustLedgerService. In-run evidence memories are recalled into the judge step. Verdicts are promoted to long-term memory and cited on a later run.",
+      "markovian": "Chunk manager with a bounded carryover between agent steps.",
+      "spec": "https://github.com/Meterless/Meterless/tree/main/engines/hmem",
+      "tests": "tests/engines/test_hmem_conformance.py and tests/engines/test_markovian.py"
+    },
+    "meterless_runtime": {
+      "role": "Primary, selectable LLM provider. OpenAI-compatible Nightshift contract from the Power prompt on meterless.ai/engines.html (fetched 22 Oct 2026).",
+      "settings": ["METERLESS_BASE_URL", "METERLESS_RUNTIME_TOKEN", "METERLESS_MODEL"],
+      "headers": ["Authorization bearer runtime token", "meterless-app: phoenixrepo", "meterless-scope: user"],
+      "discovery": "GET /v1/models. /healthz is not treated as proof.",
+      "connection_test": "python scripts/test_meterless_connection.py"
+    },
+    "nvidia": {
+      "role": "Secondary dev fallback only, selected with LLM_PROVIDER=nvidia. The intended Nemotron path is a Nightshift lane, with the NVIDIA key stored in Nightshift rather than in this app.",
+      "direct_base_url": "https://integrate.api.nvidia.com/v1",
+      "note": "Prefer a Nemotron 3 Super lane. nemotron-3.5-super-vl-120b was reported flaky. This repository does not invent a model slug; set NVIDIA_MODEL or pin a meterless/* route from discovery."
+    },
+    "cursor": {
+      "role": "Coding tool. Optional for the hackathon as of the 22 Oct 2026 organiser update. A Cursor cloud agent (Grok 4.7) wrote this build-window core. Cursor is not the product runtime."
+    }
+  },
+  "pre_existing": {
+    "declared": "Everything on main before 22 Oct 2026 00:00 UTC. The git history shows that work on 8 Oct 2026, through commit 62a1540.",
+    "includes": [
+      "FastAPI POST /run shape and Docker image",
+      "Evidence graph, evidence pack, and integrity hash",
+      "State machine and the three terminal state names",
+      "Audit trail",
+      "Foundation orchestrator, which still stops at EVIDENCE_COMPLETE and is not the scored path"
+    ]
+  },
+  "sample_mode": "SAMPLE_MODE=true runs the investigation logic on the labelled cache with a deterministic stand-in for the LLM. It does not read output_examples/."
+}

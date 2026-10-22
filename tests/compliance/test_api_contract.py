@@ -4,7 +4,7 @@ from api.run import app
 
 client = TestClient(app)
 
-SAMPLE = {"repository": "sample://phoenix", "mode": "sample", "max_repair_iterations": 0}
+SAMPLE = {"repository": "sample/phoenix-ledger", "mode": "sample", "max_repair_iterations": 0}
 
 
 def test_run_endpoint_exists():
@@ -33,6 +33,13 @@ def test_run_response_has_required_fields():
     assert required.issubset(data.keys())
 
 
-def test_live_mode_is_not_available():
+def test_live_mode_is_rejected_without_leaving_sample_mode():
     response = client.post("/run", json={**SAMPLE, "mode": "live"})
     assert response.status_code == 400
+    assert response.json()["error"]["type"] == "SampleMode"
+
+
+def test_unknown_repository_is_a_structured_error():
+    response = client.post("/run", json={**SAMPLE, "repository": "sample/missing"})
+    assert response.status_code == 404
+    assert response.json()["error"]["type"] == "RepositoryNotInZetaris"

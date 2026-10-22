@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -10,14 +11,17 @@ client = TestClient(app)
 def test_run_endpoint():
     response = client.post(
         "/run",
-        json={"repository": "sample://phoenix", "mode": "sample"},
+        json={"repository": "sample/phoenix-ledger", "mode": "sample"},
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "FOUNDATION_COMPLETE"
-    assert data["state"] == "EVIDENCE_COMPLETE"
-    assert data["decision"] is None
-    assert data["foundation_only"] is True
+    assert data["status"] == "COMPLETE"
+    assert data["state"] == "RESURRECTED"
+    assert data["decision"] == "RESURRECTED"
+    assert data["foundation_only"] is False
     text = Path(data["log_file"]).read_text(encoding="utf-8")
-    assert "RUN_STARTED" in text
-    assert "FOUNDATION_COMPLETED" in text
+    events = [json.loads(line)["event"] for line in text.splitlines()]
+    assert "RUN_STARTED" in events
+    assert "VERDICT" in events
+    assert "CRITIQUE_REJECT" in events
+    assert "HMEM_RECALL" in events
