@@ -10,6 +10,7 @@ from typing import Any
 from app.adapters.sample_zetaris import SampleZetaris
 from app.adapters.zetaris import ZetarisClient, ZetarisResult
 from app.agents.policy import decide, explanation, normalize_profile, normalize_signal
+from app.agents.llm_judge import call_llm_judge, combine
 from app.agents.validate import Critique, critique_archaeologist, critique_builder, critique_judge
 from app.engines.hmem.ledger import TrustLedgerService
 from app.engines.hmem.retrieval import MemoryRetrievalService
@@ -296,6 +297,12 @@ class InvestigationOrchestrator:
                 ),
             )
             critique = critique_archaeologist(payload, known_evidence_ids=known, row=row)
+            critique = self._apply_llm_judge(
+                critique,
+                role="archaeologist",
+                subject={"role": "archaeologist", "row": row, "claims": payload.get("claims")},
+                attempt=attempt,
+            )
             if not critique.rejected:
                 accepted = payload["claims"]
                 break
@@ -338,6 +345,19 @@ class InvestigationOrchestrator:
                 ),
             )
             critique = critique_judge(payload, known_evidence_ids=known, row=row, signals=signals)
+            critique = self._apply_llm_judge(
+                critique,
+                role="market_judge",
+                subject={
+                    "role": "market_judge",
+                    "row": row,
+                    "signals": signals,
+                    "decision": payload.get("decision"),
+                    "explanation": payload.get("explanation"),
+                    "evidence_ids": payload.get("evidence_ids"),
+                },
+                attempt=attempt,
+            )
             if not critique.rejected:
                 accepted_payload = payload
                 break
@@ -451,6 +471,34 @@ class InvestigationOrchestrator:
         )
         carry = json.dumps({"role": role, "attempt": attempt, "keys": sorted(parsed)}, ensure_ascii=False)
         return parsed, carry
+
+    def _apply_llm_judge(self, critique: Critique, *, role: str, subject: dict, attempt: int) -> Critique:
+        if self.llm.sample_standin:
+            return critique
+        outcome = call_llm_judge(self.llm, subject=subject)
+        combined, note = combine(critique, outcome)
+        self.trace.event(
+            agent_name="validator",
+            action="LLM_JUDGE",
+            input_summary={
+                "role": role,
+                "requested_model": outcome.requested_model,
+                "served_model": outcome.served_model,
+                "latency_ms": outcome.latency_ms,
+            },
+            output_summary={
+                "raw_decision": outcome.decision if outcome.parsed else "unparsed",
+                "reason": outcome.reason[:300],
+                "claim_ids": outcome.claim_ids,
+                "parsed": outcome.parsed,
+                "guard_override": bool(note),
+                "raw_text": outcome.raw[:180],
+            },
+            target_agent=role,
+            retry_count=attempt - 1,
+            status="ok" if outcome.parsed and outcome.decision == "accept" else outcome.decision,
+        )
+        return combined
 
     def _record_critique(self, critique: Critique, retry_count: int) -> None:
         self.critiques.append(

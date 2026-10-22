@@ -7,7 +7,8 @@
     "zetaris": {
       "role": "Load-bearing evidence source. The agents' only facts are rows from phoenix.repo_evidence and phoenix.revival_signals, fetched with the REST SQL contract.",
       "setup": "scripts/zetaris/*.sql",
-      "sample": "data/sample/*.csv is a labelled synthetic cache of those view shapes. Sample mode still goes through the Zetaris adapter. There is no GitHub fallback."
+      "sample": "data/sample/*.csv is a labelled synthetic cache of those view shapes. Sample mode still goes through the Zetaris adapter and also serves data/real when that snapshot is present. There is no GitHub fallback.",
+      "real_snapshot": "data/real is a committed GitHub REST snapshot. scripts/zetaris/load_real.ps1 and scripts/zetaris/docker-compose.override.yml are the local load path. They were not executed against the user's Docker Zetaris."
     },
     "meterless_engine": {
       "engines": ["H-MEM", "Markovian"],
@@ -32,7 +33,7 @@
       "note": "The Nightshift Nemotron lane observed on 22 Oct 2026 is nvidia/nemotron-3-super-120b-a12b, set with MODEL_NAME. Nightshift rerouted that request and meterless/auto to nvidia/nemotron-3-ultra-550b-a55b. nemotron-3.5-super-vl-120b was reported flaky. NVIDIA_MODEL is only for the direct fallback."
     },
     "cursor": {
-      "role": "Coding tool. Optional for the hackathon as of the 22 Oct 2026 organiser update. A Cursor cloud agent (Grok 4.7) wrote this build-window core. Cursor is not the product runtime."
+      "role": "Coding tool. Optional for the hackathon as of the 22 Oct 2026 organiser update. A Cursor cloud agent (Grok 4.7) wrote this build-window core, including the real-data snapshot and the live LLM judge. Cursor is not the product runtime. CI does not call Nightshift."
     }
   },
   "pre_existing": {
@@ -45,5 +46,6 @@
       "Foundation orchestrator, which still stops at EVIDENCE_COMPLETE and is not the scored path"
     ]
   },
-  "sample_mode": "SAMPLE_MODE=true runs the investigation logic on the labelled cache with a deterministic stand-in for the LLM. It does not read output_examples/."
+  "sample_mode": "SAMPLE_MODE=true runs the investigation logic on the labelled cache, and on data/real when present, with a deterministic stand-in for the LLM. It does not call the live LLM judge and it does not read output_examples/.",
+  "live_judge": "Live mode asks Nightshift to accept or reject archaeologist and market-judge output. The deterministic evidence guard wins when an evidence id is missing. The trace action LLM_JUDGE stores raw_decision, requested_model, served_model, and latency_ms. This call was not executed against Nightshift in CI."
 }

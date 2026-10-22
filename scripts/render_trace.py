@@ -1,0 +1,93 @@
+"""Turn a PhoenixRepo JSONL trace into a timeline.
+
+    python scripts/render_trace.py logs/trace-<run_id>.jsonl --format md
+    python scripts/render_trace.py logs/trace-<run_id>.jsonl --format html --output logs/trace.html
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+from pathlib import Path
+
+
+def load_events(path: Path) -> list[dict]:
+    events = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            events.append(json.loads(line))
+    return events
+
+
+def _cell(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def render_markdown(events: list[dict], *, title: str) -> str:
+    lines = [f"# {title}", "", "| # | timestamp | agent | action | status | input | output |", "| --- | --- | --- | --- | --- | --- | --- |"]
+    for index, event in enumerate(events, start=1):
+        lines.append(
+            "| {index} | {timestamp} | {agent} | {action} | {status} | {inp} | {out} |".format(
+                index=index,
+                timestamp=_cell(event.get("timestamp")),
+                agent=_cell(event.get("agent_name")),
+                action=_cell(event.get("action")),
+                status=_cell(event.get("status")),
+                inp=_cell(event.get("input_summary")),
+                out=_cell(event.get("output_summary")),
+            )
+        )
+    if not events:
+        lines.append("|  |  |  |  |  |  | no events |")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_html(events: list[dict], *, title: str) -> str:
+    rows = []
+    for index, event in enumerate(events, start=1):
+        cells = [
+            str(index),
+            str(event.get("timestamp") or ""),
+            str(event.get("agent_name") or ""),
+            str(event.get("action") or ""),
+            str(event.get("status") or ""),
+            str(event.get("input_summary") or ""),
+            str(event.get("output_summary") or ""),
+        ]
+        rows.append("<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in cells) + "</tr>")
+    body = "\n".join(rows) if rows else "<tr><td colspan='7'>no events</td></tr>"
+    return (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'><title>"
+        + html.escape(title)
+        + "</title></head><body><h1>"
+        + html.escape(title)
+        + "</h1><table><thead><tr><th>#</th><th>timestamp</th><th>agent</th>"
+        + "<th>action</th><th>status</th><th>input</th><th>output</th></tr></thead><tbody>"
+        + body
+        + "</tbody></table></body></html>\n"
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Render a trace JSONL timeline.")
+    parser.add_argument("trace")
+    parser.add_argument("--format", choices=("md", "html"), default="md")
+    parser.add_argument("--output")
+    args = parser.parse_args()
+    path = Path(args.trace)
+    events = load_events(path)
+    title = f"Trace {path.name}"
+    text = render_markdown(events, title=title) if args.format == "md" else render_html(events, title=title)
+    if args.output:
+        Path(args.output).write_text(text, encoding="utf-8")
+    else:
+        print(text, end="")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,33 @@
+repo_id,signal,detail,supports_revival
+golang/dep,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+golang/dep,ci_not_recorded,The workflows listing was 404 or empty and the Actions runs list was empty.,false
+golang/dep,archived,GitHub reports archived=true.,true
+golang/dep,successor_recorded,README names a successor URL: https://golang.org/ref/mod.,false
+golang/dep,commodity_category,"Search total_count was 539, at or above the policy bar of 40.",false
+ariya/phantomjs,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+ariya/phantomjs,archived,GitHub reports archived=true.,true
+ariya/phantomjs,commodity_category,"Search total_count was 107670, at or above the policy bar of 40.",false
+oklog/oklog,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+oklog/oklog,ci_not_recorded,The workflows listing was 404 or empty and the Actions runs list was empty.,false
+oklog/oklog,archived,GitHub reports archived=true.,true
+oklog/oklog,commodity_category,"Search total_count was 2501, at or above the policy bar of 40.",false
+uber-archive/pyflame,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+uber-archive/pyflame,ci_not_recorded,The workflows listing was 404 or empty and the Actions runs list was empty.,false
+uber-archive/pyflame,archived,GitHub reports archived=true.,true
+uber-archive/pyflame,commodity_category,"Search total_count was 8737, at or above the policy bar of 40.",false
+alibaba/UltraViewPager,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+alibaba/UltraViewPager,ci_not_recorded,The workflows listing was 404 or empty and the Actions runs list was empty.,false
+alibaba/UltraViewPager,archived,GitHub reports archived=true.,true
+alibaba/UltraViewPager,commodity_category,"Search total_count was 165899, at or above the policy bar of 40.",false
+jxnblk/rgx,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+jxnblk/rgx,ci_not_recorded,The workflows listing was 404 or empty and the Actions runs list was empty.,false
+jxnblk/rgx,licence_missing,The repository payload had no SPDX licence id.,false
+jxnblk/rgx,archived,GitHub reports archived=true.,true
+jxnblk/rgx,commodity_category,"Search total_count was 41, at or above the policy bar of 40.",false
+discreteoptimization/setcover,tests_absent,The Git tree or root listing succeeded and contained no test directory or test filename.,false
+discreteoptimization/setcover,ci_not_recorded,The workflows listing was 404 or empty and the Actions runs list was empty.,false
+discreteoptimization/setcover,commodity_category,"Search total_count was 51, at or above the policy bar of 40.",false
+vigetlabs/blendid,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+vigetlabs/blendid,ci_not_recorded,The workflows listing was 404 or empty and the Actions runs list was empty.,false
+vigetlabs/blendid,archived,GitHub reports archived=true.,true
+vigetlabs/blendid,commodity_category,"Search total_count was 269, at or above the policy bar of 40.",false
