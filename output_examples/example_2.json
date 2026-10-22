@@ -1,11 +1,11 @@
 {
-  "run_id": "phoenix-8870afc2",
+  "run_id": "phoenix-c7bbb2bc",
   "run_fingerprint": "319cc27e0525883811f46b10c7acef8535c463da9fdeeae5a58aeef7918250b2",
   "mode": "sample",
   "foundation_only": false,
   "status": "COMPLETE",
   "state": "NO_GO",
-  "evidence_count": 2,
+  "evidence_count": 4,
   "claims_count": 4,
   "audit_events": 7,
   "decision": "NO_GO",
@@ -14,21 +14,30 @@
     "status": "SUPPORTED",
     "confidence": 0.7,
     "supporting_evidence_ids": [
-      "EV-PROFILE-sample-generic-qr",
-      "EV-SIGNAL-sample-generic-qr-0-commodity-category"
+      "EV-SOURCE-sample-generic-qr-none",
+      "EV-SIGNAL-sample-generic-qr-0-commodity-category",
+      "EV-ATTEMPT-sample-generic-qr-none",
+      "EV-PROFILE-sample-generic-qr"
     ],
     "contradicting_evidence_ids": []
   },
   "evidence_pack": {
-    "path": "run_artifacts/phoenix-8870afc2/evidence-pack.json",
-    "context_path": "run_artifacts/phoenix-8870afc2/run-context.json",
-    "integrity_hash": "95f2c4e2ce865bf9131054e7f03e88a77ea1e8fe8c973cd84427cb1089ce1bb3"
+    "path": "run_artifacts/phoenix-c7bbb2bc/evidence-pack.json",
+    "context_path": "run_artifacts/phoenix-c7bbb2bc/run-context.json",
+    "integrity_hash": "46984888270a2184b5fd0027890adb707c497c50ec4b0c27d3b3032dc62d6b63"
   },
-  "log_file": "/tmp/phoenix-logs/trace-phoenix-8870afc2.jsonl",
+  "log_file": "/tmp/example-logs/trace-phoenix-c7bbb2bc.jsonl",
   "metadata": {
     "investigation_version": "0.2.0",
     "reason": "unique_capability is empty. alternatives_factor high (close-substitute search total_count 180). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.",
-    "verdict_text": "Decision NO_GO for sample/generic-qr. unique_capability is empty. alternatives_factor high (close-substitute search total_count 180). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence MIT, days_since_push 900, similar_repo_count 180, unique_capability '', has_tests True, ci_status absent. data_origin synthetic_labelled.",
+    "verdict_text": "Decision NO_GO for sample/generic-qr. unique_capability is empty. alternatives_factor high (close-substitute search total_count 180). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence MIT, days_since_push 900, similar_repo_count 180, unique_capability '', has_tests True, ci_status absent. data_origin synthetic_labelled. Run hash a29e1383b51378d785173e3115986329e9487681426cef05508eef4a8941ce92.",
+    "run_hash": "a29e1383b51378d785173e3115986329e9487681426cef05508eef4a8941ce92",
+    "upgrade": {
+      "changes_verdict": false,
+      "note": "Refactor and upgrade stages do not change the verdict. The verdict uses stage revive only.",
+      "stages": []
+    },
+    "revival_prd": {},
     "claims": [
       {
         "claim_id": "CLM-LICENCE",
@@ -36,8 +45,9 @@
         "evidence": [
           {
             "evidence_id": "EV-PROFILE-sample-generic-qr",
-            "query_id": "cb87d7ec-45e1-4a35-87f5-114ca6330123",
+            "query_id": "9245d524-a663-495d-9562-8b36cb611044",
             "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
+            "content_hash": "f46145c06139681b06ce9e3faa37d7ea1d54ed41aed86aca334300b0e4ddeb6c",
             "source": "phoenix.repo_evidence",
             "zetaris_mode": "sample-cache"
           }
@@ -49,8 +59,9 @@
         "evidence": [
           {
             "evidence_id": "EV-PROFILE-sample-generic-qr",
-            "query_id": "cb87d7ec-45e1-4a35-87f5-114ca6330123",
+            "query_id": "9245d524-a663-495d-9562-8b36cb611044",
             "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
+            "content_hash": "f46145c06139681b06ce9e3faa37d7ea1d54ed41aed86aca334300b0e4ddeb6c",
             "source": "phoenix.repo_evidence",
             "zetaris_mode": "sample-cache"
           }
@@ -62,8 +73,9 @@
         "evidence": [
           {
             "evidence_id": "EV-PROFILE-sample-generic-qr",
-            "query_id": "cb87d7ec-45e1-4a35-87f5-114ca6330123",
+            "query_id": "9245d524-a663-495d-9562-8b36cb611044",
             "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
+            "content_hash": "f46145c06139681b06ce9e3faa37d7ea1d54ed41aed86aca334300b0e4ddeb6c",
             "source": "phoenix.repo_evidence",
             "zetaris_mode": "sample-cache"
           }
@@ -74,17 +86,35 @@
         "statement": "Decision NO_GO for sample/generic-qr. unique_capability is empty. alternatives_factor high (close-substitute search total_count 180). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence MIT, days_since_push 900, similar_repo_count 180, unique_capability '', has_tests True, ci_status absent. data_origin synthetic_labelled.",
         "evidence": [
           {
-            "evidence_id": "EV-PROFILE-sample-generic-qr",
-            "query_id": "cb87d7ec-45e1-4a35-87f5-114ca6330123",
-            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
-            "source": "phoenix.repo_evidence",
+            "evidence_id": "EV-SOURCE-sample-generic-qr-none",
+            "query_id": "53d14d30-a999-41b7-af2e-c894f2056c50",
+            "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/generic-qr'",
+            "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee",
+            "source": "phoenix.revival_sources",
             "zetaris_mode": "sample-cache"
           },
           {
             "evidence_id": "EV-SIGNAL-sample-generic-qr-0-commodity-category",
-            "query_id": "2a965641-ab76-4b6e-8a70-7e6db41304aa",
+            "query_id": "81297671-4f43-4562-8a0b-9025f5a2131f",
             "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/generic-qr'",
+            "content_hash": "71e79d8ed587ce106b741b0db30d9335931f6d0609560c2ef138a9b2e4783a18",
             "source": "phoenix.revival_signals",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-ATTEMPT-sample-generic-qr-none",
+            "query_id": "58b5e7ac-1806-44d1-a8e1-c64702c3b9e0",
+            "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'sample/generic-qr'",
+            "content_hash": "2739f9f9e4307939ada4c8277ad05fafb9a119fa9f0d8417cd914be580b731e9",
+            "source": "phoenix.revival_attempts",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-PROFILE-sample-generic-qr",
+            "query_id": "9245d524-a663-495d-9562-8b36cb611044",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
+            "content_hash": "f46145c06139681b06ce9e3faa37d7ea1d54ed41aed86aca334300b0e4ddeb6c",
+            "source": "phoenix.repo_evidence",
             "zetaris_mode": "sample-cache"
           }
         ]
@@ -94,16 +124,32 @@
       "mode": "sample-cache",
       "queries": [
         {
-          "query_id": "cb87d7ec-45e1-4a35-87f5-114ca6330123",
+          "query_id": "9245d524-a663-495d-9562-8b36cb611044",
           "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
           "source": "phoenix.repo_evidence",
-          "mode": "sample-cache"
+          "mode": "sample-cache",
+          "content_hash": "f46145c06139681b06ce9e3faa37d7ea1d54ed41aed86aca334300b0e4ddeb6c"
         },
         {
-          "query_id": "2a965641-ab76-4b6e-8a70-7e6db41304aa",
+          "query_id": "81297671-4f43-4562-8a0b-9025f5a2131f",
           "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/generic-qr'",
           "source": "phoenix.revival_signals",
-          "mode": "sample-cache"
+          "mode": "sample-cache",
+          "content_hash": "71e79d8ed587ce106b741b0db30d9335931f6d0609560c2ef138a9b2e4783a18"
+        },
+        {
+          "query_id": "58b5e7ac-1806-44d1-a8e1-c64702c3b9e0",
+          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'sample/generic-qr'",
+          "source": "phoenix.revival_attempts",
+          "mode": "sample-cache",
+          "content_hash": "2739f9f9e4307939ada4c8277ad05fafb9a119fa9f0d8417cd914be580b731e9"
+        },
+        {
+          "query_id": "53d14d30-a999-41b7-af2e-c894f2056c50",
+          "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/generic-qr'",
+          "source": "phoenix.revival_sources",
+          "mode": "sample-cache",
+          "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee"
         }
       ],
       "load_bearing": true
@@ -114,6 +160,8 @@
       "requested_model": "deterministic-rule-standin",
       "served_model": "deterministic-rule-standin",
       "sample_standin": true,
+      "degraded": false,
+      "fallbacks": [],
       "label": "SAMPLE_MODE deterministic stand-in. Not a live model reply. The stand-in reads the Zetaris rows in the prompt and applies the evidence policy.",
       "explanation_accepted": true,
       "primary_provider": "meterless",
@@ -128,38 +176,38 @@
       "engine": "H-MEM",
       "recalled": [
         {
-          "memory_id": "mem-1cc0b0bd62cd",
+          "memory_id": "mem-768f74cec392",
           "content": "repository sample/generic-qr category qr The recorded licence is MIT.",
           "score": 0.6737,
           "evidence_refs": [
             "EV-PROFILE-sample-generic-qr"
           ],
           "layer": "working",
-          "run_id": "phoenix-8870afc2"
+          "run_id": "phoenix-c7bbb2bc"
         },
         {
-          "memory_id": "mem-6978db55d7f5",
+          "memory_id": "mem-4eeebb70f385",
           "content": "repository sample/generic-qr category qr days_since_push is 900.",
           "score": 0.6086,
           "evidence_refs": [
             "EV-PROFILE-sample-generic-qr"
           ],
           "layer": "working",
-          "run_id": "phoenix-8870afc2"
+          "run_id": "phoenix-c7bbb2bc"
         },
         {
-          "memory_id": "mem-1e800f48024c",
+          "memory_id": "mem-1118cf82f228",
           "content": "repository sample/generic-qr category qr similar_repo_count is 180 and unique_capability is empty.",
           "score": 0.5648,
           "evidence_refs": [
             "EV-PROFILE-sample-generic-qr"
           ],
           "layer": "working",
-          "run_id": "phoenix-8870afc2"
+          "run_id": "phoenix-c7bbb2bc"
         }
       ],
       "prior_verdicts": [],
-      "verdict_memory_id": "mem-62e4efb4fd97"
+      "verdict_memory_id": "mem-6eb9e343f886"
     },
     "collaboration": {
       "agents": [
@@ -168,7 +216,8 @@
         "architect",
         "builder",
         "validator",
-        "diagnostician"
+        "diagnostician",
+        "planner"
       ],
       "critique_events": [
         {
@@ -184,6 +233,6 @@
       ]
     },
     "pre_existing_foundation": "Evidence graph, state machine, audit trail, and API shape from the 8 Oct 2026 skeleton.",
-    "scope": "The terminal state is an evidence-policy verdict over Zetaris rows. A repository that is not NO_GO also gets a revival PRD with stage revive, refactor, and upgrade. This run does not clone, compile, test, or push commits. With no stage-revive attempt, the row policy still decides and the verdict says revival has not yet been attempted. A stage-revive success on the fork default branch, with an attempt commit and eligible build/test CI, is RESURRECTED and can override an upstream CI failure. It cannot override NO_GO. A stage-revive failure is RESURRECTION_FAILED and cites that run. Refactor and upgrade are an upgrade result and do not change the verdict."
+    "scope": "The terminal state is an evidence-policy verdict over Zetaris rows. A repository that is not NO_GO also gets a revival PRD with stage revive, refactor, and upgrade. This run does not clone, compile, test, or push commits. A row that passes the policy with no qualifying stage-1 success is CANDIDATE. RESURRECTED requires a stage-1 success on the fork default branch whose commit is ahead of the upstream base and whose workflow runs the repo's build or test commands. That success can override an upstream CI failure or unknown CI. It cannot override NO_GO, missing tests, or a missing licence file. A qualifying stage-1 failure is RESURRECTION_FAILED and cites that run. The latest attempt wins. Refactor and upgrade are an upgrade result and do not change the verdict. The trace hash chain shows the record was not altered after the run. It does not show that the record is true."
   }
 }

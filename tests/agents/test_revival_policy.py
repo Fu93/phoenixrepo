@@ -47,24 +47,30 @@ def _success(repo_id: str = "jondot/hygen") -> dict:
         "compare_url": "https://github.com/jondot/hygen/compare/master...Fu93:master",
         "default_branch": "master",
         "head_sha": "abc123",
+        "upstream_base_sha": "26f76d8dede565b2bf38d0b9e9f3009ee2c8f9ae",
+        "ci_head_repo": "Fu93/hygen",
+        "workflow_path": ".github/workflows/ci.yml",
+        "workflow_steps": "yarn install; yarn build; yarn test",
+        "workflow_runs_build": "true",
         "data_origin": "github_rest_api:2026-10-22",
     }
 
 
-def test_decide_without_attempts_keeps_the_row_policy():
+def test_decide_without_attempts_is_candidate_when_the_row_passes():
     row = _profile("42wim/matterbridge")
     decision, reason = decide(row, _signals("42wim/matterbridge"))
-    assert decision == "RESURRECTED"
+    assert decision == "CANDIDATE"
     assert "CI is unknown" in reason
+    assert "CANDIDATE" in reason
     assert "not yet been attempted" not in reason
 
 
-def test_matterbridge_with_no_attempt_stays_resurrected_and_says_so():
+def test_matterbridge_with_no_attempt_is_candidate():
     row = _profile("42wim/matterbridge")
     decision, reason, upgrade = apply_revival_attempts(row, _signals("42wim/matterbridge"), [])
-    assert decision == "RESURRECTED"
+    assert decision == "CANDIDATE"
     assert "CI is unknown" in reason
-    assert "Revival has not yet been attempted." in reason
+    assert "successful CI conclusion" not in reason
     assert upgrade["changes_verdict"] is False
     assert upgrade["stages"] == []
 
@@ -121,4 +127,56 @@ def test_fork_success_does_not_override_no_go():
     decision, reason, _upgrade = apply_revival_attempts(row, _signals("golang/dep"), [_success("golang/dep")])
     assert decision == "NO_GO"
     assert "successor" in reason
+    assert "Stage revive succeeded" not in reason
+
+
+def test_stage_revive_success_does_not_override_missing_tests():
+    row = _profile("discreteoptimization/setcover")
+    decision, reason, _upgrade = apply_revival_attempts(
+        row, _signals("discreteoptimization/setcover"), [_success("discreteoptimization/setcover")]
+    )
+    assert decision == "RESURRECTION_FAILED"
+    assert "has_tests is false" in reason
+    assert "does not override" in reason
+
+
+def test_upstream_base_commit_is_not_a_stage_one_success():
+    row = _profile("jondot/hygen")
+    attempt = _success()
+    attempt["commit_sha"] = attempt["upstream_base_sha"]
+    decision, reason, _upgrade = apply_revival_attempts(row, _signals("jondot/hygen"), [attempt])
+    assert decision == "RESURRECTION_FAILED"
+    assert "upstream base" in reason
+
+
+def test_ci_run_on_the_upstream_repo_is_not_a_fork_success():
+    row = _profile("jondot/hygen")
+    attempt = _success()
+    attempt["ci_head_repo"] = "jondot/hygen"
+    decision, reason, _upgrade = apply_revival_attempts(row, _signals("jondot/hygen"), [attempt])
+    assert decision == "RESURRECTION_FAILED"
+    assert "not the fork" in reason
+
+
+def test_a_workflow_that_does_not_run_tests_is_flagged():
+    row = _profile("42wim/matterbridge")
+    attempt = _success("42wim/matterbridge")
+    attempt["workflow_steps"] = "echo hello"
+    attempt["workflow_runs_build"] = "false"
+    decision, reason, _upgrade = apply_revival_attempts(row, _signals("42wim/matterbridge"), [attempt])
+    assert decision == "CANDIDATE"
+    assert "not counted" in reason
+
+
+def test_a_later_failure_beats_an_earlier_success():
+    row = _profile("42wim/matterbridge")
+    success = _success("42wim/matterbridge")
+    failure = _success("42wim/matterbridge")
+    failure["status"] = "failure"
+    failure["ci_status"] = "failure"
+    failure["commit_sha"] = "def456"
+    failure["ci_run_url"] = "https://github.com/Fu93/hygen/actions/runs/2"
+    decision, reason, _upgrade = apply_revival_attempts(row, _signals("42wim/matterbridge"), [success, failure])
+    assert decision == "RESURRECTION_FAILED"
+    assert "actions/runs/2" in reason
     assert "Stage revive succeeded" not in reason

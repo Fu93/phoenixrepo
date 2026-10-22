@@ -16,8 +16,8 @@ def test_run_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "COMPLETE"
-    assert data["state"] == "RESURRECTED"
-    assert data["decision"] == "RESURRECTED"
+    assert data["state"] == "CANDIDATE"
+    assert data["decision"] == "CANDIDATE"
     assert data["foundation_only"] is False
     text = Path(data["log_file"]).read_text(encoding="utf-8")
     events = [json.loads(line)["event"] for line in text.splitlines()]

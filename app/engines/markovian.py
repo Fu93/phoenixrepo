@@ -16,9 +16,9 @@ from app.errors import InvestigationError
 
 @dataclass
 class MarkovianConfig:
-    max_chunks: int = 8
+    max_chunks: int = 24
     max_carryover_chars: int = 1200
-    chunk_timeout_seconds: float = 120
+    chunk_timeout_seconds: float = 190
 
 
 @dataclass

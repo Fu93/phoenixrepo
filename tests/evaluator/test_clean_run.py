@@ -20,8 +20,8 @@ def test_clean_run_only_creates_its_own_artifacts(tmp_path, monkeypatch):
     ).json()
     assert first["run_id"] != second["run_id"]
     assert first["run_fingerprint"] != second["run_fingerprint"]
-    assert first["state"] == "RESURRECTED"
-    assert second["decision"] == "RESURRECTED"
+    assert first["state"] == "CANDIDATE"
+    assert second["decision"] == "CANDIDATE"
     assert second["metadata"]["hmem"]["prior_verdicts"]
     pack = json.loads((Path("run_artifacts") / second["run_id"] / "evidence-pack.json").read_text())
     assert pack["run_id"] == second["run_id"]

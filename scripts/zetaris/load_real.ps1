@@ -100,7 +100,7 @@ CREATE LIGHTNING FILESTORE TABLE revival_sources_file FROM PHOENIX_REAL FORMAT C
         (New-Statement "container" "CREATE SCHEMASTORE CONTAINER phoenix"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real.repo_evidence_file"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real.revival_signals_file"),
-        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, data_origin FROM phoenix_real.revival_attempts_file"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix_real.revival_attempts_file"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix_real.revival_sources_file")
     )
 }
@@ -137,17 +137,29 @@ CREATE TABLE phoenix_real_revival_sources USING com.databricks.spark.csv OPTIONS
         (New-Statement "container" "CREATE SCHEMASTORE CONTAINER phoenix"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real_repo_evidence"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real_revival_signals"),
-        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, data_origin FROM phoenix_real_revival_attempts"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix_real_revival_attempts"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix_real_revival_sources")
     )
 }
 
 function Get-ZetarisErrorText([string]$content) {
+    # The raw body is included so "already exists" counts in any field, including msg, at any HTTP status.
     if ([string]::IsNullOrWhiteSpace($content)) { return "" }
-    try { $parsed = $content | ConvertFrom-Json } catch { return "" }
-    if ($null -eq $parsed.error) { return "" }
-    if ($parsed.error.message) { return [string]$parsed.error.message }
-    return [string]$parsed.error
+    $parts = @($content)
+    try {
+        $parsed = $content | ConvertFrom-Json
+        foreach ($name in @("msg", "message", "error")) {
+            $value = $parsed.$name
+            if ($null -eq $value) { continue }
+            if ($value -is [string]) { $parts += [string]$value }
+            elseif ($value.message) { $parts += [string]$value.message }
+        }
+        foreach ($prop in $parsed.PSObject.Properties) {
+            if ($prop.Value -is [string]) { $parts += [string]$prop.Value }
+        }
+    }
+    catch { }
+    return ($parts -join " ")
 }
 
 function Test-AlreadyExists([string]$text) {

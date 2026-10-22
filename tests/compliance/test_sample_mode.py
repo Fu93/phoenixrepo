@@ -20,8 +20,8 @@ def test_sample_mode_runs_the_investigation():
     assert result["evidence_count"] > 0
     assert result["claims_count"] > 0
     assert result["audit_events"] > 0
-    assert result["decision"] == "RESURRECTED"
-    assert result["state"] == "RESURRECTED"
+    assert result["decision"] == "CANDIDATE"
+    assert result["state"] == "CANDIDATE"
     assert result["metadata"]["llm"]["sample_standin"] is True
 
 

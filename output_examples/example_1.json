@@ -1,35 +1,347 @@
 {
-  "run_id": "phoenix-faa1bece",
+  "run_id": "phoenix-7fa477a2",
   "run_fingerprint": "282c58ddf1203febab8e8130022e328c799425ea0eaa6e05f6506b73f69e7fb7",
   "mode": "sample",
   "foundation_only": false,
   "status": "COMPLETE",
-  "state": "RESURRECTED",
-  "evidence_count": 3,
+  "state": "CANDIDATE",
+  "evidence_count": 5,
   "claims_count": 4,
   "audit_events": 13,
-  "decision": "RESURRECTED",
+  "decision": "CANDIDATE",
   "claim_verification": {
     "claim_id": "CLM-DECISION",
     "status": "SUPPORTED",
     "confidence": 0.7,
     "supporting_evidence_ids": [
+      "EV-PROFILE-sample-phoenix-ledger",
       "EV-SIGNAL-sample-phoenix-ledger-1-ci-success",
-      "EV-SIGNAL-sample-phoenix-ledger-0-tests-present",
-      "EV-PROFILE-sample-phoenix-ledger"
+      "EV-ATTEMPT-sample-phoenix-ledger-none",
+      "EV-SOURCE-sample-phoenix-ledger-none",
+      "EV-SIGNAL-sample-phoenix-ledger-0-tests-present"
     ],
     "contradicting_evidence_ids": []
   },
   "evidence_pack": {
-    "path": "run_artifacts/phoenix-faa1bece/evidence-pack.json",
-    "context_path": "run_artifacts/phoenix-faa1bece/run-context.json",
-    "integrity_hash": "2cfcf69e3b27c2bcbca17c4f1c15e63ff017bbb8908e8135eb5d5fcb65fddda5"
+    "path": "run_artifacts/phoenix-7fa477a2/evidence-pack.json",
+    "context_path": "run_artifacts/phoenix-7fa477a2/run-context.json",
+    "integrity_hash": "cddac9a408e110b59350a74f8be4d816965f056b4225c47dc3a26265b2101fb5"
   },
-  "log_file": "/tmp/phoenix-logs/trace-phoenix-faa1bece.jsonl",
+  "log_file": "/tmp/example-logs/trace-phoenix-7fa477a2.jsonl",
   "metadata": {
     "investigation_version": "0.2.0",
-    "reason": "licence, abandonment, distinct capability, tests, and a successful CI conclusion support revival. alternatives_factor low (close-substitute search total_count 2). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.",
-    "verdict_text": "Decision RESURRECTED for sample/phoenix-ledger. licence, abandonment, distinct capability, tests, and a successful CI conclusion support revival. alternatives_factor low (close-substitute search total_count 2). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence MIT, days_since_push 640, similar_repo_count 2, unique_capability 'offline double-entry ledger with a signed audit trail', has_tests True, ci_status success. data_origin synthetic_labelled. Revival has not yet been attempted.",
+    "reason": "licence, abandonment, distinct capability, tests, and a successful CI conclusion support revival. No qualifying stage-1 revival success is recorded, so the verdict is CANDIDATE. alternatives_factor low (close-substitute search total_count 2). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.",
+    "verdict_text": "Decision CANDIDATE for sample/phoenix-ledger. licence, abandonment, distinct capability, tests, and a successful CI conclusion support revival. No qualifying stage-1 revival success is recorded, so the verdict is CANDIDATE. alternatives_factor low (close-substitute search total_count 2). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence MIT, days_since_push 640, similar_repo_count 2, unique_capability 'offline double-entry ledger with a signed audit trail', has_tests True, ci_status success. data_origin synthetic_labelled. Run hash bdc9ad81ac8880f91a949364e210f429560619e46c19ccc4d86c6c2eb30695ca.",
+    "run_hash": "bdc9ad81ac8880f91a949364e210f429560619e46c19ccc4d86c6c2eb30695ca",
+    "upgrade": {
+      "changes_verdict": false,
+      "note": "Refactor and upgrade stages do not change the verdict. The verdict uses stage revive only.",
+      "stages": []
+    },
+    "revival_prd": {
+      "drafted_by": "deterministic",
+      "llm_drafted": false,
+      "markdown_path": "/tmp/example-logs/revival/phoenix-7fa477a2/sample__phoenix-ledger.prd.md",
+      "json_path": "/tmp/example-logs/revival/phoenix-7fa477a2/sample__phoenix-ledger.prd.json",
+      "stages": [
+        "revive",
+        "refactor",
+        "upgrade"
+      ],
+      "document": {
+        "repo_id": "sample/phoenix-ledger",
+        "drafted_by": "deterministic",
+        "llm_drafted": false,
+        "run_hash": "bdc9ad81ac8880f91a949364e210f429560619e46c19ccc4d86c6c2eb30695ca",
+        "problem_framing": "non-factual",
+        "out_of_scope_framing": "non-factual",
+        "window": "Finish each stage before 27 Oct 2026 23:45 UTC.",
+        "fork_full_name": "",
+        "default_branch": "",
+        "compare_url": "",
+        "problem": "Produce an executable revival of sample/phoenix-ledger. Stage 1 REVIVE makes install, build, test, and eligible default-branch CI green. That stage is the gate for RESURRECTED. Stage 2 is the cited dependency security bump. Stage 3 is one evidence-backed visible upgrade. This problem statement is task framing, not a cited evidence claim.",
+        "findings": [
+          {
+            "id": "F1",
+            "text": "sample/phoenix-ledger licence MIT, primary_language Python, days_since_push 640, has_tests True, ci_status success, description Offline double-entry ledger with a signed local audit trail.",
+            "evidence_ids": [
+              "EV-PROFILE-sample-phoenix-ledger"
+            ],
+            "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e",
+            "citations": [
+              {
+                "evidence_ids": [
+                  "EV-PROFILE-sample-phoenix-ledger"
+                ],
+                "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
+                "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e"
+              }
+            ]
+          },
+          {
+            "id": "F2",
+            "text": "phoenix.revival_attempts returned no rows. Revival has not yet been attempted.",
+            "evidence_ids": [
+              "EV-ATTEMPT-sample-phoenix-ledger-none"
+            ],
+            "query_id": "6de519aa-dd37-4a58-b340-85a6439e7a60",
+            "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "2739f9f9e4307939ada4c8277ad05fafb9a119fa9f0d8417cd914be580b731e9",
+            "citations": [
+              {
+                "evidence_ids": [
+                  "EV-ATTEMPT-sample-phoenix-ledger-none"
+                ],
+                "query_id": "6de519aa-dd37-4a58-b340-85a6439e7a60",
+                "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "2739f9f9e4307939ada4c8277ad05fafb9a119fa9f0d8417cd914be580b731e9"
+              }
+            ]
+          }
+        ],
+        "stages": [
+          {
+            "id": "revive",
+            "title": "Stage 1 \u2014 REVIVE",
+            "gate_for_resurrected": true,
+            "tasks": [
+              {
+                "text": "Stage 1 CI gate: push an attempt commit to the fork default branch recorded on the attempt row and wait for an eligible build/test workflow run on that default branch. The run's commit must differ from the upstream base SHA, and the run must belong to the fork. A workflow that does not run the repo's build or test commands does not count. Security scans, action_required runs, and fork pull requests do not count. This stage is the only gate for RESURRECTED.",
+                "evidence_ids": [
+                  "EV-ATTEMPT-sample-phoenix-ledger-none",
+                  "EV-PROFILE-sample-phoenix-ledger"
+                ],
+                "query_id": "6de519aa-dd37-4a58-b340-85a6439e7a60",
+                "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "2739f9f9e4307939ada4c8277ad05fafb9a119fa9f0d8417cd914be580b731e9",
+                "citations": [
+                  {
+                    "evidence_ids": [
+                      "EV-ATTEMPT-sample-phoenix-ledger-none"
+                    ],
+                    "query_id": "6de519aa-dd37-4a58-b340-85a6439e7a60",
+                    "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'sample/phoenix-ledger'",
+                    "content_hash": "2739f9f9e4307939ada4c8277ad05fafb9a119fa9f0d8417cd914be580b731e9"
+                  },
+                  {
+                    "evidence_ids": [
+                      "EV-PROFILE-sample-phoenix-ledger"
+                    ],
+                    "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
+                    "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+                    "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e"
+                  }
+                ],
+                "acceptance": [
+                  "phoenix.revival_attempts has a row for this repo_id with stage revive, status success, ci_status success, a non-empty ci_run_url, a non-empty commit_sha, ci_head_repo equal to the fork, and commit_sha different from upstream_base_sha.",
+                  "workflow_steps on that row contain the repo's build or test command, and workflow_runs_build is true."
+                ],
+                "id": "S1-ci",
+                "stage": "revive"
+              }
+            ]
+          },
+          {
+            "id": "refactor",
+            "title": "Stage 2 \u2014 REFACTOR / OPTIMISE",
+            "gate_for_resurrected": false,
+            "tasks": [
+              {
+                "text": "Stage 2 refactor: no revival_sources row of kind advisory was collected. Do not invent a dependency bump.",
+                "evidence_ids": [
+                  "EV-SOURCE-sample-phoenix-ledger-none"
+                ],
+                "query_id": "bf6a48cf-52bc-4d00-b60d-0d175f21d5ab",
+                "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee",
+                "citations": [
+                  {
+                    "evidence_ids": [
+                      "EV-SOURCE-sample-phoenix-ledger-none"
+                    ],
+                    "query_id": "bf6a48cf-52bc-4d00-b60d-0d175f21d5ab",
+                    "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/phoenix-ledger'",
+                    "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee"
+                  }
+                ],
+                "acceptance": [
+                  "phoenix.revival_attempts stage refactor stays not_attempted until a kind advisory row cites a real advisory URL."
+                ],
+                "id": "S2-none",
+                "stage": "refactor"
+              }
+            ]
+          },
+          {
+            "id": "upgrade",
+            "title": "Stage 3 \u2014 UPGRADE",
+            "gate_for_resurrected": false,
+            "tasks": [
+              {
+                "text": "Stage 3 upgrade: no revival_sources row with kind issue was collected. Do not invent an issue or a feature.",
+                "evidence_ids": [
+                  "EV-SOURCE-sample-phoenix-ledger-none"
+                ],
+                "query_id": "bf6a48cf-52bc-4d00-b60d-0d175f21d5ab",
+                "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee",
+                "citations": [
+                  {
+                    "evidence_ids": [
+                      "EV-SOURCE-sample-phoenix-ledger-none"
+                    ],
+                    "query_id": "bf6a48cf-52bc-4d00-b60d-0d175f21d5ab",
+                    "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/phoenix-ledger'",
+                    "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee"
+                  }
+                ],
+                "acceptance": [
+                  "No upgrade commit is made until phoenix.revival_sources has a kind issue row whose url is a real issue URL."
+                ],
+                "id": "S3-none",
+                "stage": "upgrade"
+              }
+            ]
+          }
+        ],
+        "tasks": [
+          {
+            "text": "Stage 1 CI gate: push an attempt commit to the fork default branch recorded on the attempt row and wait for an eligible build/test workflow run on that default branch. The run's commit must differ from the upstream base SHA, and the run must belong to the fork. A workflow that does not run the repo's build or test commands does not count. Security scans, action_required runs, and fork pull requests do not count. This stage is the only gate for RESURRECTED.",
+            "evidence_ids": [
+              "EV-ATTEMPT-sample-phoenix-ledger-none",
+              "EV-PROFILE-sample-phoenix-ledger"
+            ],
+            "query_id": "6de519aa-dd37-4a58-b340-85a6439e7a60",
+            "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "2739f9f9e4307939ada4c8277ad05fafb9a119fa9f0d8417cd914be580b731e9",
+            "citations": [
+              {
+                "evidence_ids": [
+                  "EV-ATTEMPT-sample-phoenix-ledger-none"
+                ],
+                "query_id": "6de519aa-dd37-4a58-b340-85a6439e7a60",
+                "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "2739f9f9e4307939ada4c8277ad05fafb9a119fa9f0d8417cd914be580b731e9"
+              },
+              {
+                "evidence_ids": [
+                  "EV-PROFILE-sample-phoenix-ledger"
+                ],
+                "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
+                "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e"
+              }
+            ],
+            "acceptance": [
+              "phoenix.revival_attempts has a row for this repo_id with stage revive, status success, ci_status success, a non-empty ci_run_url, a non-empty commit_sha, ci_head_repo equal to the fork, and commit_sha different from upstream_base_sha.",
+              "workflow_steps on that row contain the repo's build or test command, and workflow_runs_build is true."
+            ],
+            "id": "S1-ci",
+            "stage": "revive"
+          },
+          {
+            "text": "Stage 2 refactor: no revival_sources row of kind advisory was collected. Do not invent a dependency bump.",
+            "evidence_ids": [
+              "EV-SOURCE-sample-phoenix-ledger-none"
+            ],
+            "query_id": "bf6a48cf-52bc-4d00-b60d-0d175f21d5ab",
+            "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee",
+            "citations": [
+              {
+                "evidence_ids": [
+                  "EV-SOURCE-sample-phoenix-ledger-none"
+                ],
+                "query_id": "bf6a48cf-52bc-4d00-b60d-0d175f21d5ab",
+                "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee"
+              }
+            ],
+            "acceptance": [
+              "phoenix.revival_attempts stage refactor stays not_attempted until a kind advisory row cites a real advisory URL."
+            ],
+            "id": "S2-none",
+            "stage": "refactor"
+          },
+          {
+            "text": "Stage 3 upgrade: no revival_sources row with kind issue was collected. Do not invent an issue or a feature.",
+            "evidence_ids": [
+              "EV-SOURCE-sample-phoenix-ledger-none"
+            ],
+            "query_id": "bf6a48cf-52bc-4d00-b60d-0d175f21d5ab",
+            "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee",
+            "citations": [
+              {
+                "evidence_ids": [
+                  "EV-SOURCE-sample-phoenix-ledger-none"
+                ],
+                "query_id": "bf6a48cf-52bc-4d00-b60d-0d175f21d5ab",
+                "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee"
+              }
+            ],
+            "acceptance": [
+              "No upgrade commit is made until phoenix.revival_sources has a kind issue row whose url is a real issue URL."
+            ],
+            "id": "S3-none",
+            "stage": "upgrade"
+          }
+        ],
+        "risks": [
+          {
+            "id": "R1",
+            "text": "A row that passes the policy with no qualifying stage-1 success is CANDIDATE. Only a qualifying stage revive success is RESURRECTED. A qualifying stage revive failure is RESURRECTION_FAILED. NO_GO is not overridden. Refactor and upgrade do not change the verdict.",
+            "evidence_ids": [
+              "EV-PROFILE-sample-phoenix-ledger"
+            ],
+            "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e",
+            "citations": [
+              {
+                "evidence_ids": [
+                  "EV-PROFILE-sample-phoenix-ledger"
+                ],
+                "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
+                "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e"
+              }
+            ]
+          },
+          {
+            "id": "R2",
+            "text": "Finish each stage before 27 Oct 2026 23:45 UTC. Keep each stage to the tasks in this PRD.",
+            "evidence_ids": [
+              "EV-PROFILE-sample-phoenix-ledger"
+            ],
+            "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e",
+            "citations": [
+              {
+                "evidence_ids": [
+                  "EV-PROFILE-sample-phoenix-ledger"
+                ],
+                "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
+                "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+                "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e"
+              }
+            ]
+          }
+        ],
+        "out_of_scope": [
+          "Do not invent GitHub issues, CI conclusions, commit SHAs, test failures, or advisories.",
+          "Do not count a security or analysis scan, an action_required run, or a fork pull request as CI success.",
+          "Do not publish a release or rewrite the product.",
+          "Do not switch the package manager unless the workflow excerpt names that manager."
+        ]
+      },
+      "run_hash": "bdc9ad81ac8880f91a949364e210f429560619e46c19ccc4d86c6c2eb30695ca"
+    },
     "claims": [
       {
         "claim_id": "CLM-LICENCE",
@@ -37,8 +349,9 @@
         "evidence": [
           {
             "evidence_id": "EV-PROFILE-sample-phoenix-ledger",
-            "query_id": "dec1b2ff-5aee-4599-90a5-520906b32bf4",
+            "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
             "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e",
             "source": "phoenix.repo_evidence",
             "zetaris_mode": "sample-cache"
           }
@@ -50,8 +363,9 @@
         "evidence": [
           {
             "evidence_id": "EV-PROFILE-sample-phoenix-ledger",
-            "query_id": "dec1b2ff-5aee-4599-90a5-520906b32bf4",
+            "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
             "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e",
             "source": "phoenix.repo_evidence",
             "zetaris_mode": "sample-cache"
           }
@@ -63,8 +377,9 @@
         "evidence": [
           {
             "evidence_id": "EV-PROFILE-sample-phoenix-ledger",
-            "query_id": "dec1b2ff-5aee-4599-90a5-520906b32bf4",
+            "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
             "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e",
             "source": "phoenix.repo_evidence",
             "zetaris_mode": "sample-cache"
           }
@@ -72,27 +387,46 @@
       },
       {
         "claim_id": "CLM-DECISION",
-        "statement": "Decision RESURRECTED for sample/phoenix-ledger. licence, abandonment, distinct capability, tests, and a successful CI conclusion support revival. alternatives_factor low (close-substitute search total_count 2). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence MIT, days_since_push 640, similar_repo_count 2, unique_capability 'offline double-entry ledger with a signed audit trail', has_tests True, ci_status success. data_origin synthetic_labelled. Revival has not yet been attempted.",
+        "statement": "Decision CANDIDATE for sample/phoenix-ledger. licence, abandonment, distinct capability, tests, and a successful CI conclusion support revival. No qualifying stage-1 revival success is recorded, so the verdict is CANDIDATE. alternatives_factor low (close-substitute search total_count 2). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence MIT, days_since_push 640, similar_repo_count 2, unique_capability 'offline double-entry ledger with a signed audit trail', has_tests True, ci_status success. data_origin synthetic_labelled.",
         "evidence": [
           {
+            "evidence_id": "EV-PROFILE-sample-phoenix-ledger",
+            "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          },
+          {
             "evidence_id": "EV-SIGNAL-sample-phoenix-ledger-1-ci-success",
-            "query_id": "511466b2-8bd1-45a8-925e-a010b616a803",
+            "query_id": "3cdf79c5-eb99-4229-b1e0-a12eb648b4d8",
             "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "1e40876af7694feccc83c8e78b88424ae0170ccb7093bfc2b1b30a59495fbbe2",
             "source": "phoenix.revival_signals",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-ATTEMPT-sample-phoenix-ledger-none",
+            "query_id": "6de519aa-dd37-4a58-b340-85a6439e7a60",
+            "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "2739f9f9e4307939ada4c8277ad05fafb9a119fa9f0d8417cd914be580b731e9",
+            "source": "phoenix.revival_attempts",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-SOURCE-sample-phoenix-ledger-none",
+            "query_id": "bf6a48cf-52bc-4d00-b60d-0d175f21d5ab",
+            "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee",
+            "source": "phoenix.revival_sources",
             "zetaris_mode": "sample-cache"
           },
           {
             "evidence_id": "EV-SIGNAL-sample-phoenix-ledger-0-tests-present",
-            "query_id": "511466b2-8bd1-45a8-925e-a010b616a803",
+            "query_id": "3cdf79c5-eb99-4229-b1e0-a12eb648b4d8",
             "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/phoenix-ledger'",
+            "content_hash": "1e40876af7694feccc83c8e78b88424ae0170ccb7093bfc2b1b30a59495fbbe2",
             "source": "phoenix.revival_signals",
-            "zetaris_mode": "sample-cache"
-          },
-          {
-            "evidence_id": "EV-PROFILE-sample-phoenix-ledger",
-            "query_id": "dec1b2ff-5aee-4599-90a5-520906b32bf4",
-            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
-            "source": "phoenix.repo_evidence",
             "zetaris_mode": "sample-cache"
           }
         ]
@@ -102,16 +436,32 @@
       "mode": "sample-cache",
       "queries": [
         {
-          "query_id": "dec1b2ff-5aee-4599-90a5-520906b32bf4",
+          "query_id": "5c5b8a91-5e51-417d-8756-676bb0b1224d",
           "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
           "source": "phoenix.repo_evidence",
-          "mode": "sample-cache"
+          "mode": "sample-cache",
+          "content_hash": "8c7a3220401b5917c5b20e03f6293f21624ec38f410ef6ee246b16cd71dfdc8e"
         },
         {
-          "query_id": "511466b2-8bd1-45a8-925e-a010b616a803",
+          "query_id": "3cdf79c5-eb99-4229-b1e0-a12eb648b4d8",
           "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/phoenix-ledger'",
           "source": "phoenix.revival_signals",
-          "mode": "sample-cache"
+          "mode": "sample-cache",
+          "content_hash": "1e40876af7694feccc83c8e78b88424ae0170ccb7093bfc2b1b30a59495fbbe2"
+        },
+        {
+          "query_id": "6de519aa-dd37-4a58-b340-85a6439e7a60",
+          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'sample/phoenix-ledger'",
+          "source": "phoenix.revival_attempts",
+          "mode": "sample-cache",
+          "content_hash": "2739f9f9e4307939ada4c8277ad05fafb9a119fa9f0d8417cd914be580b731e9"
+        },
+        {
+          "query_id": "bf6a48cf-52bc-4d00-b60d-0d175f21d5ab",
+          "sql": "SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix.revival_sources WHERE repo_id = 'sample/phoenix-ledger'",
+          "source": "phoenix.revival_sources",
+          "mode": "sample-cache",
+          "content_hash": "814493ebd275b13deb0a42b760974ee81a307e3ea2501a5eedbd29889975beee"
         }
       ],
       "load_bearing": true
@@ -122,6 +472,8 @@
       "requested_model": "deterministic-rule-standin",
       "served_model": "deterministic-rule-standin",
       "sample_standin": true,
+      "degraded": false,
+      "fallbacks": [],
       "label": "SAMPLE_MODE deterministic stand-in. Not a live model reply. The stand-in reads the Zetaris rows in the prompt and applies the evidence policy.",
       "explanation_accepted": true,
       "primary_provider": "meterless",
@@ -136,38 +488,38 @@
       "engine": "H-MEM",
       "recalled": [
         {
-          "memory_id": "mem-5cf02be5854d",
+          "memory_id": "mem-61bb98651183",
           "content": "repository sample/phoenix-ledger category accounting The recorded licence is MIT.",
           "score": 0.6737,
           "evidence_refs": [
             "EV-PROFILE-sample-phoenix-ledger"
           ],
           "layer": "working",
-          "run_id": "phoenix-faa1bece"
+          "run_id": "phoenix-7fa477a2"
         },
         {
-          "memory_id": "mem-ac57f3be69fe",
+          "memory_id": "mem-f37fd47b3037",
           "content": "repository sample/phoenix-ledger category accounting days_since_push is 640.",
           "score": 0.6086,
           "evidence_refs": [
             "EV-PROFILE-sample-phoenix-ledger"
           ],
           "layer": "working",
-          "run_id": "phoenix-faa1bece"
+          "run_id": "phoenix-7fa477a2"
         },
         {
-          "memory_id": "mem-43e62c933a84",
+          "memory_id": "mem-a0359b7d8796",
           "content": "repository sample/phoenix-ledger category accounting similar_repo_count is 2 and unique_capability is offline double-entry ledger with a signed audit trail.",
           "score": 0.5943,
           "evidence_refs": [
             "EV-PROFILE-sample-phoenix-ledger"
           ],
           "layer": "working",
-          "run_id": "phoenix-faa1bece"
+          "run_id": "phoenix-7fa477a2"
         }
       ],
       "prior_verdicts": [],
-      "verdict_memory_id": "mem-656616dd6ff4"
+      "verdict_memory_id": "mem-9ebdfc9441d3"
     },
     "collaboration": {
       "agents": [
@@ -176,7 +528,8 @@
         "architect",
         "builder",
         "validator",
-        "diagnostician"
+        "diagnostician",
+        "planner"
       ],
       "critique_events": [
         {
@@ -196,10 +549,11 @@
         "market-judge-1",
         "architect",
         "builder-1",
-        "builder-2"
+        "builder-2",
+        "planner-1"
       ]
     },
     "pre_existing_foundation": "Evidence graph, state machine, audit trail, and API shape from the 8 Oct 2026 skeleton.",
-    "scope": "The terminal state is an evidence-policy verdict over Zetaris rows. A repository that is not NO_GO also gets a revival PRD with stage revive, refactor, and upgrade. This run does not clone, compile, test, or push commits. With no stage-revive attempt, the row policy still decides and the verdict says revival has not yet been attempted. A stage-revive success on the fork default branch, with an attempt commit and eligible build/test CI, is RESURRECTED and can override an upstream CI failure. It cannot override NO_GO. A stage-revive failure is RESURRECTION_FAILED and cites that run. Refactor and upgrade are an upgrade result and do not change the verdict."
+    "scope": "The terminal state is an evidence-policy verdict over Zetaris rows. A repository that is not NO_GO also gets a revival PRD with stage revive, refactor, and upgrade. This run does not clone, compile, test, or push commits. A row that passes the policy with no qualifying stage-1 success is CANDIDATE. RESURRECTED requires a stage-1 success on the fork default branch whose commit is ahead of the upstream base and whose workflow runs the repo's build or test commands. That success can override an upstream CI failure or unknown CI. It cannot override NO_GO, missing tests, or a missing licence file. A qualifying stage-1 failure is RESURRECTION_FAILED and cites that run. The latest attempt wins. Refactor and upgrade are an upgrade result and do not change the verdict. The trace hash chain shows the record was not altered after the run. It does not show that the record is true."
   }
 }

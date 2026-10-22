@@ -13,6 +13,7 @@ from app.agents.planner import (
     attempt_evidence_id,
     build_revival_prd,
     evidence_context,
+    label_prd,
     prd_basename,
     render_json,
     render_markdown,
@@ -35,8 +36,10 @@ from app.engines.hmem.store import MemoryStoreService
 from app.engines.hmem.types import QueryResult
 from app.engines.markovian import ChunkManager, MarkovianConfig
 from app.errors import InvestigationError, ZetarisError
+from app.adapters.meterless import MeterlessError
 from app.llm.parsing import parse_model_json
 from app.llm.provider import BoundLLM, build_llm
+from app.llm.standin import SampleStandIn
 from app.paths import repo_root
 from app.sql_catalog import attempts_sql, profile_sql, require_repo_id, signals_sql, sources_sql
 from app.trace_log import HackathonTrace
@@ -101,7 +104,7 @@ class InvestigationOrchestrator:
         self.retrieval = MemoryRetrievalService(self.memory)
         self.chunks = ChunkManager(
             MarkovianConfig(
-                max_chunks=8,
+                max_chunks=settings.markovian_max_chunks,
                 max_carryover_chars=1200,
                 chunk_timeout_seconds=settings.agent_step_timeout_seconds,
             )
@@ -118,6 +121,7 @@ class InvestigationOrchestrator:
         self.judge_events: list[dict[str, Any]] = []
         self.judge_failure = ""
         self.judge_exhausted = False
+        self.provider_degraded = False
 
     def run(self) -> dict[str, Any]:
         self.trace.event(
@@ -182,6 +186,8 @@ class InvestigationOrchestrator:
                 self._advance(PhoenixState.RESURRECTION_FAILED, policy_reason, list(known))
             elif decision == "RESURRECTED":
                 self._advance(PhoenixState.RESURRECTED, policy_reason, list(known))
+            elif decision == "CANDIDATE":
+                self._advance(PhoenixState.CANDIDATE, policy_reason, list(known))
             else:
                 self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
             self._planner(row, signals, attempts, sources, known)
@@ -218,6 +224,9 @@ class InvestigationOrchestrator:
             confidence=verification["confidence"],
             status="ok",
         )
+        run_hash = self.trace.seal()
+        verdict_text = verdict_text.rstrip() + f" Run hash {run_hash}."
+        self._stamp_run_hash(run_hash)
         return self._response(
             decision=decision,
             reason=policy_reason,
@@ -228,6 +237,7 @@ class InvestigationOrchestrator:
             priors=priors,
             verdict_memory_id=memory.id,
             model_accepted=bool(judgment.get("accepted")),
+            run_hash=run_hash,
         )
 
     def _build_zetaris(self):
@@ -296,13 +306,24 @@ class InvestigationOrchestrator:
         except InvestigationError:
             raise
         self.queries.append(
-            {"query_id": result.query_id, "sql": result.sql, "source": result.source, "mode": result.mode}
+            {
+                "query_id": result.query_id,
+                "sql": result.sql,
+                "source": result.source,
+                "mode": result.mode,
+                "content_hash": result.content_hash,
+            }
         )
         self.trace.event(
             agent_name="archaeologist",
             action="ZETARIS_QUERY",
             input_summary=sql,
-            output_summary={"query_id": result.query_id, "rows": len(result.rows), "source": result.source},
+            output_summary={
+                "query_id": result.query_id,
+                "rows": len(result.rows),
+                "source": result.source,
+                "content_hash": result.content_hash,
+            },
             target_agent="validator",
         )
         return result
@@ -371,12 +392,29 @@ class InvestigationOrchestrator:
             attempts,
             sources,
             queries={
-                "profile": {"query_id": self.profile_result.query_id, "sql": self.profile_result.sql},
-                "signals": {"query_id": self.signal_result.query_id, "sql": self.signal_result.sql},
-                "attempts": {"query_id": self.attempt_result.query_id, "sql": self.attempt_result.sql},
-                "sources": {"query_id": self.source_result.query_id, "sql": self.source_result.sql},
+                "profile": {
+                    "query_id": self.profile_result.query_id,
+                    "sql": self.profile_result.sql,
+                    "content_hash": self.profile_result.content_hash,
+                },
+                "signals": {
+                    "query_id": self.signal_result.query_id,
+                    "sql": self.signal_result.sql,
+                    "content_hash": self.signal_result.content_hash,
+                },
+                "attempts": {
+                    "query_id": self.attempt_result.query_id,
+                    "sql": self.attempt_result.sql,
+                    "content_hash": self.attempt_result.content_hash,
+                },
+                "sources": {
+                    "query_id": self.source_result.query_id,
+                    "sql": self.source_result.sql,
+                    "content_hash": self.source_result.content_hash,
+                },
             },
         )
+        catalog = _evidence_catalog(context)
         document = build_revival_prd(row, signals, attempts, sources, context)
         accepted = None
         critique = Critique(False)
@@ -391,18 +429,23 @@ class InvestigationOrchestrator:
                     target="validator",
                 ),
             )
-            critique = critique_planner(payload, known_evidence_ids=known)
+            critique = critique_planner(
+                payload,
+                known_evidence_ids=known,
+                row=row,
+                evidence_by_id=catalog,
+            )
             if not critique.rejected:
-                accepted = payload
+                accepted = label_prd(payload, model_produced=not self.llm.sample_standin)
                 break
             self._record_critique(critique, attempt - 1)
         if accepted is None:
-            accepted = document
+            accepted = label_prd(document, model_produced=False)
             self.trace.event(
                 agent_name="validator",
                 action="PLANNER_DETERMINISTIC_FALLBACK",
                 input_summary=critique.reason,
-                output_summary="The deterministic PRD replaced the uncited draft.",
+                output_summary="The deterministic PRD replaced the rejected draft.",
                 target_agent="planner",
                 status="ok",
             )
@@ -414,10 +457,8 @@ class InvestigationOrchestrator:
         override = os.environ.get("PHOENIX_PRD_DIR")
         if override:
             directory = Path(override)
-        elif str(self.repository).startswith("sample/"):
-            directory = None
         else:
-            directory = repo_root() / "docs" / "revival"
+            directory = Path(self.settings.log_dir) / "revival" / self.run_id
         markdown_path = ""
         json_path = ""
         if directory is not None:
@@ -453,6 +494,7 @@ class InvestigationOrchestrator:
         return {
             "query_id": result.query_id,
             "sql": result.sql,
+            "content_hash": result.content_hash,
             "source": result.source,
             "zetaris_mode": result.mode,
         }
@@ -627,7 +669,28 @@ class InvestigationOrchestrator:
             },
             {"role": "user", "content": user},
         ]
-        raw = self.llm.complete(messages)
+        try:
+            raw = self.llm.complete(messages)
+        except MeterlessError as exc:
+            self._flush_llm_fallbacks()
+            self.provider_degraded = True
+            self.trace.event(
+                agent_name=role,
+                action="PROVIDER_DEGRADED",
+                input_summary={
+                    "lane": getattr(self.llm, "lane", ""),
+                    "requested_model": getattr(self.llm, "requested_model", ""),
+                    "served_model": getattr(self.llm, "served_model", None),
+                    "reason": str(exc)[:300],
+                },
+                output_summary="Deterministic stand-in used after Nightshift lanes failed.",
+                target_agent="validator",
+                retry_count=attempt - 1,
+                status="degraded",
+            )
+            raw = SampleStandIn().complete(messages)
+        else:
+            self._flush_llm_fallbacks()
         model_trace = {
             "requested_model": self.llm.requested_model,
             "served_model": self.llm.served_model,
@@ -989,6 +1052,7 @@ class InvestigationOrchestrator:
         priors: list,
         verdict_memory_id: str,
         model_accepted: bool,
+        run_hash: str,
     ) -> dict[str, Any]:
         links = []
         for claim in self.graph.graph.claims:
@@ -1000,6 +1064,7 @@ class InvestigationOrchestrator:
                         "evidence_id": evidence_id,
                         "query_id": meta.get("query_id"),
                         "sql": meta.get("sql"),
+                        "content_hash": meta.get("content_hash"),
                         "source": meta.get("source"),
                         "zetaris_mode": meta.get("zetaris_mode"),
                     }
@@ -1038,6 +1103,7 @@ class InvestigationOrchestrator:
                 "investigation_version": INVESTIGATION_VERSION,
                 "reason": reason,
                 "verdict_text": verdict_text,
+                "run_hash": run_hash,
                 "upgrade": self.upgrade,
                 "revival_prd": self.revival_prd,
                 "claims": links,
@@ -1052,6 +1118,8 @@ class InvestigationOrchestrator:
                     "requested_model": self.llm.requested_model,
                     "served_model": self.llm.served_model,
                     "sample_standin": self.llm.sample_standin,
+                    "degraded": self.provider_degraded,
+                    "fallbacks": list(getattr(self.llm, "fallback_log", []) or []),
                     "label": self.llm.label(),
                     "explanation_accepted": model_accepted,
                     "primary_provider": "meterless",
@@ -1094,15 +1162,50 @@ class InvestigationOrchestrator:
                     "The terminal state is an evidence-policy verdict over Zetaris rows. "
                     "A repository that is not NO_GO also gets a revival PRD with stage revive, "
                     "refactor, and upgrade. This run does not clone, compile, test, or push commits. "
-                    "With no stage-revive attempt, the row policy still decides and the verdict says "
-                    "revival has not yet been attempted. A stage-revive success on the fork default "
-                    "branch, with an attempt commit and eligible build/test CI, is RESURRECTED and "
-                    "can override an upstream CI failure. It cannot override NO_GO. A stage-revive "
-                    "failure is RESURRECTION_FAILED and cites that run. Refactor and upgrade are an "
-                    "upgrade result and do not change the verdict."
+                    "A row that passes the policy with no qualifying stage-1 success is CANDIDATE. "
+                    "RESURRECTED requires a stage-1 success on the fork default branch whose commit "
+                    "is ahead of the upstream base and whose workflow runs the repo's build or test "
+                    "commands. That success can override an upstream CI failure or unknown CI. It "
+                    "cannot override NO_GO, missing tests, or a missing licence file. A qualifying "
+                    "stage-1 failure is RESURRECTION_FAILED and cites that run. The latest attempt "
+                    "wins. Refactor and upgrade are an upgrade result and do not change the verdict. "
+                    "The trace hash chain shows the record was not altered after the run. It does not "
+                    "show that the record is true."
                 ),
             },
         }
+
+    def _flush_llm_fallbacks(self) -> None:
+        events = list(getattr(self.llm, "fallback_log", []) or [])
+        if not events:
+            return
+        self.llm.fallback_log.clear()
+        for event in events:
+            self.trace.event(
+                agent_name="orchestrator",
+                action="LLM_FALLBACK",
+                input_summary={
+                    "lane": event.get("lane"),
+                    "requested_model": event.get("requested_model"),
+                    "served_model": event.get("served_model"),
+                    "reason": event.get("reason"),
+                },
+                output_summary=event.get("reason") or "",
+                status="fallback",
+            )
+
+    def _stamp_run_hash(self, run_hash: str) -> None:
+        document = self.revival_prd.get("document") if isinstance(self.revival_prd, dict) else None
+        if not isinstance(document, dict):
+            return
+        document["run_hash"] = run_hash
+        self.revival_prd["run_hash"] = run_hash
+        markdown_path = self.revival_prd.get("markdown_path") or ""
+        json_path = self.revival_prd.get("json_path") or ""
+        if markdown_path:
+            Path(markdown_path).write_text(render_markdown(document), encoding="utf-8")
+        if json_path:
+            Path(json_path).write_text(render_json(document), encoding="utf-8")
 
     def _advance(self, state: PhoenixState, reason: str, evidence_ids: list[str]) -> None:
         self.state.transition(
@@ -1115,6 +1218,26 @@ class InvestigationOrchestrator:
     def _check_run_budget(self) -> None:
         if time.monotonic() - self.started > self.settings.run_timeout_seconds:
             raise InvestigationError("RunTimeout", "The investigation exceeded its run timeout.", 504)
+
+
+def _evidence_catalog(context: dict) -> dict[str, dict[str, str]]:
+    catalog: dict[str, dict[str, str]] = {}
+
+    def add(item: dict) -> None:
+        evidence_id = item.get("evidence_id")
+        if not evidence_id:
+            return
+        catalog[str(evidence_id)] = {
+            "query_id": item.get("query_id") or "",
+            "sql": item.get("sql") or "",
+            "content_hash": item.get("content_hash") or "",
+        }
+
+    add(context.get("profile") or {})
+    for key in ("signals", "attempts", "sources"):
+        for item in context.get(key) or []:
+            add(item)
+    return catalog
 
 
 def _slug(value: str) -> str:

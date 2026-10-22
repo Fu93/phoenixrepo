@@ -55,22 +55,35 @@ def _window(text: str, needles: tuple[str, ...], limit: int = 700) -> str:
 
 def _workflow_excerpt(text: str) -> str:
     kept: list[str] = []
+    for line in text.splitlines():
+        flat = " ".join(line.split())
+        if "node-version:" in flat and "matrix.node-version" not in flat and "[" in flat:
+            kept.append(flat)
+        elif "cron:" in flat:
+            kept.append(flat)
     for needle in (
-        "node-version:",
         "actions/checkout@v2",
         "actions/setup-node@v2",
+        "cache: 'yarn'",
         "yarn install",
         "yarn build",
+        "yarn hygen:build -- init self",
         "yarn test",
+        "yarn test:win32",
     ):
         if needle in text and needle not in kept:
             kept.append(needle)
-    if "node-version:" in text:
-        for line in text.splitlines():
-            if "node-version:" in line:
-                kept[0] = " ".join(line.split())
-                break
     return "; ".join(kept)
+
+
+def _workflow_runs_build(text: str) -> str:
+    excerpt = _workflow_excerpt(text) if text else ""
+    if not excerpt:
+        return ""
+    lowered = excerpt.lower()
+    if any(marker in lowered for marker in ("yarn test", "yarn build", "npm test", "npm run build")):
+        return "true"
+    return "false"
 
 
 def _package_excerpt(payload: object) -> str:
@@ -82,11 +95,15 @@ def _package_excerpt(payload: object) -> str:
         bin_text = " ".join(f"{key} {value}" for key, value in bin_field.items())
     else:
         bin_text = _text(bin_field)
+    dependencies = payload.get("dependencies") if isinstance(payload.get("dependencies"), dict) else {}
     parts = [
         f"version {_text(payload.get('version'))}",
         f"bin {bin_text}",
         f"scripts.test = {_text(scripts.get('test'))}",
         f"scripts.hygen:build = {_text(scripts.get('hygen:build'))}",
+        f"scripts.build = {_text(scripts.get('build'))}",
+        f"dependencies.ejs = {_text(dependencies.get('ejs'))}",
+        f"dependencies.degit = {_text(dependencies.get('degit'))}",
     ]
     return "; ".join(part for part in parts if not part.endswith("= ") and not part.endswith(" "))
 
@@ -176,6 +193,11 @@ def collect_attempt(
                 "compare_url": compare_html,
                 "default_branch": fork_branch,
                 "head_sha": base_sha,
+                "upstream_base_sha": base_sha,
+                "ci_head_repo": fork if commit_sha else "",
+                "workflow_path": ".github/workflows/ci.yml" if workflow_text else "",
+                "workflow_steps": _workflow_excerpt(workflow_text) if workflow_text else "",
+                "workflow_runs_build": _workflow_runs_build(workflow_text),
                 "data_origin": origin,
             }
         )

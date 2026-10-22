@@ -26,22 +26,38 @@ def _cell(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def _hash(value: object) -> str:
+    text = str(value or "")
+    return text[:12]
+
+
 def render_markdown(events: list[dict], *, title: str) -> str:
-    lines = [f"# {title}", "", "| # | timestamp | agent | action | status | input | output |", "| --- | --- | --- | --- | --- | --- | --- |"]
+    lines = [
+        f"# {title}",
+        "",
+        "Decisions include CANDIDATE (policy passed, no qualifying stage-1 success), RESURRECTED, RESURRECTION_FAILED, and NO_GO.",
+        "line_hash chains each row to the previous one. RUN_SEAL is the run hash. The chain shows the file was not edited later. It does not show the text is true.",
+        "",
+        "| # | timestamp | agent | action | status | line_hash | input | output |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
     for index, event in enumerate(events, start=1):
         lines.append(
-            "| {index} | {timestamp} | {agent} | {action} | {status} | {inp} | {out} |".format(
+            "| {index} | {timestamp} | {agent} | {action} | {status} | {digest} | {inp} | {out} |".format(
                 index=index,
                 timestamp=_cell(event.get("timestamp")),
                 agent=_cell(event.get("agent_name")),
                 action=_cell(event.get("action")),
                 status=_cell(event.get("status")),
+                digest=_hash(event.get("line_hash")),
                 inp=_cell(event.get("input_summary")),
                 out=_cell(event.get("output_summary")),
             )
         )
     if not events:
-        lines.append("|  |  |  |  |  |  | no events |")
+        lines.append("|  |  |  |  |  |  |  | no events |")
+    if events and events[-1].get("action") == "RUN_SEAL":
+        lines.extend(["", f"Run hash: {events[-1].get('line_hash')}", ""])
     lines.append("")
     return "\n".join(lines)
 
@@ -55,20 +71,34 @@ def render_html(events: list[dict], *, title: str) -> str:
             str(event.get("agent_name") or ""),
             str(event.get("action") or ""),
             str(event.get("status") or ""),
+            _hash(event.get("line_hash")),
             str(event.get("input_summary") or ""),
             str(event.get("output_summary") or ""),
         ]
         rows.append("<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in cells) + "</tr>")
-    body = "\n".join(rows) if rows else "<tr><td colspan='7'>no events</td></tr>"
+    body = "\n".join(rows) if rows else "<tr><td colspan='8'>no events</td></tr>"
+    seal = ""
+    if events and events[-1].get("action") == "RUN_SEAL":
+        seal = "<p>Run hash: " + html.escape(str(events[-1].get("line_hash") or "")) + "</p>"
+    note = (
+        "<p>Decisions include CANDIDATE (policy passed, no qualifying stage-1 success), "
+        "RESURRECTED, RESURRECTION_FAILED, and NO_GO. "
+        "line_hash chains each row to the previous one. RUN_SEAL is the run hash. "
+        "The chain shows the file was not edited later. It does not show the text is true.</p>"
+    )
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'><title>"
         + html.escape(title)
         + "</title></head><body><h1>"
         + html.escape(title)
-        + "</h1><table><thead><tr><th>#</th><th>timestamp</th><th>agent</th>"
-        + "<th>action</th><th>status</th><th>input</th><th>output</th></tr></thead><tbody>"
+        + "</h1>"
+        + note
+        + "<table><thead><tr><th>#</th><th>timestamp</th><th>agent</th>"
+        + "<th>action</th><th>status</th><th>line_hash</th><th>input</th><th>output</th></tr></thead><tbody>"
         + body
-        + "</tbody></table></body></html>\n"
+        + "</tbody></table>"
+        + seal
+        + "</body></html>\n"
     )
 
 

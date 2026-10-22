@@ -47,6 +47,11 @@ ATTEMPT_COLUMNS = (
     "compare_url",
     "default_branch",
     "head_sha",
+    "upstream_base_sha",
+    "ci_head_repo",
+    "workflow_path",
+    "workflow_steps",
+    "workflow_runs_build",
     "data_origin",
 )
 

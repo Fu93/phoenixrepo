@@ -39,7 +39,7 @@ def main() -> int:
     check(
         "SAMPLE_MODE",
         data.get("foundation_only") is False
-        and data.get("decision") == "RESURRECTED"
+        and data.get("decision") == "CANDIDATE"
         and data.get("metadata", {}).get("llm", {}).get("sample_standin") is True,
     )
     log = Path(data.get("log_file", ""))
@@ -75,7 +75,7 @@ def main() -> int:
     check("Audit trail", data.get("audit_events", 0) >= 3)
     check(
         "Evidence Graph",
-        data.get("claims_count", 0) > 1 and data.get("state") == "RESURRECTED",
+        data.get("claims_count", 0) > 1 and data.get("state") == "CANDIDATE",
     )
 
     env_example = (ROOT / ".env.example").read_text(encoding="utf-8")

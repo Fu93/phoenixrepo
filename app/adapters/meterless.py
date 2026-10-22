@@ -295,7 +295,10 @@ class MeterlessRuntime:
                 error_type="MeterlessUnauthorized",
             )
         if response.status_code >= 400:
-            raise MeterlessError(f"Meterless chat failed with HTTP {response.status_code}.")
+            raise MeterlessError(
+                f"Meterless chat failed with HTTP {response.status_code}.",
+                status_code=response.status_code,
+            )
         try:
             payload = response.json()
         except ValueError as exc:

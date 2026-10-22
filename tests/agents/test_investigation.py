@@ -28,7 +28,8 @@ def test_three_catalog_decisions(tmp_path):
     resurrected = _run("sample/phoenix-ledger", 0, tmp_path / "a")
     no_go = _run("sample/generic-qr", 0, tmp_path / "b")
     failed = _run("sample/field-notes", 1, tmp_path / "c")
-    assert resurrected["decision"] == "RESURRECTED"
+    assert resurrected["decision"] == "CANDIDATE"
+    assert resurrected["state"] == "CANDIDATE"
     assert no_go["decision"] == "NO_GO"
     assert no_go["state"] == "NO_GO"
     assert failed["decision"] == "RESURRECTION_FAILED"

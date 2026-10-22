@@ -54,6 +54,15 @@ def test_committed_hygen_prd_matches_the_deterministic_builder(tmp_path):
     assert "total_count 0" in text
     assert "actions/checkout@v2" in text
     assert "actions/setup-node@v2" in text
+    assert "actions/checkout@v4" in text
+    assert "actions/setup-node@v4" in text
+    assert "20.x" in text
+    assert "yarn hygen:build -- init self" in text
+    assert "Cache service responded with 400" in text
+    assert "GHSA-ghr5-ch3p-vcr6" in text
+    assert "GHSA-phwq-j96m-2c2q" in text
+    assert "GHSA-77c7-pq4r-6mcq" in text
+    assert "Non-factual framing" in text
     assert "`yarn test` exits 0." in text
     assert "node dist/bin.js --version" in text
     assert "Error: please specify a generator." in text
@@ -69,6 +78,32 @@ def test_committed_hygen_prd_matches_the_deterministic_builder(tmp_path):
     assert document["stages"][0]["gate_for_resurrected"] is True
     assert document["stages"][1]["gate_for_resurrected"] is False
     assert document["stages"][2]["gate_for_resurrected"] is False
+
+
+def test_planner_critic_rejects_a_contradiction_and_a_missing_field():
+    document = _document()
+    lines = [*document["findings"], *document["tasks"], *document["risks"]]
+    known = {evidence_id for line in lines for evidence_id in line["evidence_ids"]}
+    row = _profile("jondot/hygen")
+    catalog = {}
+    for line in lines:
+        for citation in line.get("citations") or []:
+            for evidence_id in citation["evidence_ids"]:
+                catalog[evidence_id] = {
+                    "query_id": citation["query_id"],
+                    "sql": citation["sql"],
+                    "content_hash": citation.get("content_hash") or "",
+                }
+    assert critique_planner(document, known_evidence_ids=known, row=row, evidence_by_id=catalog).rejected is False
+    contradicted = json.loads(json.dumps(document))
+    contradicted["findings"][0]["text"] = contradicted["findings"][0]["text"].replace(
+        f"licence {row['licence_spdx']}", "licence GPL-3.0"
+    )
+    critique = critique_planner(contradicted, known_evidence_ids=known, row=row, evidence_by_id=catalog)
+    assert critique.rejected is True
+    assert "contradicts" in critique.reason
+    broken = {"findings": [{"id": "F1", "text": "x", "evidence_ids": ["EV"], "query_id": "q", "sql": "s"}], "stages": [{"id": "revive", "tasks": 1}]}
+    assert critique_planner(broken, known_evidence_ids=known).rejected is True
 
 
 def test_planner_critic_rejects_a_line_without_evidence():
@@ -135,8 +170,9 @@ def test_uncited_planner_draft_falls_back_to_the_deterministic_prd(tmp_path):
         llm=BoundLLM(scripted, "sample-standin", "deterministic-rule-standin", True),
         hmem_path=tmp_path / "hmem.json",
     ).run()
-    assert result["decision"] == "RESURRECTED"
-    assert "Revival has not yet been attempted." in result["metadata"]["verdict_text"]
+    assert result["decision"] == "CANDIDATE"
+    assert "CANDIDATE" in result["metadata"]["verdict_text"]
+    assert "Run hash " in result["metadata"]["verdict_text"]
     prd = result["metadata"]["revival_prd"]
     assert prd["drafted_by"] == "deterministic"
     assert prd["llm_drafted"] is False

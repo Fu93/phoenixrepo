@@ -8,6 +8,8 @@ body {queryId, sql, source: SqlEditor, limit}. One statement per call.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import uuid
 from dataclasses import dataclass
@@ -21,6 +23,12 @@ from config.settings import usable_secret
 _TRAILING = re.compile(r";\s*$")
 
 
+def result_content_hash(columns: list[str], rows: list[dict[str, Any]]) -> str:
+    payload = {"columns": list(columns), "rows": rows}
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 @dataclass
 class ZetarisResult:
     query_id: str
@@ -29,6 +37,11 @@ class ZetarisResult:
     rows: list[dict[str, Any]]
     source: str
     mode: str
+    content_hash: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.content_hash:
+            self.content_hash = result_content_hash(self.columns, self.rows)
 
 
 def assert_single_statement(sql: str) -> str:
