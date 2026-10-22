@@ -40,15 +40,23 @@ External demand passes on one of these, and never on the candidate's own counts:
 - `registry_downloads` of at least 1000 only when the excerpt contains a core term, so a popular PDF library is not invoice demand.
 - `github_search` is recorded with the query and `total_count`. It does not pass demand. A total of 0 is that query's total, not a census and not a failure by itself.
 
-Order: idea failure is `NO_GO`; else a qualifying alternative is `ALREADY_EXISTS`; else missing external demand is `NO_GO`; else `CANDIDATE`.
+That list is the phrase/keyword fallback. The reason is labelled `Method: phrase/keyword.`
+
+When Nightshift is in use and a discovery row exists, the equivalence role proposes capabilities and a covered / partial / missing map. `app/agents/equivalence.py` checks every quote. A quote counts only as an exact substring of the stored text, and only when the stored `content_hash` is the sha256 of that text. `ALREADY_EXISTS` then requires one alternative, inside the same 180-day window and the same OSI set, to cover every capability. Partial and missing are gaps. A gap list is `CANDIDATE` only when external demand also passes; otherwise `NO_GO`, with the gaps in the reason, labelled `Method: functional-equivalence.` A mapping whose capability citations are not in the stored text is rejected and the phrase fallback decides. Anki's GitHub `spdx_id` is `NOASSERTION`; the functional path may use AGPL-3.0 only when the stored LICENSE text contains the sentence "Anki is licensed under the GNU Affero General Public License, version 3 or". The phrase path does not.
+
+Order for the phrase fallback: idea failure is `NO_GO`; else a qualifying alternative is `ALREADY_EXISTS`; else missing external demand is `NO_GO`; else `CANDIDATE`.
 
 `ALREADY_EXISTS` is a terminal state reached from `VALUE_DECISION`. It does not get a revival or productise plan.
+
+Role prompts are `app/prompts/*.md`. The trace stores `prompt_version`, sha256 of the file, on the LLM event. The reviewer prompt is the live judge. It is told to reject unsupported claims and missed alternatives. Sample mode does not call it.
+
+`scripts/eval_ideas.py` prints phrase-method accuracy for `data/eval/cases.json`. The 22 Oct 2026 run was 9/12, accuracy 0.75. `scripts/eval_ideas_live.py` is the Nightshift runner and was not executed here.
 
 ## Plan
 
 The revival planner still emits revive, refactor, and upgrade. The discovery planner emits those three as plan-only stages plus stage 4 `productise`: confirm an SPDX id when `licence_spdx` is empty, keep the install commands already in the README, and state the feature scope already in the README. Citations use the catalog SQL and `result_content_hash`. The committed file uses query id `snapshot` and says the run hash is not sealed.
 
-The trace hash chain is unchanged. It shows the record was not altered after a run. It does not show that the record is true. LLM events still store `requested_model` and `served_model`.
+The trace hash chain is unchanged in what it proves. It shows the record was not altered after a run. It does not show that the record is true. LLM events still store `requested_model`, `served_model`, and, when a role prompt was loaded, `prompt_version`.
 
 ## Story the demo prints
 

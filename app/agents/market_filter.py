@@ -1,8 +1,9 @@
 """Deterministic filter for abandoned idea repositories.
 
 The repository's own stars, forks, and issues are not read. Demand is external.
-A maintained free open-source alternative that contains every required phrase
-is ALREADY_EXISTS. The model may only propose a URL that is already in the rows.
+With no verified functional-equivalence mapping, a maintained free open-source
+alternative that contains every required phrase is ALREADY_EXISTS. That path is
+labelled phrase/keyword. The model may only propose a URL that is already in the rows.
 """
 
 from __future__ import annotations
@@ -76,19 +77,33 @@ def split_terms(value: str | None) -> list[str]:
     return [part.strip() for part in str(value or "").split("|") if part.strip()]
 
 
-def alternative_qualifies(row: dict[str, Any]) -> bool:
-    """True only when the stored excerpt covers every required phrase."""
+PHRASE_METHOD = "Method: phrase/keyword."
+
+
+def maintenance_block(row: dict[str, Any]) -> str | None:
+    """Why this alternative is not a maintained free OSI project. None when it is."""
 
     licence = str(row.get("licence_spdx") or "").strip()
     if licence not in FREE_OSS_LICENCES:
-        return False
-    if observed_days(row) is None or observed_days(row) > ABANDONED_AFTER_DAYS:
-        return False
+        return f"licence {licence or 'empty'} is not in the free OSI set"
+    days = observed_days(row)
+    if days is None:
+        return "the maintained window cannot be computed"
+    if days > ABANDONED_AFTER_DAYS:
+        return f"last push is {days} days before collection, outside {ABANDONED_AFTER_DAYS} days"
     repo_id = str(row.get("repo_id") or "")
     alternative_id = str(row.get("alternative_id") or "")
     if not alternative_id or alternative_id.casefold() == repo_id.casefold():
-        return False
+        return "the alternative is missing or is the same repository"
     if not str(row.get("url") or "").strip():
+        return "the alternative URL is empty"
+    return None
+
+
+def alternative_qualifies(row: dict[str, Any]) -> bool:
+    """Phrase/keyword check. True only when the stored excerpt covers every required phrase."""
+
+    if maintenance_block(row):
         return False
     terms = split_terms(row.get("required_terms"))
     if len(terms) < 2:
@@ -133,16 +148,16 @@ def decide_discovery(
 
     blocked = idea_block_reason(candidate)
     if blocked:
-        return "NO_GO", blocked
+        return "NO_GO", _phrase(blocked)
     qualifying = [row for row in prior_rows if alternative_qualifies(row)]
     if qualifying:
-        return "ALREADY_EXISTS", _already_exists_reason(qualifying)
+        return "ALREADY_EXISTS", _phrase(_already_exists_reason(qualifying))
     repo_id = str(candidate.get("repo_id") or "")
     terms = split_terms(candidate.get("core_terms"))
     passed = [row for row in demand_rows if demand_qualifies(row, terms, repo_id)]
     if not passed:
-        return "NO_GO", "external demand for the problem was not shown"
-    return "CANDIDATE", _candidate_reason(passed[0])
+        return "NO_GO", _phrase("external demand for the problem was not shown")
+    return "CANDIDATE", _phrase(_candidate_reason(passed[0]))
 
 
 def accept_proposed_alternative(url: str, rows: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -227,6 +242,15 @@ def idea_block_reason(row: dict[str, Any]) -> str | None:
         if not _contains(idea, term):
             return f"core term {term!r} is not in the README or description"
     return None
+
+
+def _phrase(reason: str) -> str:
+    if PHRASE_METHOD in reason:
+        return reason
+    text = reason.rstrip()
+    if not text.endswith("."):
+        text += "."
+    return text + " " + PHRASE_METHOD
 
 
 def _already_exists_reason(rows: list[dict[str, Any]]) -> str:

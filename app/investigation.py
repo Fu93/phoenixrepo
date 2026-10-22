@@ -10,6 +10,7 @@ from typing import Any
 from app.adapters.sample_zetaris import SampleZetaris
 from app.adapters.zetaris import ZetarisClient, ZetarisResult
 from app.agents.discovery_planner import build_discovery_prd, render_discovery_markdown
+from app.agents.equivalence import evidence_from_rows, judge_discovery
 from app.agents.market_filter import apply_market_overlay, showcase_prior_art_note
 from app.agents.planner import (
     attempt_evidence_id,
@@ -42,6 +43,7 @@ from app.adapters.meterless import MeterlessError
 from app.llm.parsing import parse_model_json
 from app.llm.provider import BoundLLM, build_llm
 from app.llm.standin import SampleStandIn
+from app.prompts import load_prompt
 from app.paths import repo_root
 from app.sql_catalog import (
     attempts_sql,
@@ -133,6 +135,7 @@ class InvestigationOrchestrator:
         self.judge_failure = ""
         self.judge_exhausted = False
         self.provider_degraded = False
+        self.prompt_versions: dict[str, str] = {}
 
     def run(self) -> dict[str, Any]:
         self.trace.event(
@@ -167,13 +170,16 @@ class InvestigationOrchestrator:
             )
         judgment = self._judge(row, signals, known, recalled)
         decision, policy_reason, self.upgrade = apply_revival_attempts(row, signals, attempts)
-        decision, policy_reason = apply_market_overlay(
-            decision,
-            policy_reason,
-            self.discovery_rows,
-            self.prior_rows,
-            self.demand_rows,
-        )
+        if self.discovery_rows and not getattr(self.llm, "sample_standin", False):
+            decision, policy_reason = self._discovery_equivalence(decision, policy_reason)
+        else:
+            decision, policy_reason = apply_market_overlay(
+                decision,
+                policy_reason,
+                self.discovery_rows,
+                self.prior_rows,
+                self.demand_rows,
+            )
         self._advance(PhoenixState.RECONNAISSANCE_COMPLETE, "Repository row loaded from Zetaris.", [profile_evidence_id])
         self._advance(PhoenixState.EVIDENCE_COMPLETE, "Profile and revival signals loaded.", list(known))
         self._advance(PhoenixState.INTENT_RECONSTRUCTED, "Claims are tied to Zetaris rows.", [profile_evidence_id])
@@ -723,24 +729,59 @@ class InvestigationOrchestrator:
         result = self._query(signals_sql(row["repo_id"]))
         return result, [normalize_signal(item) for item in result.rows]
 
+    def _discovery_equivalence(self, decision: str, reason: str) -> tuple[str, str]:
+        """Ask for a capability map when Nightshift is in use. A rejected map keeps the phrase fallback."""
+
+        evidence = evidence_from_rows(self.discovery_rows[0], self.prior_rows, self.demand_rows)
+        mapping = self._ask_equivalence(evidence)
+        judged, judged_reason = judge_discovery(
+            self.discovery_rows[0],
+            self.prior_rows,
+            self.demand_rows,
+            evidence,
+            mapping,
+        )
+        self.trace.event(
+            agent_name="equivalence",
+            action="PRIOR_ART_JUDGEMENT",
+            input_summary={"mapping": bool(mapping), "repo_id": self.discovery_rows[0].get("repo_id")},
+            output_summary={"decision": judged, "reason": judged_reason[:500]},
+            target_agent="validator",
+            llm={**self._llm_trace(), "prompt_version": self.prompt_versions.get("equivalence", "")},
+        )
+        return judged, judged_reason
+
+    def _ask_equivalence(self, evidence: list[dict]) -> dict | None:
+        try:
+            parsed, _carry = self._role_chunk(
+                "equivalence",
+                1,
+                {"candidate": self.discovery_rows[0], "prior_art": self.prior_rows, "evidence": evidence},
+                "",
+                target="validator",
+            )
+        except (InvestigationError, MeterlessError, ValueError):
+            return None
+        if not isinstance(parsed, dict):
+            return None
+        return parsed
+
     def _role_chunk(self, role: str, attempt: int, payload: dict, carryover: str, target: str):
         self._check_run_budget()
+        prompt = load_prompt(role)
+        self.prompt_versions[role] = prompt.sha256
         user = (
             f"ROLE: {role}\nATTEMPT: {attempt}\nCARRYOVER:\n{carryover}\n"
             f"EVIDENCE_JSON:\n{json.dumps(payload, ensure_ascii=False, default=str)}\n"
             "Return one JSON object and cite only evidence ids from EVIDENCE_JSON. "
+            "If a fact is not in those rows, write unknown. "
             "Reasoning before the answer is allowed. The last value in the reply must be that JSON object."
         )
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are one role in PhoenixRepo. Use only the Zetaris rows in the user message. "
-                    "Do not invent demand, users, or test results."
-                ),
-            },
+            {"role": "system", "content": prompt.text},
             {"role": "user", "content": user},
         ]
+        model_trace = {**self._llm_trace(), "prompt_version": prompt.sha256}
         try:
             raw = self.llm.complete(messages, deadline=self._llm_deadline())
         except MeterlessError as exc:
@@ -754,12 +795,13 @@ class InvestigationOrchestrator:
                     "requested_model": getattr(self.llm, "requested_model", ""),
                     "served_model": getattr(self.llm, "served_model", None),
                     "reason": str(exc)[:300],
+                    "prompt_version": prompt.sha256,
                 },
                 output_summary="Deterministic stand-in used after Nightshift lanes failed.",
                 target_agent="validator",
                 retry_count=attempt - 1,
                 status="degraded",
-                llm=self._llm_trace(),
+                llm=model_trace,
             )
             raw = SampleStandIn().complete(messages)
             self.llm.requested_model = SampleStandIn.model_name
@@ -769,6 +811,7 @@ class InvestigationOrchestrator:
         model_trace = {
             "requested_model": self.llm.requested_model,
             "served_model": self.llm.served_model,
+            "prompt_version": prompt.sha256,
         }
         try:
             parsed = parse_model_json(
@@ -780,6 +823,7 @@ class InvestigationOrchestrator:
                     "builder": ("steps",),
                     "diagnostician": ("action", "claims", "decision"),
                     "planner": ("findings", "stages"),
+                    "equivalence": ("capabilities", "mappings"),
                 }.get(role, ("decision", "claims", "steps", "contract", "explanation")),
             )
         except InvestigationError as exc:
@@ -872,7 +916,11 @@ class InvestigationOrchestrator:
             target_agent=role,
             retry_count=attempt - 1,
             status=status,
-            llm={"requested_model": requested_model, "served_model": served_model},
+            llm={
+                "requested_model": requested_model,
+                "served_model": served_model,
+                "prompt_version": load_prompt("reviewer").sha256,
+            },
         )
 
     def _note_judge_exhausted(self, role: str) -> None:
@@ -1212,6 +1260,7 @@ class InvestigationOrchestrator:
                     "label": self.llm.label(),
                     "explanation_accepted": model_accepted,
                     "primary_provider": "meterless",
+                    "prompt_versions": dict(self.prompt_versions),
                     "judge": {
                         "advisory": True,
                         "exhausted": self.judge_exhausted,
@@ -1260,8 +1309,9 @@ class InvestigationOrchestrator:
                     "wins. Refactor and upgrade are an upgrade result and do not change the verdict. "
                     "A discovery row is judged from the README and from external demand for the problem. "
                     "The repository's own stars, forks, and issues are not that signal. "
-                    "ALREADY_EXISTS means a maintained free open-source alternative covers every cited "
-                    "core phrase and does not get a revival plan. "
+                    "ALREADY_EXISTS means every core capability is covered by one maintained free OSI "
+                    "alternative after quote checks. With no verified mapping the labelled fallback "
+                    "is phrase/keyword. ALREADY_EXISTS does not get a revival plan. "
                     "The trace hash chain shows the record was not altered after the run. It does not "
                     "show that the record is true."
                 ),

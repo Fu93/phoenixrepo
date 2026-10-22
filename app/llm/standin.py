@@ -33,6 +33,8 @@ class SampleStandIn:
             return _json(self._diagnostician(payload))
         if role == "planner":
             return _json(payload["deterministic_prd"])
+        if role == "equivalence":
+            return _json({"capabilities": [], "mappings": [], "method": "phrase/keyword"})
         raise ValueError(f"Sample stand-in has no role {role}.")
 
     def _archaeologist(self, payload: dict, attempt: int) -> dict:

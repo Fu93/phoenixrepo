@@ -108,6 +108,8 @@ class HackathonTrace:
             # Top-level so a truncated input_summary cannot drop them, and so the hash covers them.
             record["requested_model"] = str(llm.get("requested_model") or "")
             record["served_model"] = llm.get("served_model")
+            if llm.get("prompt_version"):
+                record["prompt_version"] = str(llm["prompt_version"])
         record = sanitize_metadata(record)
         record["prev_hash"] = self._prev_hash
         missing = [field for field in FIELDS if field not in record]

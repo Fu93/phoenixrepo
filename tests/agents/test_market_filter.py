@@ -94,7 +94,7 @@ def test_ytkb_passes_on_external_demand_and_not_on_a_search_total():
     assert any(row["metric_value"] == "0" for row in search_only)
     blocked, blocked_reason = decide_discovery(_candidate(YTKB), _prior(YTKB), search_only)
     assert blocked == "NO_GO"
-    assert blocked_reason == "external demand for the problem was not shown"
+    assert blocked_reason == "external demand for the problem was not shown. Method: phrase/keyword."
     assert all(not alternative_qualifies(row) for row in _prior(YTKB))
 
 
