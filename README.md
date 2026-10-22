@@ -12,9 +12,9 @@ Abandoned repositories are cheap to restart and expensive to regret. A revival w
 
 | Verdict | Meaning in this core |
 | --- | --- |
-| `NO_GO` | The Zetaris rows fail the value rules (licence, abandonment, successor, or distinct capability). |
-| `RESURRECTION_FAILED` | The rows say it is worth reviving, and the recorded tests or CI do not pass inside the repair budget. |
-| `RESURRECTED` | The cited rows satisfy the revival rules: permissive licence, abandoned, a distinct capability, a licence file, tests, and a successful CI status. |
+| `NO_GO` | The Zetaris rows fail the value rules (licence, abandonment, successor, or an empty distinct capability). A high close-substitute score does not, by itself, do this. |
+| `RESURRECTION_FAILED` | The rows say it is worth reviving, and the recorded tests are absent or the latest CI conclusion failed. Missing CI does not do this. |
+| `RESURRECTED` | The cited rows satisfy the revival rules: permissive licence, abandoned, a distinct capability, a licence file, tests, and CI that succeeded or is unknown. |
 
 `RESURRECTED` does **not** mean this program cloned, compiled, tested, or republished the repository. The pre-event plan used that word for a future prover. This core reuses the state-machine token and means "the evidence policy accepted a revival contract". The response field `metadata.scope` says the same thing.
 
@@ -25,10 +25,10 @@ The orchestrator, the evidence graph, and the state machine are infrastructure f
 | Role | What it does | Can block or force a retry |
 | --- | --- | --- |
 | Archaeologist | Asks Zetaris for `phoenix.repo_evidence` and `phoenix.revival_signals` and drafts claims. | No. The validator can reject its claims. |
-| Market judge | Writes the explanation of the evidence-policy verdict. | No. An explanation that disagrees with the rows is rejected and retried once. The rows keep the verdict. |
+| Market judge | Writes the explanation of the evidence-policy verdict. | No. An explanation that disagrees with the rows is rejected and retried once. The rows keep the verdict. In live mode the validator also asks the model, as a separate judge call, to accept or reject the claim. |
 | Architect | Drafts a revival contract after a value pass. Skipped on `NO_GO`. | No. |
 | Builder | Proposes the next step. It is not allowed to mark verification as `PASS`. | No. A `PASS` or a step with no evidence id is rejected. |
-| Validator | Checks evidence ids, quoted row values, and the builder rule. | Yes. It blocks unsupported claims and forces one retry. It is the only role that may accept a revival. |
+| Validator | Checks evidence ids, quoted row values, and the builder rule. In live mode it also calls Nightshift as an LLM judge that can reject a claim. | Yes. It blocks unsupported claims and forces one retry. A missing evidence id wins even when the LLM judge accepts. It is the only role that may accept a revival. |
 | Diagnostician | On a failed validation, and only while repair budget remains, asks Zetaris for `phoenix.revival_signals` again. | It cannot declare success. A second failure becomes `RESURRECTION_FAILED`. |
 
 Collaboration that is actually in the run:
@@ -47,10 +47,13 @@ The terminal state itself is an evidence policy in `app/agents/policy.py`, not a
 - permissive SPDX licence (`MIT`, `Apache-2.0`, `BSD-3-Clause`, `BSD-2-Clause`, `ISC`, `MPL-2.0`)
 - no successor URL
 - `days_since_push` at least 180
-- a non-empty `unique_capability` and `similar_repo_count` under 40
-- for `RESURRECTED`: `has_tests`, `has_license_file`, and `ci_status = success`, with no `tests_absent` or `ci_failure` signal
+- a non-empty `unique_capability`
+- a close-substitute search total, scored as `alternatives_factor` low, moderate, high, or unknown. The score is reported with the uncertainty that a GitHub search total is not a census of substitutes. It does not, by itself, decide the verdict. There is no hard cut at 40.
+- for `RESURRECTED`: `has_tests`, `has_license_file`, and a build or test CI conclusion that is `success` or unknown. A conclusion of `failure`, `cancelled`, `timed_out`, or `startup_failure` on that workflow is `RESURRECTION_FAILED`. When the failing step is toolchain setup, the reason names that step and says CI has decayed. It does not say the tests failed. A security or analysis scan (CodeQL and similar), a run still awaiting approval (`action_required`), and a fork pull request are CI unknown, never success. Missing build/test CI is unknown, not a failure and not an automatic block. `archived=true` is recorded and is not a pass or a block.
 
 A live model writes the explanation. If that explanation disagrees with the policy or does not quote the licence and `days_since_push`, it is rejected. The verdict text then comes from the policy. Sample mode's stand-in quotes the rows, so its explanation is accepted.
+
+In live mode, after the deterministic check, the validator sends the archaeologist claims and the market-judge explanation to Nightshift (`meterless/auto`, or `MODEL_NAME` such as `nvidia/nemotron-3-super-120b-a12b`) and asks for `{"decision":"accept"|"reject",...}`. The judge is advisory. A parsed reject adds a rejection and can force one retry. A parsed accept does not erase a missing or unknown evidence id; the trace records `guard_override`. When the retries are exhausted, the evidence-backed claims stay and the deterministic policy verdict is still produced. The verdict text says the judge was advisory. If the judge times out, returns 401, or raises any other error, that failure is logged as `LLM_JUDGE` with status `timeout`, `unauthorized`, or `error`, `raw_decision` is `unavailable`, and the policy verdict is still produced. The same failure is copied into `metadata.llm.judge` and into the verdict text. The judge does not end the run with 422, 502, or 401. Sample mode does not make this call. A successful call logs `requested_model`, `served_model`, and `latency_ms`.
 
 ## Architecture
 
@@ -64,11 +67,11 @@ POST /run or run.py
        -> role prompts
             sample: deterministic stand-in
             live:   Meterless Runtime (primary) or NVIDIA direct (secondary)
-       -> validator
+       -> validator (deterministic guard, plus a live LLM judge on archaeologist and market-judge claims)
        -> logs/trace-<run_id>.jsonl and stdout
 ```
 
-Zetaris is load-bearing. The agents do not call GitHub. If the adapter is missing, the key is missing in live mode, or the view returns no row, the run stops with a structured error. Sample mode changes the adapter's data source to `data/sample`. It does not change the SQL or skip the adapter.
+Zetaris is load-bearing. The agents do not call GitHub. If the adapter is missing, the key is missing in live mode, or the view returns no row, the run stops with a structured error. Sample mode changes the adapter's data source to `data/sample`, and when `data/real` is present it also answers those committed rows. It does not change the SQL or skip the adapter. The LLM in sample mode is still the stand-in. `data_origin` on a real row stays `github_rest_api:<date>`.
 
 H-MEM (Meterless engine, implemented from the open-source spec, not imported as a package):
 
@@ -204,7 +207,7 @@ docker run --rm -p 8000:8000 -e SAMPLE_MODE=true -e PORT=8000 phoenixrepo
 
 ## Sample mode
 
-`SAMPLE_MODE=true`, or `"mode": "sample"`, runs the same orchestrator, validator, H-MEM, and Markovian loop. The Zetaris adapter answers the same SELECT statements from `data/sample/*.csv`. Those rows are synthetic and the column `data_origin` is `synthetic_labelled`. They are not a scrape of real GitHub repositories and they are not hidden answers.
+`SAMPLE_MODE=true`, or `"mode": "sample"`, runs the same orchestrator, validator, H-MEM, and Markovian loop. The Zetaris adapter answers the same SELECT statements from `data/sample/*.csv`. Those rows are synthetic and the column `data_origin` is `synthetic_labelled`. They are not a scrape of real GitHub repositories and they are not hidden answers. If `data/real/*.csv` is present, the same adapter also serves those rows. Their `data_origin` is `github_rest_api:<date>`. Serving them in sample mode does not call GitHub or Nightshift.
 
 The LLM is `sample-standin` / `deterministic-rule-standin`. The response label says so. It reads the rows in the prompt. It does not load `output_examples/`.
 
@@ -225,7 +228,7 @@ Each output file is the JSON body of one real sample run, including that run's i
 - **Meterless Markovian.** The multi-step investigation is a chunk loop with a bounded carryover.
 - **Meterless Runtime.** Primary model provider, implemented from the Power prompt "Add Meterless as a provider" on meterless.ai/engines.html (fetched 22 Oct 2026, Runtime contract as published there). Discovery is `GET /v1/models`. Chat is `POST /v1/chat/completions` with `meterless-app: phoenixrepo` and `meterless-scope: user`. The default model is `meterless/auto`, overridable with `MODEL_NAME` (`nvidia/nemotron-3-super-120b-a12b` is the observed Nemotron lane). Nightshift may serve a different id than the one requested; each trace records both. The placeholder token `rt-local` is rejected. `/healthz` is not proof.
 - **NVIDIA.** Optional direct fallback via `LLM_PROVIDER=nvidia`. The award path is the Nightshift lane above. A manual check on 22 Oct 2026 15:00 BST saw Nightshift serve `nvidia/nemotron-3-ultra-550b-a55b` when `meterless/auto` or `nvidia/nemotron-3-super-120b-a12b` was requested. The automated tests here still use a local mock.
-- **Cursor.** Used as a coding agent. A Cursor cloud agent (Grok 4.7) implemented this build-window core. Cursor credit is not the product's model route. As of the 22 Oct 2026 organiser update, Cursor is optional and is declared here as a tool, not as a sponsor dependency of the running product.
+- **Cursor.** Used as a coding agent. A Cursor cloud agent (Grok 4.7) implemented this build-window core, including the real-data snapshot and the live LLM judge. Cursor credit is not the product's model route. As of the 22 Oct 2026 organiser update, Cursor is optional and is declared here as a tool, not as a sponsor dependency of the running product. CI does not call Nightshift.
 
 `metadata.json` is the same summary in one file.
 
@@ -234,6 +237,7 @@ Each output file is the JSON body of one real sample run, including that run's i
 | Data | What it is | Licence / terms |
 | --- | --- | --- |
 | `data/sample/repo_evidence.csv`, `data/sample/revival_signals.csv` | Original synthetic rows written for this project. `data_origin=synthetic_labelled`. No PII. Not measurements of real repositories. | Project content. No upstream dataset. |
+| `data/real/repo_evidence.csv`, `data/real/revival_signals.csv`, `data/real/provenance.json` | Snapshot of public GitHub REST facts for five repositories, plus rule-based columns. `provenance.json` records `collected_at` (`2026-10-22T15:14:30.161592+00:00`), the endpoints, and the rule for each curated column. API fields that were null or missing are empty. No token is in the file. | GitHub API terms. Public repository metadata. The snapshot is committed so a judge can read it offline. |
 | `data/live/*.example.csv` | Header-only templates. | Empty. |
 | GitHub REST registration in `scripts/zetaris/02_github_repo_table.sql` | Live query of `https://api.github.com/repos/OWNER/REPO` when you run it inside Zetaris. | GitHub API terms. Public repository metadata. Do not commit tokens or private-repo responses. |
 | Curated CSV you fill | Operator-supplied columns (days since push, tests, CI, uniqueness). | Whatever you are allowed to store. Do not put personal data in it. |
@@ -250,12 +254,35 @@ Declared: everything committed before 22 October 2026 00:00 UTC. In this reposit
 
 That skeleton includes the FastAPI process, Docker image, evidence graph and pack, integrity hash, state machine (including the three terminal names), audit trail, secret redaction, and `FoundationOrchestrator`. The foundation orchestrator still stops at `EVIDENCE_COMPLETE` with `decision: null`. It is not the path `POST /run` uses now. `POST /run` uses `InvestigationOrchestrator`, which is build-window work.
 
-Build-window work includes the Zetaris REST client, the sample SQL cache, the Meterless Runtime provider, the NVIDIA fallback, H-MEM, the Markovian loop, the six roles, the validator, traces in the hackathon field list, sample verdicts, `smoke_test.py`, and this README.
+Build-window work includes the Zetaris REST client, the sample SQL cache, the Meterless Runtime provider, the NVIDIA fallback, H-MEM, the Markovian loop, the six roles, the validator, traces in the hackathon field list, sample verdicts, `smoke_test.py`, the real-repository snapshot, the live LLM judge, and this README. A Cursor cloud agent (Grok 4.7) wrote that build-window code, including this phase. It did not call Nightshift from CI.
+
+## Real snapshot and local Zetaris
+
+`python scripts/curate_real_repos.py` calls the public GitHub REST API (optional `GITHUB_TOKEN`, never written) and rewrites `data/real`. The committed files are the snapshot from the `collected_at` timestamp in `data/real/provenance.json`. Re-running the script replaces them with a new timestamp. Curated columns are only the rules in that file: tests come from tree paths, CI from the latest eligible build or test workflow conclusion (security scans, `action_required` runs, and fork pull requests do not count; the workflow name, event, and run URL are copied into the signal when the API sent them), and `successor_url` is a README URL next to "in favor of", "replaced by", "successor", or "moved to". A homepage is not a successor. `similar_repo_count` is the `total_count` of a close name or description search in the same language. It is not a topic-size count. `unique_capability` is the description copied verbatim. An empty Actions conclusion stays empty and becomes the signal `ci_unknown`.
+
+The offline evidence policy on this snapshot is what `tests/data/test_curation.py` asserts. Each verdict below is the first policy reason, not a hand label:
+
+- `golang/dep` is `NO_GO` because the README places `https://golang.org/ref/mod` next to "in favor of". The homepage is not that URL.
+- `jxnblk/rgx` is `NO_GO` because the repository payload has no SPDX licence id.
+- `discreteoptimization/setcover` is `RESURRECTION_FAILED` because the tree has no test path. Its Actions conclusion is empty, so CI is unknown and is not the reason.
+- `jondot/hygen` is `RESURRECTION_FAILED` because its build/test workflow `CI` failed. The failed job step recorded by the Actions jobs API is `Use Node.js 14.x`, a toolchain setup step, so CI has decayed. That is not a test failure. The run is a schedule on `master` from `jondot/hygen`.
+- `42wim/matterbridge` is `RESURRECTED` with CI unknown. It is Apache-2.0, not archived, last pushed more than 180 days before collection, has test filenames, and the README records no successor URL. Its build/test workflow is `development.yml`. The latest runs of that workflow are fork pull requests awaiting approval (`action_required`) or fork-PR failures, so the default branch build state is unknown. A scheduled CodeQL success is a security scan and is not counted as CI success. The verdict text says CI is unknown. It does not say a successful CI conclusion supports revival.
+
+`ariya/phantomjs` is not in this snapshot. An earlier readme API fetch did not contain "Puppeteer", "Playwright", or a successor phrase, so this dataset does not say it was replaced by those tools.
+
+Loading those CSVs into the user's local Zetaris (Docker on Windows or WSL2, REST at `http://localhost:8888/api/v1.0`) is **not verified** from this environment:
+
+1. From the Zetaris platform directory, inside WSL, set `PHOENIX_REAL_DATA` to the absolute path of `data/real`. Run `docker compose ps` and change the placeholder service name in `scripts/zetaris/phoenix-real-data.compose.yml` to a name that command prints. Then pass the file explicitly: `docker compose -f docker-compose.yml -f /path/to/phoenixrepo/scripts/zetaris/phoenix-real-data.compose.yml`. It is not named `docker-compose.override.yml`, so Compose will not merge it automatically. The container path `/opt/phoenixrepo/data/real` is the default `load_real.ps1` expects. This environment did not confirm the service name or that path on a running install.
+2. `powershell -ExecutionPolicy Bypass -File scripts\zetaris\load_real.ps1` sends one Lightning statement per REST call. `ZETARIS_API_KEY` is read from the environment and is not printed. A HTTP 200 whose body contains an error object is a failure (`200 error-body`). If the error text says the database, table, schemastore container, or view already exists, the script continues. The word "duplicate" alone is not treated as existence. A view that already exists prints `view-exists` and a warning that the previous view was left in place. `-Alternative Filestore` uses `CREATE LIGHTNING FILESTORE TABLE ... FORMAT CSV OPTIONS (path ...)`. `-Alternative SparkCsv` uses `CREATE TABLE ... USING com.databricks.spark.csv`. The SQL manual documents both. The getting-started FILESTORE example that has been seen working is a public S3 path, not this bind mount. If `phoenix.repo_evidence` already exists from `04_phoenix_views.sql`, the warning leaves that older view in place. A DROP statement was not verified, so the script does not send one. After the statements it selects `repo_id, data_origin` and prints `verified rows=N` only when the row count matches `data/real/repo_evidence.csv` and every `data_origin` starts with `github_rest_api`. Otherwise it prints `verify-failed`.
+
+`scripts/demo_live.ps1` checks Docker, `GET {METERLESS_BASE_URL}/models` with the same bearer token and `meterless-app` header the product uses, `GET /health` and requires `sample_mode` false, and `SELECT 1` on Zetaris. It then `POST /run` for three real repositories, one for each verdict. It writes `logs/demo-live.md` through `scripts/demo_summary.py`. It was not run here. The API process has to be up in live mode first. `scripts/render_trace.py` turns a trace JSONL into markdown or HTML for a demo video. That renderer was executed by the offline tests, not against a live Nightshift trace.
 
 ## Limitations
 
-- CI and the tests in this repo never call a live Zetaris or a live Nightshift. Zetaris and Meterless are checked with a local HTTP server that speaks the documented contract, and with sample mode. You still need a Windows run of `smoke_test.py` and one live `POST /run` before calling the integration verified.
-- The verdict is a fixed evidence policy. A model cannot overrule a missing licence or a red CI row. Its job on the live path is the explanation, which is rejected when it contradicts the rows.
+- CI and the tests in this repo never call a live Zetaris or a live Nightshift. Zetaris and Meterless are checked with a local HTTP server that speaks the documented contract, and with sample mode. The LLM-judge tests use a mock `complete()`. You still need a Windows run of `scripts/demo_live.ps1` before calling the live judge or the real-CSV mount verified.
+- What was run live: on 22 Oct 2026 at `2026-10-22T15:14:30Z` this environment ran `scripts/curate_real_repos.py` against `https://api.github.com` with no token and wrote the five-repository snapshot in `data/real`. On 22 Oct 2026 15:00 BST a Windows machine saw Nightshift `GET /v1/models` return 200 and chat for `meterless/auto` and `nvidia/nemotron-3-super-120b-a12b` return HTTP 200 served as `nvidia/nemotron-3-ultra-550b-a55b`. The same machine's Zetaris SQL Editor body was `{"headers": [...], "data": [[string cells]]}`.
+- What was not run live from this agent: the compose bind mount, `load_real.ps1`, a Nightshift LLM-judge call inside `POST /run`, and `demo_live.ps1`.
+- The verdict is a fixed evidence policy. The live LLM judge is advisory: a reject can retry once, and a timeout, 401, or other judge error is logged and does not replace the policy verdict. A missing evidence id still beats an LLM accept. The judge cannot receive `RESURRECTED` when the rows do not support it.
 - `RESURRECTED` is not a rebuilt repository.
 - The sample stand-in's first archaeologist and builder attempts are deliberately unsupported so the critique loop can be demonstrated offline.
 - H-MEM embeddings are a hash mock. Ranking tests cover the published formula. They do not claim neural retrieval quality.

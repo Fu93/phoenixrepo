@@ -34,7 +34,9 @@ PERMISSIVE_LICENCES = frozenset(
     {"MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "ISC", "MPL-2.0"}
 )
 ABANDONED_AFTER_DAYS = 180
-SIMILAR_REPO_BLOCK = 40
+# Bands for the close-substitute score. They describe the search total. They are not a NO_GO cut.
+ALTERNATIVES_LOW_AT_MOST = 5
+ALTERNATIVES_MODERATE_AT_MOST = 30
 
 
 def require_repo_id(repository: str) -> str:

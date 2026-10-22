@@ -1,0 +1,20 @@
+repo_id,signal,detail,supports_revival
+golang/dep,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+golang/dep,ci_unknown,"No eligible build or test workflow conclusion was recorded. Security and analysis scans, runs awaiting approval (action_required), and fork pull requests are not CI success. Missing build/test CI is unknown, not a failure, and it does not by itself block revival.",false
+golang/dep,archived,GitHub reports archived=true. This records that the owner froze the repository. Archive status is not a revival vote: the policy does not treat it as a pass or a block.,false
+golang/dep,successor_recorded,README names a successor URL: https://golang.org/ref/mod.,false
+golang/dep,alternatives_factor,"Close-substitute search total_count was 42 (high). Uncertainty: this is a name or description search total, not a census of substitutes, and it does not by itself decide the verdict.",false
+jxnblk/rgx,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+jxnblk/rgx,ci_unknown,"No eligible build or test workflow conclusion was recorded. Security and analysis scans, runs awaiting approval (action_required), and fork pull requests are not CI success. Missing build/test CI is unknown, not a failure, and it does not by itself block revival.",false
+jxnblk/rgx,licence_missing,The repository payload had no SPDX licence id.,false
+jxnblk/rgx,archived,GitHub reports archived=true. This records that the owner froze the repository. Archive status is not a revival vote: the policy does not treat it as a pass or a block.,false
+jxnblk/rgx,alternatives_factor,"Close-substitute search total_count was 247 (high). Uncertainty: this is a name or description search total, not a census of substitutes, and it does not by itself decide the verdict.",false
+discreteoptimization/setcover,tests_absent,The Git tree or root listing succeeded and contained no test directory or test filename.,false
+discreteoptimization/setcover,ci_unknown,"No eligible build or test workflow conclusion was recorded. Security and analysis scans, runs awaiting approval (action_required), and fork pull requests are not CI success. Missing build/test CI is unknown, not a failure, and it does not by itself block revival.",false
+discreteoptimization/setcover,alternatives_factor,"Close-substitute search total_count was 367 (high). Uncertainty: this is a name or description search total, not a census of substitutes, and it does not by itself decide the verdict.",false
+jondot/hygen,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+jondot/hygen,ci_failure,"The CI toolchain setup step (Use Node.js 14.x) failed, so CI has decayed. This is not a test failure. Workflow CI event schedule. Run https://github.com/jondot/hygen/actions/runs/37141993934.",false
+jondot/hygen,alternatives_factor,"Close-substitute search total_count was 74 (high). Uncertainty: this is a name or description search total, not a census of substitutes, and it does not by itself decide the verdict.",false
+42wim/matterbridge,tests_present,A test directory or test filename was present in the Git tree or root listing.,true
+42wim/matterbridge,ci_unknown,"No eligible build or test workflow conclusion was recorded. Latest build/test workflow Development event pull_request conclusion action_required head RustyBower/matterbridge. That run is awaiting approval (action_required), so it is not CI success. That run is a fork pull request, so it is not the default branch build state and is not CI success. A security or analysis scan (CodeQL) concluded success and was not counted as CI. Security and analysis scans, runs awaiting approval (action_required), and fork pull requests are not CI success. Missing build/test CI is unknown, not a failure, and it does not by itself block revival.",false
+42wim/matterbridge,alternatives_factor,"Close-substitute search total_count was 5 (low). Uncertainty: this is a name or description search total, not a census of substitutes, and it does not by itself decide the verdict.",true

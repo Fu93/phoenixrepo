@@ -60,6 +60,42 @@ def test_null_capability_and_licence_are_no_go():
     assert decide(_row(licence_spdx="NULL"), [])[0] == "NO_GO"
 
 
+def test_a_large_substitute_count_is_a_score_not_a_block():
+    decision, reason = decide(_row(similar_repo_count="180"), [])
+    assert decision == "RESURRECTED"
+    assert "alternatives_factor high" in reason
+    assert "does not by itself decide" in reason
+
+
+def test_missing_ci_is_unknown_and_a_real_failure_still_blocks():
+    unknown, unknown_reason = decide(_row(ci_status="NULL"), [])
+    assert unknown == "RESURRECTED"
+    assert "CI is unknown" in unknown_reason
+    failed, failed_reason = decide(_row(ci_status="failure"), [])
+    assert failed == "RESURRECTION_FAILED"
+    assert "ci_status is failure" in failed_reason
+    toolchain, toolchain_reason = decide(
+        _row(ci_status="failure"),
+        [
+            normalize_signal(
+                {
+                    "repo_id": "sample/phoenix-ledger",
+                    "signal": "ci_failure",
+                    "detail": (
+                        "The CI toolchain setup step (Use Node.js 14.x) failed, so CI has decayed. "
+                        "This is not a test failure."
+                    ),
+                    "supports_revival": "false",
+                }
+            )
+        ],
+    )
+    assert toolchain == "RESURRECTION_FAILED"
+    assert "Use Node.js 14.x" in toolchain_reason
+    assert "decayed" in toolchain_reason
+    assert "not a test failure" in toolchain_reason
+
+
 def test_real_licence_and_capability_are_kept():
     profile = _row()
     assert profile["licence_spdx"] == "MIT"

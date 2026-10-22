@@ -28,8 +28,12 @@ _VIEWS = {
 class SampleZetaris:
     """Executes the agent's single-statement SELECTs against cached view output."""
 
-    def __init__(self, cache_dir: Path | None = None) -> None:
+    def __init__(self, cache_dir: Path | None = None, extra_dirs: list[Path] | None = None) -> None:
         self.cache_dir = cache_dir or (repo_root() / "data" / "sample")
+        if extra_dirs is None and cache_dir is None:
+            real = repo_root() / "data" / "real"
+            extra_dirs = [real] if (real / "repo_evidence.csv").exists() else []
+        self.extra_dirs = list(extra_dirs or [])
         self._tables = {
             view: self._load(filename, columns)
             for view, (filename, columns) in _VIEWS.items()
@@ -57,6 +61,7 @@ class SampleZetaris:
             "load_bearing": True,
             "mode": self.mode(),
             "cache_dir": str(self.cache_dir),
+            "extra_dirs": [str(path) for path in self.extra_dirs],
         }
 
     def run_sql(self, sql: str, limit: int = 100) -> ZetarisResult:
@@ -113,4 +118,17 @@ class SampleZetaris:
             rows = [dict(row) for row in reader]
         if not rows:
             raise ZetarisError(f"{filename} has no rows.", status_code=500)
+        for extra in self.extra_dirs:
+            extra_path = extra / filename
+            if not extra_path.exists():
+                continue
+            with extra_path.open(newline="", encoding="utf-8") as handle:
+                reader = csv.DictReader(handle)
+                extra_columns = tuple(reader.fieldnames or ())
+                if extra_columns != expected:
+                    raise ZetarisError(
+                        f"{extra_path} columns {extra_columns} do not match the phoenix view contract.",
+                        status_code=500,
+                    )
+                rows.extend(dict(row) for row in reader)
         return {"columns": columns, "rows": rows}

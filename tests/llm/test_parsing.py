@@ -35,6 +35,16 @@ def test_prompt_json_block_still_reads_the_evidence_object():
     assert prompt_json_block(user)["row"]["repo_id"] == "sample/phoenix-ledger"
 
 
+def test_object_with_expected_keys_beats_a_later_object():
+    text = '{"decision": "RESURRECTED", "explanation": "rows agree"}\n{"note": "draft finished"}'
+    assert parse_model_json(text)["decision"] == "RESURRECTED"
+
+
+def test_unclosed_think_hides_the_text_after_it():
+    text = '{"decision": "RESURRECTED"}\n<think>still writing {"decision": "NO_GO"}'
+    assert parse_model_json(text)["decision"] == "RESURRECTED"
+
+
 def test_missing_object_is_an_error():
     with pytest.raises(InvestigationError):
         parse_model_json("The user asks: explain. We must reply with exactly the answer.")

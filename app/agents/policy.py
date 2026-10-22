@@ -9,7 +9,12 @@ from __future__ import annotations
 from typing import Any
 
 from app.errors import InvestigationError
-from app.sql_catalog import ABANDONED_AFTER_DAYS, PERMISSIVE_LICENCES, SIMILAR_REPO_BLOCK
+from app.sql_catalog import (
+    ABANDONED_AFTER_DAYS,
+    ALTERNATIVES_LOW_AT_MOST,
+    ALTERNATIVES_MODERATE_AT_MOST,
+    PERMISSIVE_LICENCES,
+)
 
 
 _EMPTY_TEXT = {"", "none", "null", "nan"}
@@ -54,13 +59,24 @@ def normalize_profile(row: dict[str, Any]) -> dict[str, Any]:
         )
     try:
         days = int(float(row["days_since_push"]))
-        similar = int(float(row["similar_repo_count"]))
     except (TypeError, ValueError) as exc:
         raise InvestigationError(
             "ZetarisSchemaError",
-            "days_since_push and similar_repo_count must be numbers.",
+            "days_since_push must be a number.",
             status_code=502,
         ) from exc
+    similar_text = blank_text(row.get("similar_repo_count"))
+    if not similar_text:
+        similar = None
+    else:
+        try:
+            similar = int(float(similar_text))
+        except (TypeError, ValueError) as exc:
+            raise InvestigationError(
+                "ZetarisSchemaError",
+                "similar_repo_count must be a number or empty when the search total is missing.",
+                status_code=502,
+            ) from exc
     return {
         **row,
         "repo_id": blank_text(row["repo_id"]),
@@ -97,6 +113,35 @@ def normalize_signal(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_CI_FAILURES = {"failure", "cancelled", "timed_out", "startup_failure"}
+
+
+def ci_kind(status: str) -> str:
+    if status == "success":
+        return "success"
+    if status in _CI_FAILURES:
+        return "failure"
+    return "unknown"
+
+
+def alternatives_factor(count: int | None) -> str:
+    """Scored note. The count never decides the verdict by itself."""
+
+    uncertainty = (
+        "Uncertainty: the count is a GitHub search total for a close name or description query, "
+        "not a census of substitutes, and it does not by itself decide the verdict."
+    )
+    if count is None:
+        return "alternatives_factor unknown because no search total was recorded. " + uncertainty
+    if count <= ALTERNATIVES_LOW_AT_MOST:
+        band = "low"
+    elif count <= ALTERNATIVES_MODERATE_AT_MOST:
+        band = "moderate"
+    else:
+        band = "high"
+    return f"alternatives_factor {band} (close-substitute search total_count {count}). " + uncertainty
+
+
 def blocking_value_reason(row: dict[str, Any]) -> str | None:
     if row["licence_spdx"] not in PERMISSIVE_LICENCES:
         return f"licence {row['licence_spdx'] or 'missing'} is not in the permissive set"
@@ -104,11 +149,8 @@ def blocking_value_reason(row: dict[str, Any]) -> str | None:
         return "a successor URL is recorded"
     if row["days_since_push"] < ABANDONED_AFTER_DAYS:
         return f"last push was {row['days_since_push']} days ago, under the {ABANDONED_AFTER_DAYS}-day abandonment bar"
-    if not row["unique_capability"] or row["similar_repo_count"] >= SIMILAR_REPO_BLOCK:
-        return (
-            f"similar_repo_count is {row['similar_repo_count']} and unique_capability is "
-            f"{row['unique_capability']!r}"
-        )
+    if not row["unique_capability"]:
+        return "unique_capability is empty"
     return None
 
 
@@ -117,8 +159,11 @@ def validation_block_reason(row: dict[str, Any], signals: list[dict[str, Any]]) 
         return "has_tests is false"
     if not row["has_license_file"]:
         return "has_license_file is false"
-    if row["ci_status"] != "success":
-        return f"ci_status is {row['ci_status'] or 'missing'}"
+    if ci_kind(row["ci_status"]) == "failure":
+        for signal in signals:
+            if signal["signal"] == "ci_failure" and "toolchain setup step" in signal["detail"].lower():
+                return signal["detail"]
+        return f"ci_status is {row['ci_status']}"
     for signal in signals:
         if signal["signal"] in {"tests_absent", "ci_failure"} and not signal["supports_revival"]:
             return f"signal {signal['signal']} says revival is not supported"
@@ -126,13 +171,21 @@ def validation_block_reason(row: dict[str, Any], signals: list[dict[str, Any]]) 
 
 
 def decide(row: dict[str, Any], signals: list[dict[str, Any]]) -> tuple[str, str]:
+    note = alternatives_factor(row["similar_repo_count"])
     blocked = blocking_value_reason(row)
     if blocked:
-        return "NO_GO", blocked
+        return "NO_GO", f"{blocked}. {note}"
     validation = validation_block_reason(row, signals)
     if validation:
-        return "RESURRECTION_FAILED", validation
-    return "RESURRECTED", "licence, abandonment, distinct capability, tests, and CI all have supporting rows"
+        return "RESURRECTION_FAILED", f"{validation}. {note}"
+    if ci_kind(row["ci_status"]) == "success":
+        base = "licence, abandonment, distinct capability, tests, and a successful CI conclusion support revival"
+    else:
+        base = (
+            "licence, abandonment, distinct capability, and tests support revival; "
+            "CI is unknown and is not treated as a failure"
+        )
+    return "RESURRECTED", f"{base}. {note}"
 
 
 def explanation(row: dict[str, Any], decision: str, reason: str) -> str:
@@ -140,6 +193,7 @@ def explanation(row: dict[str, Any], decision: str, reason: str) -> str:
     return (
         f"Decision {decision} for {row['repo_id']}. {reason}. "
         f"Licence {row['licence_spdx']}, days_since_push {row['days_since_push']}, "
-        f"similar_repo_count {row['similar_repo_count']}, unique_capability {row['unique_capability']!r}, "
+        f"similar_repo_count {row['similar_repo_count'] if row['similar_repo_count'] is not None else 'unknown'}, "
+        f"unique_capability {row['unique_capability']!r}, "
         f"has_tests {row['has_tests']}, ci_status {row['ci_status']}. data_origin {origin}."
     )
