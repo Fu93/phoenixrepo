@@ -170,6 +170,141 @@ def validation_block_reason(row: dict[str, Any], signals: list[dict[str, Any]]) 
     return None
 
 
+def normalize_attempt(row: dict[str, Any]) -> dict[str, Any]:
+    required = (
+        "repo_id",
+        "fork_full_name",
+        "stage",
+        "status",
+        "ci_status",
+        "ci_run_url",
+        "commit_sha",
+    )
+    missing = [column for column in required if column not in row]
+    if missing:
+        raise InvestigationError(
+            "ZetarisSchemaError",
+            "phoenix.revival_attempts is missing columns: " + ", ".join(missing),
+            status_code=502,
+        )
+    return {
+        "repo_id": blank_text(row.get("repo_id")),
+        "fork_full_name": blank_text(row.get("fork_full_name")),
+        "upstream_full_name": blank_text(row.get("upstream_full_name")),
+        "stage": blank_text(row.get("stage")).lower(),
+        "status": blank_text(row.get("status")).lower(),
+        "ci_status": blank_text(row.get("ci_status")).lower(),
+        "ci_run_url": blank_text(row.get("ci_run_url")),
+        "ci_run_name": blank_text(row.get("ci_run_name")),
+        "ci_run_event": blank_text(row.get("ci_run_event")),
+        "commit_sha": blank_text(row.get("commit_sha")),
+        "compare_url": blank_text(row.get("compare_url")),
+        "default_branch": blank_text(row.get("default_branch")),
+        "head_sha": blank_text(row.get("head_sha")),
+        "data_origin": blank_text(row.get("data_origin")),
+    }
+
+
+def normalize_source(row: dict[str, Any]) -> dict[str, Any]:
+    required = ("repo_id", "source_id", "kind", "url", "excerpt")
+    missing = [column for column in required if column not in row]
+    if missing:
+        raise InvestigationError(
+            "ZetarisSchemaError",
+            "phoenix.revival_sources is missing columns: " + ", ".join(missing),
+            status_code=502,
+        )
+    return {
+        "repo_id": blank_text(row.get("repo_id")),
+        "source_id": blank_text(row.get("source_id")),
+        "kind": blank_text(row.get("kind")).lower(),
+        "title": blank_text(row.get("title")),
+        "url": blank_text(row.get("url")),
+        "excerpt": blank_text(row.get("excerpt")),
+        "data_origin": blank_text(row.get("data_origin")),
+    }
+
+
+_NOT_YET = "Revival has not yet been attempted."
+
+
+def _revive_success(attempt: dict[str, Any]) -> bool:
+    return (
+        attempt["stage"] == "revive"
+        and attempt["status"] == "success"
+        and attempt["ci_status"] == "success"
+        and bool(attempt["commit_sha"])
+        and bool(attempt["ci_run_url"])
+    )
+
+
+def _revive_failure(attempt: dict[str, Any]) -> bool:
+    return attempt["stage"] == "revive" and attempt["status"] == "failure" and bool(attempt["ci_run_url"])
+
+
+def upgrade_result(attempts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Stages refactor and upgrade are reported beside the verdict. They do not decide it."""
+
+    stages = [
+        {
+            "stage": attempt["stage"],
+            "status": attempt["status"],
+            "ci_run_url": attempt["ci_run_url"],
+            "commit_sha": attempt["commit_sha"],
+            "fork_full_name": attempt["fork_full_name"],
+        }
+        for attempt in attempts
+        if attempt["stage"] in {"refactor", "upgrade"}
+    ]
+    return {
+        "changes_verdict": False,
+        "note": "Refactor and upgrade stages do not change the verdict. The verdict uses stage revive only.",
+        "stages": stages,
+    }
+
+
+def apply_revival_attempts(
+    row: dict[str, Any],
+    signals: list[dict[str, Any]],
+    attempts: list[dict[str, Any]] | None,
+) -> tuple[str, str, dict[str, Any]]:
+    """Fold fork attempt rows into the row policy.
+
+    ``attempts is None`` keeps the legacy decision text so existing callers stay stable.
+    An empty list means no attempt was recorded.
+    Stage revive success can override an upstream CI failure. It cannot override NO_GO.
+    Stage revive failure cites that run. Refactor and upgrade never change the decision.
+    """
+
+    decision, reason = decide(row, signals)
+    recorded = list(attempts or [])
+    upgrade = upgrade_result(recorded)
+    if attempts is None or decision == "NO_GO":
+        return decision, reason, upgrade
+    success = next((attempt for attempt in recorded if _revive_success(attempt)), None)
+    if success:
+        fork = success["fork_full_name"] or "unrecorded fork"
+        branch = success["default_branch"] or "unrecorded"
+        overridden = (
+            f"Stage revive succeeded: eligible build/test CI on fork {fork} "
+            f"default branch {branch} concluded success at {success['ci_run_url']} "
+            f"for commit {success['commit_sha']}."
+        )
+        return "RESURRECTED", f"{overridden} {alternatives_factor(row['similar_repo_count'])}", upgrade
+    failure = next((attempt for attempt in recorded if _revive_failure(attempt)), None)
+    if failure:
+        commit = f" for commit {failure['commit_sha']}" if failure["commit_sha"] else ""
+        conclusion = failure["ci_status"] or "failure"
+        cited = (
+            f"Stage revive failed: eligible build/test CI concluded {conclusion} "
+            f"at {failure['ci_run_url']}{commit}."
+        )
+        return "RESURRECTION_FAILED", f"{cited} {alternatives_factor(row['similar_repo_count'])}", upgrade
+    if _NOT_YET not in reason:
+        reason = f"{reason} {_NOT_YET}"
+    return decision, reason, upgrade
+
+
 def decide(row: dict[str, Any], signals: list[dict[str, Any]]) -> tuple[str, str]:
     note = alternatives_factor(row["similar_repo_count"])
     blocked = blocking_value_reason(row)

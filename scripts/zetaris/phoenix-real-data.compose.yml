@@ -6,16 +6,15 @@
 # There is no default.
 #
 #   export PHOENIX_REAL_DATA=/absolute/path/to/phoenixrepo/data/real
-#   docker compose ps
 #   docker compose -f docker-compose.yml -f /absolute/path/to/phoenixrepo/scripts/zetaris/phoenix-real-data.compose.yml ps
 #
-# `docker compose ps` prints the service names that are actually running.
-# The key below is a placeholder. Change it to one of those names before
-# you start or recreate the stack with this file. The container path
-# /opt/phoenixrepo/data/real is what scripts/zetaris/load_real.ps1 uses
-# unless you pass -ContainerPath. Neither the service name nor that mount
-# path was confirmed against a running install from this environment.
+# The running service name on the user's install is driver. The driver rejects
+# a mount under /opt with "Not allowed to access system file path". The allowed
+# root is /home/zetaris/customer-data/shared/. This file therefore mounts the
+# snapshot at /home/zetaris/customer-data/shared/phoenix_real, which is also the
+# default -ContainerPath in scripts/zetaris/load_real.ps1. This agent did not
+# execute the mount.
 services:
-  REPLACE_WITH_SERVICE_FROM_docker_compose_ps:
+  driver:
     volumes:
-      - ${PHOENIX_REAL_DATA:?PHOENIX_REAL_DATA must be set inside WSL}:/opt/phoenixrepo/data/real:ro
+      - ${PHOENIX_REAL_DATA:?PHOENIX_REAL_DATA must be set inside WSL}:/home/zetaris/customer-data/shared/phoenix_real:ro

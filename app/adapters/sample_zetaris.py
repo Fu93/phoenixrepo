@@ -11,17 +11,19 @@ from typing import Any
 from app.adapters.zetaris import ZetarisResult, assert_single_statement
 from app.errors import ZetarisError
 from app.paths import repo_root
-from app.sql_catalog import PROFILE_COLUMNS, SIGNAL_COLUMNS
+from app.sql_catalog import ATTEMPT_COLUMNS, PROFILE_COLUMNS, SIGNAL_COLUMNS, SOURCE_COLUMNS
 
 _QUERY = re.compile(
-    r"^select\s+(?P<cols>.+?)\s+from\s+phoenix\.(?P<view>repo_evidence|revival_signals)"
+    r"^select\s+(?P<cols>.+?)\s+from\s+phoenix\.(?P<view>repo_evidence|revival_signals|revival_attempts|revival_sources)"
     r"\s+where\s+(?P<col>[a-z_]+)\s*=\s*'(?P<literal>(?:[^']|'')*)'\s*$",
     re.IGNORECASE | re.DOTALL,
 )
 
 _VIEWS = {
-    "repo_evidence": ("repo_evidence.csv", PROFILE_COLUMNS),
-    "revival_signals": ("revival_signals.csv", SIGNAL_COLUMNS),
+    "repo_evidence": ("repo_evidence.csv", PROFILE_COLUMNS, False),
+    "revival_signals": ("revival_signals.csv", SIGNAL_COLUMNS, False),
+    "revival_attempts": ("revival_attempts.csv", ATTEMPT_COLUMNS, True),
+    "revival_sources": ("revival_sources.csv", SOURCE_COLUMNS, True),
 }
 
 
@@ -35,8 +37,8 @@ class SampleZetaris:
             extra_dirs = [real] if (real / "repo_evidence.csv").exists() else []
         self.extra_dirs = list(extra_dirs or [])
         self._tables = {
-            view: self._load(filename, columns)
-            for view, (filename, columns) in _VIEWS.items()
+            view: self._load(filename, columns, allow_empty=allow_empty)
+            for view, (filename, columns, allow_empty) in _VIEWS.items()
         }
 
     def provider(self) -> str:
@@ -69,8 +71,8 @@ class SampleZetaris:
         match = _QUERY.match(statement)
         if not match:
             raise ZetarisError(
-                "Sample Zetaris only runs a single SELECT against phoenix.repo_evidence "
-                "or phoenix.revival_signals.",
+                "Sample Zetaris only runs a single SELECT against phoenix.repo_evidence, "
+                "phoenix.revival_signals, phoenix.revival_attempts, or phoenix.revival_sources.",
                 status_code=400,
             )
         view = match.group("view").lower()
@@ -103,32 +105,24 @@ class SampleZetaris:
             mode="sample-cache",
         )
 
-    def _load(self, filename: str, expected: tuple[str, ...]) -> dict[str, Any]:
-        path = self.cache_dir / filename
-        if not path.exists():
-            raise ZetarisError(f"Sample cache is missing {filename}.", status_code=500)
-        with path.open(newline="", encoding="utf-8") as handle:
-            reader = csv.DictReader(handle)
-            columns = tuple(reader.fieldnames or ())
-            if columns != expected:
-                raise ZetarisError(
-                    f"{filename} columns {columns} do not match the phoenix view contract.",
-                    status_code=500,
-                )
-            rows = [dict(row) for row in reader]
-        if not rows:
-            raise ZetarisError(f"{filename} has no rows.", status_code=500)
-        for extra in self.extra_dirs:
-            extra_path = extra / filename
-            if not extra_path.exists():
+    def _load(self, filename: str, expected: tuple[str, ...], *, allow_empty: bool) -> dict[str, Any]:
+        rows: list[dict[str, str]] = []
+        found = False
+        for path in [self.cache_dir / filename, *[extra / filename for extra in self.extra_dirs]]:
+            if not path.exists():
                 continue
-            with extra_path.open(newline="", encoding="utf-8") as handle:
+            found = True
+            with path.open(newline="", encoding="utf-8") as handle:
                 reader = csv.DictReader(handle)
-                extra_columns = tuple(reader.fieldnames or ())
-                if extra_columns != expected:
+                columns = tuple(reader.fieldnames or ())
+                if columns != expected:
                     raise ZetarisError(
-                        f"{extra_path} columns {extra_columns} do not match the phoenix view contract.",
+                        f"{path} columns {columns} do not match the phoenix view contract.",
                         status_code=500,
                     )
                 rows.extend(dict(row) for row in reader)
-        return {"columns": columns, "rows": rows}
+        if not found and not allow_empty:
+            raise ZetarisError(f"Sample cache is missing {filename}.", status_code=500)
+        if not rows and not allow_empty:
+            raise ZetarisError(f"{filename} has no rows.", status_code=500)
+        return {"columns": expected, "rows": rows}

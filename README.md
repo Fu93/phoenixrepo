@@ -14,13 +14,13 @@ Abandoned repositories are cheap to restart and expensive to regret. A revival w
 | --- | --- |
 | `NO_GO` | The Zetaris rows fail the value rules (licence, abandonment, successor, or an empty distinct capability). A high close-substitute score does not, by itself, do this. |
 | `RESURRECTION_FAILED` | The rows say it is worth reviving, and the recorded tests are absent or the latest CI conclusion failed. Missing CI does not do this. |
-| `RESURRECTED` | The cited rows satisfy the revival rules: permissive licence, abandoned, a distinct capability, a licence file, tests, and CI that succeeded or is unknown. |
+| `RESURRECTED` | The cited rows satisfy the revival rules: permissive licence, abandoned, a distinct capability, a licence file, tests, and CI that succeeded or is unknown. A recorded stage-revive success on a fork can also reach this verdict after an upstream CI failure. |
 
-`RESURRECTED` does **not** mean this program cloned, compiled, tested, or republished the repository. The pre-event plan used that word for a future prover. This core reuses the state-machine token and means "the evidence policy accepted a revival contract". The response field `metadata.scope` says the same thing.
+`RESURRECTED` does **not** mean this program cloned, compiled, tested, or republished the repository. The pre-event plan used that word for a future prover. This core reuses the state-machine token. With no stage-revive attempt, it still means the row policy accepted a revival contract, and the verdict text says revival has not yet been attempted. A stage-revive success means the fork's eligible build/test CI went green after an attempt commit. The response field `metadata.scope` says the same thing.
 
 ## Agents
 
-The orchestrator, the evidence graph, and the state machine are infrastructure from the 8 October skeleton. They are not agents. Six roles share that graph.
+The orchestrator, the evidence graph, and the state machine are infrastructure from the 8 October skeleton. They are not agents. Seven roles share that graph.
 
 | Role | What it does | Can block or force a retry |
 | --- | --- | --- |
@@ -30,13 +30,14 @@ The orchestrator, the evidence graph, and the state machine are infrastructure f
 | Builder | Proposes the next step. It is not allowed to mark verification as `PASS`. | No. A `PASS` or a step with no evidence id is rejected. |
 | Validator | Checks evidence ids, quoted row values, and the builder rule. In live mode it also calls Nightshift as an LLM judge that can reject a claim. | Yes. It blocks unsupported claims and forces one retry. A missing evidence id wins even when the LLM judge accepts. It is the only role that may accept a revival. |
 | Diagnostician | On a failed validation, and only while repair budget remains, asks Zetaris for `phoenix.revival_signals` again. | It cannot declare success. A second failure becomes `RESURRECTION_FAILED`. |
+| Planner | For a repository that is not `NO_GO`, writes a three-stage revival PRD. Every finding and task cites a Zetaris evidence id and the query that produced it. | No. The validator rejects a line with no evidence id. A live draft that fails that check is replaced by the deterministic PRD. |
 
 Collaboration that is actually in the run:
 
 - Shared state: one evidence graph and one H-MEM store.
 - Critique loop: the validator rejects the archaeologist's first unsupported demand claim, and rejects a builder `PASS`.
 - Retry: one bounded retry for those rejections, plus at most `max_repair_iterations` signal re-queries.
-- Role authority: the builder cannot write `PASS`. `NO_GO` does not call the architect, builder, or diagnostician.
+- Role authority: the builder cannot write `PASS`. `NO_GO` does not call the architect, builder, diagnostician, or planner.
 - Non-linear flow: a failed validation returns to Zetaris through the diagnostician instead of continuing forward.
 - Markovian carryover: each role sees a bounded summary of the previous step, not the raw transcript.
 
@@ -50,6 +51,7 @@ The terminal state itself is an evidence policy in `app/agents/policy.py`, not a
 - a non-empty `unique_capability`
 - a close-substitute search total, scored as `alternatives_factor` low, moderate, high, or unknown. The score is reported with the uncertainty that a GitHub search total is not a census of substitutes. It does not, by itself, decide the verdict. There is no hard cut at 40.
 - for `RESURRECTED`: `has_tests`, `has_license_file`, and a build or test CI conclusion that is `success` or unknown. A conclusion of `failure`, `cancelled`, `timed_out`, or `startup_failure` on that workflow is `RESURRECTION_FAILED`. When the failing step is toolchain setup, the reason names that step and says CI has decayed. It does not say the tests failed. A security or analysis scan (CodeQL and similar), a run still awaiting approval (`action_required`), and a fork pull request are CI unknown, never success. Missing build/test CI is unknown, not a failure and not an automatic block. `archived=true` is recorded and is not a pass or a block.
+- Revival attempts, when the orchestrator loaded `phoenix.revival_attempts`: stage `revive` with status `success`, `ci_status` `success`, a commit SHA, and a CI run URL overrides an upstream CI failure and is `RESURRECTED`. Stage `revive` status `failure` is `RESURRECTION_FAILED` and the reason cites that run. No attempt keeps the row verdict and adds "Revival has not yet been attempted." Stages `refactor` and `upgrade` are `metadata.upgrade`. They do not change the verdict. A fork attempt does not override `NO_GO`. `decide()` with no attempts argument keeps the older row-only text so a caller that has not loaded attempts is unchanged.
 
 A live model writes the explanation. If that explanation disagrees with the policy or does not quote the licence and `days_since_push`, it is rejected. The verdict text then comes from the policy. Sample mode's stand-in quotes the rows, so its explanation is accepted.
 
@@ -126,7 +128,7 @@ Then register the semantic layer. Run **one statement at a time** from `scripts/
 1. `01_github_rest_repo.sql` creates the `GITHUB_REST` Lightning database.
 2. `02_github_repo_table.sql` registers one public GitHub repository object. Replace `OWNER/REPO`. GitHub's API terms apply. Do not commit a token.
 3. `03_curated_files.sql` is the header for the curated CSVs. Zetaris cannot read a file that only exists on the laptop. Copy `data/live/curated_signals.example.csv` and `data/live/revival_signals.example.csv` to storage Zetaris can reach (S3 or platform storage), fill the row whose `repo_id` is `owner/name`, and run the filestore statements with your path. Do not put storage keys in git.
-4. `04_phoenix_views.sql` creates the `phoenix` SchemaStore container and the two views the agent queries: `phoenix.repo_evidence` and `phoenix.revival_signals`.
+4. `04_phoenix_views.sql` creates the `phoenix` SchemaStore container and the views the agent queries: `phoenix.repo_evidence`, `phoenix.revival_signals`, `phoenix.revival_attempts`, and `phoenix.revival_sources`.
 
 `days_since_push`, tests, CI, and `unique_capability` are curated columns. They are not single fields on GitHub's repository object. This is a SchemaStore semantic layer. It is not a claim that a Zetaris Unified Semantic Layer definition was deployed; that DDL was not verified against a live instance.
 
@@ -237,7 +239,9 @@ Each output file is the JSON body of one real sample run, including that run's i
 | Data | What it is | Licence / terms |
 | --- | --- | --- |
 | `data/sample/repo_evidence.csv`, `data/sample/revival_signals.csv` | Original synthetic rows written for this project. `data_origin=synthetic_labelled`. No PII. Not measurements of real repositories. | Project content. No upstream dataset. |
+| `data/sample/revival_attempts.csv`, `data/sample/revival_sources.csv` | Header only. Sample repos have no attempt and no cited GitHub source. | Empty. |
 | `data/real/repo_evidence.csv`, `data/real/revival_signals.csv`, `data/real/provenance.json` | Snapshot of public GitHub REST facts for five repositories, plus rule-based columns. `provenance.json` records `collected_at` (`2026-10-22T15:14:30.161592+00:00`), the endpoints, and the rule for each curated column. API fields that were null or missing are empty. No token is in the file. | GitHub API terms. Public repository metadata. The snapshot is committed so a judge can read it offline. |
+| `data/real/revival_attempts.csv`, `data/real/revival_sources.csv`, `data/real/revival_attempts_provenance.json` | Fork attempt rows and the documents the hygen PRD quotes. Collected by `scripts/collect_revival_attempt.py` at the `collected_at` in that provenance file. | GitHub API terms. Public metadata and issue text. |
 | `data/live/*.example.csv` | Header-only templates. | Empty. |
 | GitHub REST registration in `scripts/zetaris/02_github_repo_table.sql` | Live query of `https://api.github.com/repos/OWNER/REPO` when you run it inside Zetaris. | GitHub API terms. Public repository metadata. Do not commit tokens or private-repo responses. |
 | Curated CSV you fill | Operator-supplied columns (days since push, tests, CI, uniqueness). | Whatever you are allowed to store. Do not put personal data in it. |
@@ -254,7 +258,21 @@ Declared: everything committed before 22 October 2026 00:00 UTC. In this reposit
 
 That skeleton includes the FastAPI process, Docker image, evidence graph and pack, integrity hash, state machine (including the three terminal names), audit trail, secret redaction, and `FoundationOrchestrator`. The foundation orchestrator still stops at `EVIDENCE_COMPLETE` with `decision: null`. It is not the path `POST /run` uses now. `POST /run` uses `InvestigationOrchestrator`, which is build-window work.
 
-Build-window work includes the Zetaris REST client, the sample SQL cache, the Meterless Runtime provider, the NVIDIA fallback, H-MEM, the Markovian loop, the six roles, the validator, traces in the hackathon field list, sample verdicts, `smoke_test.py`, the real-repository snapshot, the live LLM judge, and this README. A Cursor cloud agent (Grok 4.7) wrote that build-window code, including this phase. It did not call Nightshift from CI.
+Build-window work includes the Zetaris REST client, the sample SQL cache, the Meterless Runtime provider, the NVIDIA fallback, H-MEM, the Markovian loop, the seven roles, the validator, traces in the hackathon field list, sample verdicts, `smoke_test.py`, the real-repository snapshot, the live LLM judge, the revival PRD, and this README. A Cursor cloud agent (Grok 4.7) wrote that build-window code, including this phase. It did not call Nightshift from CI.
+
+## Plan, act, verify
+
+The planner writes `docs/revival/<owner>__<name>.prd.md` and a JSON sibling for any repository that is not `NO_GO`. The committed hygen plan is `docs/revival/jondot__hygen.prd.md`, produced by `scripts/write_revival_prd.py` from the snapshot. `drafted_by` is `deterministic` and `llm_drafted` is false. A live model may draft the same shape; the validator drops any line that does not cite a loaded evidence id, and the deterministic builder replaces a draft that still fails after one retry.
+
+The plan has three stages, each small enough to finish before 27 Oct 2026 23:45 UTC:
+
+1. **REVIVE.** Install, build, test, and make eligible build/test CI green on the fork default branch. This is the only gate for `RESURRECTED`.
+2. **REFACTOR / OPTIMISE.** One or two cleanups named by the evidence. For hygen that is the `actions/checkout@v2` and `actions/setup-node@v2` pins in `.github/workflows/ci.yml`.
+3. **UPGRADE.** One visible change from a real issue. For hygen that is [jondot/hygen#450](https://github.com/jondot/hygen/issues/450), because the issue body shows `hygen --version` printing `Error: please specify a generator.`
+
+`scripts/collect_revival_attempt.py` records one `revival_attempts` row per stage (`stage`, `status`, `ci_run_url`, `commit_sha`) plus the source rows the PRD quotes. The fork was identical to upstream when that script ran, so every stage is `not_attempted` and `commit_sha` is empty. The observed compare base SHA is stored in `head_sha` and is not an attempt commit. A later collection can mark stage revive success or failure only when the compare is ahead of upstream and the fork default branch has an eligible build/test run. Refactor and upgrade are not guessed from commit messages.
+
+This loop was not closed here. The plan is committed. No coding agent has pushed to `https://github.com/Fu93/hygen`, and this environment did not run that repository's install, tests, or Actions.
 
 ## Real snapshot and local Zetaris
 
@@ -265,14 +283,14 @@ The offline evidence policy on this snapshot is what `tests/data/test_curation.p
 - `golang/dep` is `NO_GO` because the README places `https://golang.org/ref/mod` next to "in favor of". The homepage is not that URL.
 - `jxnblk/rgx` is `NO_GO` because the repository payload has no SPDX licence id.
 - `discreteoptimization/setcover` is `RESURRECTION_FAILED` because the tree has no test path. Its Actions conclusion is empty, so CI is unknown and is not the reason.
-- `jondot/hygen` is `RESURRECTION_FAILED` because its build/test workflow `CI` failed. The failed job step recorded by the Actions jobs API is `Use Node.js 14.x`, a toolchain setup step, so CI has decayed. That is not a test failure. The run is a schedule on `master` from `jondot/hygen`.
-- `42wim/matterbridge` is `RESURRECTED` with CI unknown. It is Apache-2.0, not archived, last pushed more than 180 days before collection, has test filenames, and the README records no successor URL. Its build/test workflow is `development.yml`. The latest runs of that workflow are fork pull requests awaiting approval (`action_required`) or fork-PR failures, so the default branch build state is unknown. A scheduled CodeQL success is a security scan and is not counted as CI success. The verdict text says CI is unknown. It does not say a successful CI conclusion supports revival.
+- `jondot/hygen` is `RESURRECTION_FAILED` because its build/test workflow `CI` failed. The failed job step recorded by the Actions jobs API is `Use Node.js 14.x`, a toolchain setup step, so CI has decayed. That is not a test failure. The run is a schedule on `master` from `jondot/hygen`. The fork `Fu93/hygen` is identical to upstream (`ahead_by` 0) and has no Actions runs, so the attempt rows are `not_attempted`. An investigation verdict adds "Revival has not yet been attempted." The deterministic PRD is `docs/revival/jondot__hygen.prd.md`. No LLM drafted it.
+- `42wim/matterbridge` is `RESURRECTED` with CI unknown. It is Apache-2.0, not archived, last pushed more than 180 days before collection, has test filenames, and the README records no successor URL. Its build/test workflow is `development.yml`. The latest runs of that workflow are fork pull requests awaiting approval (`action_required`) or fork-PR failures, so the default branch build state is unknown. A scheduled CodeQL success is a security scan and is not counted as CI success. The verdict text says CI is unknown. It does not say a successful CI conclusion supports revival. No revival attempt was collected for it, so an investigation verdict also says revival has not yet been attempted.
 
 `ariya/phantomjs` is not in this snapshot. An earlier readme API fetch did not contain "Puppeteer", "Playwright", or a successor phrase, so this dataset does not say it was replaced by those tools.
 
 Loading those CSVs into the user's local Zetaris (Docker on Windows or WSL2, REST at `http://localhost:8888/api/v1.0`) is **not verified** from this environment:
 
-1. From the Zetaris platform directory, inside WSL, set `PHOENIX_REAL_DATA` to the absolute path of `data/real`. Run `docker compose ps` and change the placeholder service name in `scripts/zetaris/phoenix-real-data.compose.yml` to a name that command prints. Then pass the file explicitly: `docker compose -f docker-compose.yml -f /path/to/phoenixrepo/scripts/zetaris/phoenix-real-data.compose.yml`. It is not named `docker-compose.override.yml`, so Compose will not merge it automatically. The container path `/opt/phoenixrepo/data/real` is the default `load_real.ps1` expects. This environment did not confirm the service name or that path on a running install.
+1. From the Zetaris platform directory, inside WSL, set `PHOENIX_REAL_DATA` to the absolute path of `data/real`. Pass the file explicitly: `docker compose -f docker-compose.yml -f /path/to/phoenixrepo/scripts/zetaris/phoenix-real-data.compose.yml`. It is not named `docker-compose.override.yml`, so Compose will not merge it automatically. The user's install reports the service name `driver` and rejects a mount under `/opt` with `Not allowed to access system file path`. The compose file mounts the snapshot at `/home/zetaris/customer-data/shared/phoenix_real`, which is the default `-ContainerPath`. This agent did not execute the mount.
 2. `powershell -ExecutionPolicy Bypass -File scripts\zetaris\load_real.ps1` sends one Lightning statement per REST call. `ZETARIS_API_KEY` is read from the environment and is not printed. A HTTP 200 whose body contains an error object is a failure (`200 error-body`). If the error text says the database, table, schemastore container, or view already exists, the script continues. The word "duplicate" alone is not treated as existence. A view that already exists prints `view-exists` and a warning that the previous view was left in place. `-Alternative Filestore` uses `CREATE LIGHTNING FILESTORE TABLE ... FORMAT CSV OPTIONS (path ...)`. `-Alternative SparkCsv` uses `CREATE TABLE ... USING com.databricks.spark.csv`. The SQL manual documents both. The getting-started FILESTORE example that has been seen working is a public S3 path, not this bind mount. If `phoenix.repo_evidence` already exists from `04_phoenix_views.sql`, the warning leaves that older view in place. A DROP statement was not verified, so the script does not send one. After the statements it selects `repo_id, data_origin` and prints `verified rows=N` only when the row count matches `data/real/repo_evidence.csv` and every `data_origin` starts with `github_rest_api`. Otherwise it prints `verify-failed`.
 
 `scripts/demo_live.ps1` checks Docker, `GET {METERLESS_BASE_URL}/models` with the same bearer token and `meterless-app` header the product uses, `GET /health` and requires `sample_mode` false, and `SELECT 1` on Zetaris. It then `POST /run` for three real repositories, one for each verdict. It writes `logs/demo-live.md` through `scripts/demo_summary.py`. It was not run here. The API process has to be up in live mode first. `scripts/render_trace.py` turns a trace JSONL into markdown or HTML for a demo video. That renderer was executed by the offline tests, not against a live Nightshift trace.
@@ -280,10 +298,10 @@ Loading those CSVs into the user's local Zetaris (Docker on Windows or WSL2, RES
 ## Limitations
 
 - CI and the tests in this repo never call a live Zetaris or a live Nightshift. Zetaris and Meterless are checked with a local HTTP server that speaks the documented contract, and with sample mode. The LLM-judge tests use a mock `complete()`. You still need a Windows run of `scripts/demo_live.ps1` before calling the live judge or the real-CSV mount verified.
-- What was run live: on 22 Oct 2026 at `2026-10-22T15:14:30Z` this environment ran `scripts/curate_real_repos.py` against `https://api.github.com` with no token and wrote the five-repository snapshot in `data/real`. On 22 Oct 2026 15:00 BST a Windows machine saw Nightshift `GET /v1/models` return 200 and chat for `meterless/auto` and `nvidia/nemotron-3-super-120b-a12b` return HTTP 200 served as `nvidia/nemotron-3-ultra-550b-a55b`. The same machine's Zetaris SQL Editor body was `{"headers": [...], "data": [[string cells]]}`.
-- What was not run live from this agent: the compose bind mount, `load_real.ps1`, a Nightshift LLM-judge call inside `POST /run`, and `demo_live.ps1`.
-- The verdict is a fixed evidence policy. The live LLM judge is advisory: a reject can retry once, and a timeout, 401, or other judge error is logged and does not replace the policy verdict. A missing evidence id still beats an LLM accept. The judge cannot receive `RESURRECTED` when the rows do not support it.
-- `RESURRECTED` is not a rebuilt repository.
+- What was run live: on 22 Oct 2026 at `2026-10-22T15:14:30Z` this environment ran `scripts/curate_real_repos.py` against `https://api.github.com` with no token and wrote the five-repository snapshot in `data/real`. On 22 Oct 2026 at `2026-10-22T15:53:26Z` it ran `scripts/collect_revival_attempt.py` for fork `Fu93/hygen` against upstream `jondot/hygen`, including open issue 450, the CI workflow, and `package.json`. On 22 Oct 2026 15:00 BST a Windows machine saw Nightshift `GET /v1/models` return 200 and chat for `meterless/auto` and `nvidia/nemotron-3-super-120b-a12b` return HTTP 200 served as `nvidia/nemotron-3-ultra-550b-a55b`. The same machine's Zetaris SQL Editor body was `{"headers": [...], "data": [[string cells]]}`.
+- What was not run live from this agent: the compose bind mount, `load_real.ps1`, a Nightshift LLM-judge call inside `POST /run`, `demo_live.ps1`, and any commit or CI run on `Fu93/hygen`. The PRD was not executed. Nightshift did not draft it.
+- The verdict is a fixed evidence policy. The live LLM judge is advisory: a reject can retry once, and a timeout, 401, or other judge error is logged and does not replace the policy verdict. A missing evidence id still beats an LLM accept. The judge cannot receive `RESURRECTED` when the rows do not support it. Stage revive is the only attempt stage that can change that verdict. Refactor and upgrade are reported beside it.
+- `RESURRECTED` is not, by itself, a rebuilt repository. It becomes one only after a recorded stage-revive attempt has eligible build/test CI success on the fork default branch. That attempt has not been made for the repos in this snapshot.
 - The sample stand-in's first archaeologist and builder attempts are deliberately unsupported so the critique loop can be demonstrated offline.
 - H-MEM embeddings are a hash mock. Ranking tests cover the published formula. They do not claim neural retrieval quality.
 - One GitHub Lightning REST table is one repository endpoint, following the Zetaris recipe style. A catalog of many repos means more tables or a file you register yourself.

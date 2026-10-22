@@ -13,7 +13,11 @@
 #
 # Requires ZETARIS_API_KEY in the environment. It is sent as a bearer token and
 # is never printed. Optional: ZETARIS_REST_URL (default http://localhost:8888/api/v1.0),
-# ZETARIS_ORG_ID (default 1), and -ContainerPath (default /opt/phoenixrepo/data/real).
+# ZETARIS_ORG_ID (default 1), and -ContainerPath
+# (default /home/zetaris/customer-data/shared/phoenix_real).
+# The user's driver rejects /opt with "Not allowed to access system file path".
+# Files must sit under /home/zetaris/customer-data/shared/. This script was not
+# executed against that install.
 #
 # -Alternative Filestore  (default) CREATE LIGHTNING FILESTORE TABLE ... FORMAT CSV
 # -Alternative SparkCsv   CREATE TABLE ... USING com.databricks.spark.csv
@@ -28,7 +32,7 @@
 param(
     [ValidateSet("Filestore", "SparkCsv")]
     [string]$Alternative = "Filestore",
-    [string]$ContainerPath = "/opt/phoenixrepo/data/real"
+    [string]$ContainerPath = "/home/zetaris/customer-data/shared/phoenix_real"
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,6 +52,8 @@ if ([string]::IsNullOrWhiteSpace($org)) {
 $base = $base.TrimEnd("/")
 $evidence = ($ContainerPath.TrimEnd("/") + "/repo_evidence.csv").Replace("\", "/")
 $signals = ($ContainerPath.TrimEnd("/") + "/revival_signals.csv").Replace("\", "/")
+$attempts = ($ContainerPath.TrimEnd("/") + "/revival_attempts.csv").Replace("\", "/")
+$sources = ($ContainerPath.TrimEnd("/") + "/revival_sources.csv").Replace("\", "/")
 
 $profileColumns = @(
     "repo_id", "full_name", "description", "licence_spdx", "primary_language",
@@ -77,9 +83,25 @@ CREATE LIGHTNING FILESTORE TABLE revival_signals_file FROM PHOENIX_REAL FORMAT C
   delimiter ","
 )
 "@),
+        (New-Statement "table" @"
+CREATE LIGHTNING FILESTORE TABLE revival_attempts_file FROM PHOENIX_REAL FORMAT CSV OPTIONS (
+  path "$attempts",
+  header "true",
+  delimiter ","
+)
+"@),
+        (New-Statement "table" @"
+CREATE LIGHTNING FILESTORE TABLE revival_sources_file FROM PHOENIX_REAL FORMAT CSV OPTIONS (
+  path "$sources",
+  header "true",
+  delimiter ","
+)
+"@),
         (New-Statement "container" "CREATE SCHEMASTORE CONTAINER phoenix"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real.repo_evidence_file"),
-        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real.revival_signals_file")
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real.revival_signals_file"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, data_origin FROM phoenix_real.revival_attempts_file"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix_real.revival_sources_file")
     )
 }
 else {
@@ -98,9 +120,25 @@ CREATE TABLE phoenix_real_revival_signals USING com.databricks.spark.csv OPTIONS
   inferSchema "false"
 )
 "@),
+        (New-Statement "table" @"
+CREATE TABLE phoenix_real_revival_attempts USING com.databricks.spark.csv OPTIONS (
+  path "$attempts",
+  header "true",
+  inferSchema "false"
+)
+"@),
+        (New-Statement "table" @"
+CREATE TABLE phoenix_real_revival_sources USING com.databricks.spark.csv OPTIONS (
+  path "$sources",
+  header "true",
+  inferSchema "false"
+)
+"@),
         (New-Statement "container" "CREATE SCHEMASTORE CONTAINER phoenix"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real_repo_evidence"),
-        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real_revival_signals")
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real_revival_signals"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, data_origin FROM phoenix_real_revival_attempts"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix_real_revival_sources")
     )
 }
 
@@ -216,8 +254,44 @@ if (-not $checkError -and [int]$check.Code -ge 200 -and [int]$check.Code -lt 300
     }
     catch { $verified = $false }
 }
-if ($verified) {
-    Write-Output "verified rows=$expected"
+if (-not $verified) {
+    Write-Output "verify-failed"
+    exit 1
+}
+
+$attemptCsv = Join-Path $root "data/real/revival_attempts.csv"
+$attemptExpected = 0
+if (Test-Path -LiteralPath $attemptCsv) {
+    $attemptExpected = @(Import-Csv -LiteralPath $attemptCsv).Count
+}
+$attemptCheck = Invoke-ZetarisSql "SELECT repo_id, stage, data_origin FROM phoenix.revival_attempts"
+if ($attemptCheck.Unreachable) {
+    Write-Output "verify-failed"
+    exit 1
+}
+$attemptError = Get-ZetarisErrorText ([string]$attemptCheck.Content)
+$attemptsOk = $false
+if (-not $attemptError -and [int]$attemptCheck.Code -ge 200 -and [int]$attemptCheck.Code -lt 300) {
+    try {
+        $parsedAttempts = [string]$attemptCheck.Content | ConvertFrom-Json
+        $attemptHeaders = @($parsedAttempts.headers | ForEach-Object { "$_".ToLowerInvariant() })
+        $attemptOrigin = [array]::IndexOf($attemptHeaders, "data_origin")
+        $attemptRows = @($parsedAttempts.data)
+        $attemptsOk = $attemptOrigin -ge 0 -and $attemptRows.Count -eq $attemptExpected
+        if ($attemptsOk -and $attemptExpected -gt 0) {
+            foreach ($line in $attemptRows) {
+                $cells = @($line)
+                if ($attemptOrigin -ge $cells.Count -or -not ([string]$cells[$attemptOrigin]).StartsWith("github_rest_api")) {
+                    $attemptsOk = $false
+                    break
+                }
+            }
+        }
+    }
+    catch { $attemptsOk = $false }
+}
+if ($attemptsOk) {
+    Write-Output "verified rows=$expected attempts=$attemptExpected"
     exit 0
 }
 Write-Output "verify-failed"

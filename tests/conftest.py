@@ -11,6 +11,13 @@ SECRET_ENV_VARS = (
 
 
 @pytest.fixture(autouse=True)
+def isolate_prd_writes(tmp_path, monkeypatch):
+    """Keep sample and live-test runs from rewriting docs/revival."""
+
+    monkeypatch.setenv("PHOENIX_PRD_DIR", str(tmp_path / "revival-prds"))
+
+
+@pytest.fixture(autouse=True)
 def isolate_provider_credentials(monkeypatch):
     """Drop process secrets. API tests also skip a developer .env file."""
 

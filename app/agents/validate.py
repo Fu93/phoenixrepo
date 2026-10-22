@@ -62,6 +62,60 @@ def critique_judge(payload: dict, *, known_evidence_ids: set[str], row: dict, si
     return Critique(False)
 
 
+def critique_planner(payload: dict, *, known_evidence_ids: set[str]) -> Critique:
+    """Reject a PRD line that does not cite evidence already in the investigation."""
+
+    findings = payload.get("findings")
+    stages = payload.get("stages")
+    if not isinstance(findings, list) or not findings:
+        return Critique(True, "Planner returned no findings.", ["PLANNER"], "planner")
+    if not isinstance(stages, list) or [stage.get("id") for stage in stages if isinstance(stage, dict)] != [
+        "revive",
+        "refactor",
+        "upgrade",
+    ]:
+        return Critique(True, "Planner stages must be revive, refactor, then upgrade.", ["PLANNER"], "planner")
+    rejected: list[str] = []
+    reasons: list[str] = []
+    lines: list[tuple[str, dict]] = []
+    for finding in findings:
+        if isinstance(finding, dict):
+            lines.append((str(finding.get("id") or "finding"), finding))
+    for stage in stages:
+        if not isinstance(stage, dict):
+            return Critique(True, "A stage was not an object.", ["PLANNER"], "planner")
+        tasks = stage.get("tasks") or []
+        if not tasks:
+            reasons.append(f"Stage {stage.get('id')} has no tasks.")
+            rejected.append(str(stage.get("id") or "stage"))
+        for task in tasks:
+            if isinstance(task, dict):
+                lines.append((str(task.get("id") or "task"), task))
+                acceptance = task.get("acceptance") or []
+                if not acceptance:
+                    rejected.append(str(task.get("id") or "task"))
+                    reasons.append(f"{task.get('id') or 'task'} has no acceptance criteria.")
+    for risks in payload.get("risks") or []:
+        if isinstance(risks, dict):
+            lines.append((str(risks.get("id") or "risk"), risks))
+    for line_id, line in lines:
+        evidence_ids = line.get("evidence_ids") or []
+        if not evidence_ids:
+            rejected.append(line_id)
+            reasons.append(f"{line_id} has no evidence id.")
+            continue
+        unknown = [item for item in evidence_ids if item not in known_evidence_ids]
+        if unknown:
+            rejected.append(line_id)
+            reasons.append(f"{line_id} cites unknown evidence {unknown}.")
+        if not line.get("query_id") or not line.get("sql"):
+            rejected.append(line_id)
+            reasons.append(f"{line_id} has no query id or sql.")
+    if rejected:
+        return Critique(True, " ".join(reasons), sorted(set(rejected)), "planner")
+    return Critique(False)
+
+
 def critique_builder(payload: dict, *, known_evidence_ids: set[str]) -> Critique:
     if str(payload.get("verification_result", "")).upper() == "PASS":
         return Critique(

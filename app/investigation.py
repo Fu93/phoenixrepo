@@ -9,9 +9,26 @@ from typing import Any
 
 from app.adapters.sample_zetaris import SampleZetaris
 from app.adapters.zetaris import ZetarisClient, ZetarisResult
-from app.agents.policy import decide, explanation, normalize_profile, normalize_signal
+from app.agents.planner import (
+    attempt_evidence_id,
+    build_revival_prd,
+    evidence_context,
+    prd_basename,
+    render_json,
+    render_markdown,
+    source_evidence_id,
+)
+from app.agents.policy import (
+    apply_revival_attempts,
+    decide,
+    explanation,
+    normalize_attempt,
+    normalize_profile,
+    normalize_signal,
+    normalize_source,
+)
 from app.agents.llm_judge import call_llm_judge, combine
-from app.agents.validate import Critique, critique_archaeologist, critique_builder, critique_judge
+from app.agents.validate import Critique, critique_archaeologist, critique_builder, critique_judge, critique_planner
 from app.engines.hmem.ledger import TrustLedgerService
 from app.engines.hmem.retrieval import MemoryRetrievalService
 from app.engines.hmem.store import MemoryStoreService
@@ -20,7 +37,8 @@ from app.engines.markovian import ChunkManager, MarkovianConfig
 from app.errors import InvestigationError, ZetarisError
 from app.llm.parsing import parse_model_json
 from app.llm.provider import BoundLLM, build_llm
-from app.sql_catalog import profile_sql, require_repo_id, signals_sql
+from app.paths import repo_root
+from app.sql_catalog import attempts_sql, profile_sql, require_repo_id, signals_sql, sources_sql
 from app.trace_log import HackathonTrace
 from artifacts.store import ArtifactStore
 from audit.trail import AuditTrail
@@ -90,6 +108,12 @@ class InvestigationOrchestrator:
         )
         self.started = time.monotonic()
         self.queries: list[dict[str, str]] = []
+        self.upgrade: dict[str, Any] = {
+            "changes_verdict": False,
+            "note": "Refactor and upgrade stages do not change the verdict. The verdict uses stage revive only.",
+            "stages": [],
+        }
+        self.revival_prd: dict[str, Any] = {}
         self.critiques: list[dict[str, Any]] = []
         self.judge_events: list[dict[str, Any]] = []
         self.judge_failure = ""
@@ -104,13 +128,15 @@ class InvestigationOrchestrator:
             target_agent="archaeologist",
         )
         self.memory.hydrate()
-        profile_result, signal_result, row, signals = self._collect()
+        profile_result, signal_result, attempt_result, source_result, row, signals, attempts, sources = self._collect()
         profile_evidence_id = self._add_row_evidence(profile_result, row, "repository")
         signal_evidence_ids = [
             self._add_signal_evidence(signal_result, signal, index)
             for index, signal in enumerate(signals)
         ]
-        known = {profile_evidence_id, *signal_evidence_ids}
+        attempt_evidence_ids = self._add_attempt_evidence(attempt_result, attempts)
+        source_evidence_ids = self._add_source_evidence(source_result, sources)
+        known = {profile_evidence_id, *signal_evidence_ids, *attempt_evidence_ids, *source_evidence_ids}
         priors = self._prior_verdicts(row["repo_id"])
         prior_evidence_ids = [self._add_prior_evidence(item) for item in priors]
         known.update(prior_evidence_ids)
@@ -125,7 +151,7 @@ class InvestigationOrchestrator:
                 500,
             )
         judgment = self._judge(row, signals, known, recalled)
-        decision, policy_reason = decide(row, signals)
+        decision, policy_reason, self.upgrade = apply_revival_attempts(row, signals, attempts)
         self._advance(PhoenixState.RECONNAISSANCE_COMPLETE, "Repository row loaded from Zetaris.", [profile_evidence_id])
         self._advance(PhoenixState.EVIDENCE_COMPLETE, "Profile and revival signals loaded.", list(known))
         self._advance(PhoenixState.INTENT_RECONSTRUCTED, "Claims are tied to Zetaris rows.", [profile_evidence_id])
@@ -148,7 +174,7 @@ class InvestigationOrchestrator:
                     evidence_id = self._add_signal_evidence(signal_result, signal, index + len(signal_evidence_ids))
                     signal_evidence_ids.append(evidence_id)
                     known.add(evidence_id)
-                decision, policy_reason = decide(row, signals)
+                decision, policy_reason, self.upgrade = apply_revival_attempts(row, signals, attempts)
                 repairs_used += 1
                 self._advance(PhoenixState.REPAIRING, "Signals re-queried from Zetaris.", list(known))
                 self._advance(PhoenixState.VALIDATING, policy_reason, list(known))
@@ -158,10 +184,17 @@ class InvestigationOrchestrator:
                 self._advance(PhoenixState.RESURRECTED, policy_reason, list(known))
             else:
                 self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
+            self._planner(row, signals, attempts, sources, known)
         else:
             self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
 
-        verdict_text = judgment["explanation"] if judgment.get("accepted") else explanation(row, decision, policy_reason)
+        row_decision, _row_reason = decide(row, signals)
+        if judgment.get("accepted") and row_decision == decision:
+            verdict_text = judgment["explanation"]
+            if "not yet been attempted" in policy_reason and "not yet been attempted" not in verdict_text:
+                verdict_text = verdict_text.rstrip() + " Revival has not yet been attempted."
+        else:
+            verdict_text = explanation(row, decision, policy_reason)
         judge_note = self._judge_verdict_note()
         if judge_note:
             verdict_text = verdict_text.rstrip() + " " + judge_note
@@ -222,6 +255,8 @@ class InvestigationOrchestrator:
         )
         profile_result = self._query(profile_sql(self.repository))
         signal_result = self._query(signals_sql(self.repository))
+        attempt_result = self._query(attempts_sql(self.repository))
+        source_result = self._query(sources_sql(self.repository))
         if not profile_result.rows:
             raise InvestigationError(
                 "RepositoryNotInZetaris",
@@ -230,17 +265,27 @@ class InvestigationOrchestrator:
             )
         row = normalize_profile(profile_result.rows[0])
         signals = [normalize_signal(item) for item in signal_result.rows]
+        attempts = [normalize_attempt(item) for item in attempt_result.rows]
+        sources = [normalize_source(item) for item in source_result.rows]
+        self.profile_result = profile_result
+        self.signal_result = signal_result
+        self.attempt_result = attempt_result
+        self.source_result = source_result
         self.trace.event(
             agent_name="archaeologist",
             action="EVIDENCE_COLLECTION_COMPLETED",
             output_summary={
                 "profile_query_id": profile_result.query_id,
                 "signal_query_id": signal_result.query_id,
+                "attempt_query_id": attempt_result.query_id,
+                "source_query_id": source_result.query_id,
                 "signal_rows": len(signals),
+                "attempt_rows": len(attempts),
+                "source_rows": len(sources),
             },
             target_agent="validator",
         )
-        return profile_result, signal_result, row, signals
+        return profile_result, signal_result, attempt_result, source_result, row, signals, attempts, sources
 
     def _query(self, sql: str) -> ZetarisResult:
         self._check_run_budget()
@@ -289,6 +334,120 @@ class InvestigationOrchestrator:
         )
         self.graph.add_evidence(evidence)
         return evidence_id
+
+    def _add_json_evidence(self, evidence_id: str, result: ZetarisResult, payload: dict) -> str:
+        evidence = create_evidence(
+            evidence_id=evidence_id,
+            evidence_type="external",
+            source=result.source,
+            locator=result.query_id,
+            content=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            collector="zetaris_adapter",
+            metadata=self._evidence_metadata(result),
+        )
+        self.graph.add_evidence(evidence)
+        return evidence_id
+
+    def _add_attempt_evidence(self, result: ZetarisResult, attempts: list[dict]) -> list[str]:
+        if not attempts:
+            return [self._add_json_evidence(attempt_evidence_id(self.repository, "none"), result, {"rows": 0})]
+        return [
+            self._add_json_evidence(attempt_evidence_id(attempt["repo_id"], attempt["stage"]), result, attempt)
+            for attempt in attempts
+        ]
+
+    def _add_source_evidence(self, result: ZetarisResult, sources: list[dict]) -> list[str]:
+        if not sources:
+            return [self._add_json_evidence(source_evidence_id(self.repository, "none"), result, {"rows": 0})]
+        return [
+            self._add_json_evidence(source_evidence_id(source["repo_id"], source["source_id"]), result, source)
+            for source in sources
+        ]
+
+    def _planner(self, row: dict, signals: list[dict], attempts: list[dict], sources: list[dict], known: set[str]) -> None:
+        context = evidence_context(
+            row["repo_id"],
+            signals,
+            attempts,
+            sources,
+            queries={
+                "profile": {"query_id": self.profile_result.query_id, "sql": self.profile_result.sql},
+                "signals": {"query_id": self.signal_result.query_id, "sql": self.signal_result.sql},
+                "attempts": {"query_id": self.attempt_result.query_id, "sql": self.attempt_result.sql},
+                "sources": {"query_id": self.source_result.query_id, "sql": self.source_result.sql},
+            },
+        )
+        document = build_revival_prd(row, signals, attempts, sources, context)
+        accepted = None
+        critique = Critique(False)
+        for attempt in (1, 2):
+            payload = self.chunks.run(
+                f"planner-{attempt}",
+                lambda carryover, attempt=attempt, document=document: self._role_chunk(
+                    "planner",
+                    attempt,
+                    {"deterministic_prd": document, "row": row},
+                    carryover,
+                    target="validator",
+                ),
+            )
+            critique = critique_planner(payload, known_evidence_ids=known)
+            if not critique.rejected:
+                accepted = payload
+                break
+            self._record_critique(critique, attempt - 1)
+        if accepted is None:
+            accepted = document
+            self.trace.event(
+                agent_name="validator",
+                action="PLANNER_DETERMINISTIC_FALLBACK",
+                input_summary=critique.reason,
+                output_summary="The deterministic PRD replaced the uncited draft.",
+                target_agent="planner",
+                status="ok",
+            )
+        self.revival_prd = self._write_prd(accepted)
+
+    def _write_prd(self, document: dict) -> dict[str, Any]:
+        import os
+
+        override = os.environ.get("PHOENIX_PRD_DIR")
+        if override:
+            directory = Path(override)
+        elif str(self.repository).startswith("sample/"):
+            directory = None
+        else:
+            directory = repo_root() / "docs" / "revival"
+        markdown_path = ""
+        json_path = ""
+        if directory is not None:
+            directory.mkdir(parents=True, exist_ok=True)
+            base = prd_basename(str(document["repo_id"]))
+            markdown_file = directory / f"{base}.prd.md"
+            json_file = directory / f"{base}.prd.json"
+            markdown_file.write_text(render_markdown(document), encoding="utf-8")
+            json_file.write_text(render_json(document), encoding="utf-8")
+            markdown_path = str(markdown_file)
+            json_path = str(json_file)
+        self.trace.event(
+            agent_name="planner",
+            action="PRD_WRITTEN",
+            output_summary={
+                "drafted_by": document.get("drafted_by"),
+                "llm_drafted": document.get("llm_drafted"),
+                "markdown_path": markdown_path,
+                "json_path": json_path,
+            },
+            status="ok",
+        )
+        return {
+            "drafted_by": document.get("drafted_by"),
+            "llm_drafted": document.get("llm_drafted"),
+            "markdown_path": markdown_path,
+            "json_path": json_path,
+            "stages": [stage["id"] for stage in document.get("stages", [])],
+            "document": document,
+        }
 
     def _evidence_metadata(self, result: ZetarisResult) -> dict[str, str]:
         return {
@@ -482,6 +641,7 @@ class InvestigationOrchestrator:
                     "architect": ("contract",),
                     "builder": ("steps",),
                     "diagnostician": ("action", "claims", "decision"),
+                    "planner": ("findings", "stages"),
                 }.get(role, ("decision", "claims", "steps", "contract", "explanation")),
             )
         except InvestigationError as exc:
@@ -878,6 +1038,8 @@ class InvestigationOrchestrator:
                 "investigation_version": INVESTIGATION_VERSION,
                 "reason": reason,
                 "verdict_text": verdict_text,
+                "upgrade": self.upgrade,
+                "revival_prd": self.revival_prd,
                 "claims": links,
                 "zetaris": {
                     "mode": self.queries[0]["mode"] if self.queries else self.zetaris.mode(),
@@ -922,6 +1084,7 @@ class InvestigationOrchestrator:
                         "builder",
                         "validator",
                         "diagnostician",
+                        "planner",
                     ],
                     "critique_events": self.critiques,
                     "markovian_chunks": [chunk.name for chunk in self.chunks.chunks],
@@ -929,11 +1092,14 @@ class InvestigationOrchestrator:
                 "pre_existing_foundation": "Evidence graph, state machine, audit trail, and API shape from the 8 Oct 2026 skeleton.",
                 "scope": (
                     "The terminal state is an evidence-policy verdict over Zetaris rows. "
-                    "This run does not clone, compile, test, or republish the repository. "
-                    "RESURRECTED means the cited rows satisfy the revival rules. "
-                    "RESURRECTION_FAILED means the rows say it is worth reviving and the recorded "
-                    "tests or CI do not pass inside the repair budget. NO_GO means the rows fail "
-                    "the value rules."
+                    "A repository that is not NO_GO also gets a revival PRD with stage revive, "
+                    "refactor, and upgrade. This run does not clone, compile, test, or push commits. "
+                    "With no stage-revive attempt, the row policy still decides and the verdict says "
+                    "revival has not yet been attempted. A stage-revive success on the fork default "
+                    "branch, with an attempt commit and eligible build/test CI, is RESURRECTED and "
+                    "can override an upstream CI failure. It cannot override NO_GO. A stage-revive "
+                    "failure is RESURRECTION_FAILED and cites that run. Refactor and upgrade are an "
+                    "upgrade result and do not change the verdict."
                 ),
             },
         }

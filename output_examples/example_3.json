@@ -31,7 +31,7 @@
   "metadata": {
     "investigation_version": "0.2.0",
     "reason": "has_tests is false. alternatives_factor low (close-substitute search total_count 4). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.",
-    "verdict_text": "Decision RESURRECTION_FAILED for sample/field-notes. has_tests is false. alternatives_factor low (close-substitute search total_count 4). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence Apache-2.0, days_since_push 500, similar_repo_count 4, unique_capability 'offline field notebook that keeps GPS tracks next to sketches', has_tests False, ci_status failure. data_origin synthetic_labelled.",
+    "verdict_text": "Decision RESURRECTION_FAILED for sample/field-notes. has_tests is false. alternatives_factor low (close-substitute search total_count 4). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence Apache-2.0, days_since_push 500, similar_repo_count 4, unique_capability 'offline field notebook that keeps GPS tracks next to sketches', has_tests False, ci_status failure. data_origin synthetic_labelled. Revival has not yet been attempted.",
     "claims": [
       {
         "claim_id": "CLM-LICENCE",
@@ -74,7 +74,7 @@
       },
       {
         "claim_id": "CLM-DECISION",
-        "statement": "Decision RESURRECTION_FAILED for sample/field-notes. has_tests is false. alternatives_factor low (close-substitute search total_count 4). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence Apache-2.0, days_since_push 500, similar_repo_count 4, unique_capability 'offline field notebook that keeps GPS tracks next to sketches', has_tests False, ci_status failure. data_origin synthetic_labelled.",
+        "statement": "Decision RESURRECTION_FAILED for sample/field-notes. has_tests is false. alternatives_factor low (close-substitute search total_count 4). Uncertainty: the count is a GitHub search total for a close name or description query, not a census of substitutes, and it does not by itself decide the verdict.. Licence Apache-2.0, days_since_push 500, similar_repo_count 4, unique_capability 'offline field notebook that keeps GPS tracks next to sketches', has_tests False, ci_status failure. data_origin synthetic_labelled. Revival has not yet been attempted.",
         "evidence": [
           {
             "evidence_id": "EV-SIGNAL-sample-field-notes-2-tests-absent",
@@ -223,6 +223,6 @@
       ]
     },
     "pre_existing_foundation": "Evidence graph, state machine, audit trail, and API shape from the 8 Oct 2026 skeleton.",
-    "scope": "The terminal state is an evidence-policy verdict over Zetaris rows. This run does not clone, compile, test, or republish the repository. RESURRECTED means the cited rows satisfy the revival rules. RESURRECTION_FAILED means the rows say it is worth reviving and the recorded tests or CI do not pass inside the repair budget. NO_GO means the rows fail the value rules."
+    "scope": "The terminal state is an evidence-policy verdict over Zetaris rows. A repository that is not NO_GO also gets a revival PRD with stage revive, refactor, and upgrade. This run does not clone, compile, test, or push commits. With no stage-revive attempt, the row policy still decides and the verdict says revival has not yet been attempted. A stage-revive success on the fork default branch, with an attempt commit and eligible build/test CI, is RESURRECTED and can override an upstream CI failure. It cannot override NO_GO. A stage-revive failure is RESURRECTION_FAILED and cites that run. Refactor and upgrade are an upgrade result and do not change the verdict."
   }
 }

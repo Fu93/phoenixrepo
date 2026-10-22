@@ -1,0 +1,4 @@
+repo_id,fork_full_name,upstream_full_name,stage,status,ci_status,ci_run_url,ci_run_name,ci_run_event,commit_sha,compare_url,default_branch,head_sha,data_origin
+jondot/hygen,Fu93/hygen,jondot/hygen,revive,not_attempted,,,,,,https://github.com/jondot/hygen/compare/master...Fu93:master,master,26f76d8dede565b2bf38d0b9e9f3009ee2c8f9ae,github_rest_api:2026-10-22
+jondot/hygen,Fu93/hygen,jondot/hygen,refactor,not_attempted,,,,,,https://github.com/jondot/hygen/compare/master...Fu93:master,master,26f76d8dede565b2bf38d0b9e9f3009ee2c8f9ae,github_rest_api:2026-10-22
+jondot/hygen,Fu93/hygen,jondot/hygen,upgrade,not_attempted,,,,,,https://github.com/jondot/hygen/compare/master...Fu93:master,master,26f76d8dede565b2bf38d0b9e9f3009ee2c8f9ae,github_rest_api:2026-10-22
