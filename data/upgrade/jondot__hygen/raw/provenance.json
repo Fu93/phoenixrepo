@@ -1,0 +1,46 @@
+{
+  "collected_at": "2026-10-22T17:44:32Z",
+  "fork": "Fu93/hygen",
+  "commit": "1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a",
+  "agent_branch": "cursor/revive-hygen-326e",
+  "node": "v22.23.4",
+  "yarn": "1.22.22",
+  "npm": "10.9.9",
+  "windows_job": "not run",
+  "github_user": {
+    "status": 403,
+    "message": "Resource not accessible by integration"
+  },
+  "commands": {
+    "outdated": {
+      "argv": "yarn outdated --json",
+      "exit_code": 1,
+      "sha256": "2cbdab0814ce711390a81ff8ba7d2e2d0632285519c112e6648851e395a30369"
+    },
+    "audit_full": {
+      "argv": "yarn audit --json",
+      "exit_code": 30,
+      "sha256": "f8fcea7956df979af48c9c50c57ff4d97550c7154eb758a12ef040fb9bfeff12",
+      "bytes": 16130360
+    },
+    "audit_prod": {
+      "argv": "yarn audit --groups dependencies --json",
+      "exit_code": 14,
+      "sha256": "3a2ef4e1cdd0280d557aa028c559dc3e7daf5b2e4bdc3fe95731e1cbff463b44"
+    }
+  },
+  "files": {
+    "outdated.ndjson": {
+      "sha256": "2cbdab0814ce711390a81ff8ba7d2e2d0632285519c112e6648851e395a30369"
+    },
+    "audit-prod.ndjson": {
+      "sha256": "3a2ef4e1cdd0280d557aa028c559dc3e7daf5b2e4bdc3fe95731e1cbff463b44"
+    },
+    "audit-full.reduced.json": {
+      "sha256": "b707a3877310fb9ed3a19475d94cc9b67141d246bb28adfb8b2db821c3772e6c"
+    },
+    "issues.json": {
+      "sha256": "070352dd8520b4e2d6372a6eff3651265f1f6d9d59ec589f09944a2da9cd7387"
+    }
+  }
+}

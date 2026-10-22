@@ -1,0 +1,180 @@
+{
+  "logger": {
+    "path": "src/logger.ts",
+    "line": 4,
+    "text": "const { yellow, red, green, magenta, template }: any = chalk"
+  },
+  "metaverse": {
+    "path": "src/__tests__/metaverse-utils.ts",
+    "line": 20,
+    "text": "const normalize = (s) => s.replace(/\\\\/g, '/').replace(/.*hygen\\/src/, '')"
+  },
+  "inject_fixme": {
+    "path": "src/__tests__/render.spec.ts",
+    "line": 155,
+    "text": "// FIXME this test doesn't seem to be actually testing injection unless i'm missing something"
+  },
+  "injector_spec": "src/__tests__/injector.spec.ts",
+  "chalk": {
+    "version": "4.1.2",
+    "templates_path": "node_modules/chalk/source/templates.js",
+    "exists": true
+  },
+  "installed": [
+    {
+      "name": "@types/jest",
+      "version": "27.4.0",
+      "path": "@types/jest"
+    },
+    {
+      "name": "@types/jest",
+      "version": "26.0.22",
+      "path": "zeroconf-typescript-eslint/node_modules/@types/jest"
+    },
+    {
+      "name": "ansi-regex",
+      "version": "5.0.0",
+      "path": "ansi-regex"
+    },
+    {
+      "name": "ansi-regex",
+      "version": "5.0.1",
+      "path": "eslint/node_modules/ansi-regex"
+    },
+    {
+      "name": "ansi-regex",
+      "version": "2.1.1",
+      "path": "gauge/node_modules/ansi-regex"
+    },
+    {
+      "name": "ansi-regex",
+      "version": "5.0.1",
+      "path": "pretty-format/node_modules/ansi-regex"
+    },
+    {
+      "name": "ansi-regex",
+      "version": "3.0.0",
+      "path": "wide-align/node_modules/ansi-regex"
+    },
+    {
+      "name": "brace-expansion",
+      "version": "1.1.8",
+      "path": "brace-expansion"
+    },
+    {
+      "name": "brace-expansion",
+      "version": "2.1.7",
+      "path": "filelist/node_modules/brace-expansion"
+    },
+    {
+      "name": "cross-spawn",
+      "version": "7.0.3",
+      "path": "cross-spawn"
+    },
+    {
+      "name": "cross-spawn",
+      "version": "6.0.5",
+      "path": "sane/node_modules/cross-spawn"
+    },
+    {
+      "name": "degit",
+      "version": "2.8.6",
+      "path": "degit"
+    },
+    {
+      "name": "ejs",
+      "version": "3.1.10",
+      "path": "ejs"
+    },
+    {
+      "name": "execa",
+      "version": "5.0.0",
+      "path": "execa"
+    },
+    {
+      "name": "execa",
+      "version": "1.0.0",
+      "path": "sane/node_modules/execa"
+    },
+    {
+      "name": "front-matter",
+      "version": "4.0.2",
+      "path": "front-matter"
+    },
+    {
+      "name": "gh-pages",
+      "version": "3.1.0",
+      "path": "gh-pages"
+    },
+    {
+      "name": "ignore-walk",
+      "version": "4.0.1",
+      "path": "ignore-walk"
+    },
+    {
+      "name": "jest",
+      "version": "27.5.1",
+      "path": "jest"
+    },
+    {
+      "name": "js-yaml",
+      "version": "4.1.0",
+      "path": "@eslint/eslintrc/node_modules/js-yaml"
+    },
+    {
+      "name": "js-yaml",
+      "version": "4.1.0",
+      "path": "eslint/node_modules/js-yaml"
+    },
+    {
+      "name": "js-yaml",
+      "version": "3.14.0",
+      "path": "js-yaml"
+    },
+    {
+      "name": "minimatch",
+      "version": "5.1.9",
+      "path": "filelist/node_modules/minimatch"
+    },
+    {
+      "name": "minimatch",
+      "version": "3.0.4",
+      "path": "minimatch"
+    },
+    {
+      "name": "ora",
+      "version": "5.4.1",
+      "path": "ora"
+    },
+    {
+      "name": "pkg",
+      "version": "5.5.2",
+      "path": "pkg"
+    },
+    {
+      "name": "sprintf-js",
+      "version": "1.0.3",
+      "path": "sprintf-js"
+    },
+    {
+      "name": "ts-jest",
+      "version": "27.1.3",
+      "path": "ts-jest"
+    },
+    {
+      "name": "ts-jest",
+      "version": "26.5.5",
+      "path": "zeroconf-typescript-eslint/node_modules/ts-jest"
+    },
+    {
+      "name": "ts-node",
+      "version": "10.5.0",
+      "path": "ts-node"
+    },
+    {
+      "name": "typescript",
+      "version": "4.5.5",
+      "path": "typescript"
+    }
+  ]
+}

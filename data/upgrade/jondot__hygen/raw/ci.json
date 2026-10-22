@@ -1,0 +1,122 @@
+{
+  "run": {
+    "id": 39821847516,
+    "html_url": "https://github.com/Fu93/hygen/actions/runs/39821847516",
+    "name": "CI",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "head_branch": "cursor/revive-hygen-326e",
+    "head_sha": "1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a"
+  },
+  "jobs": [
+    {
+      "name": "build (20.x, ubuntu-latest)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Set git to use LF",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Use Node.js 20.x",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run yarn install",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run yarn build",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run yarn hygen:build -- init self",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run yarn test",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run yarn test:win32",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Use Node.js 20.x",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "build (22.x, ubuntu-latest)",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Set git to use LF",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Use Node.js 22.x",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run yarn install",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run yarn build",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run yarn hygen:build -- init self",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run yarn test",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run yarn test:win32",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Post Use Node.js 22.x",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ]
+}
