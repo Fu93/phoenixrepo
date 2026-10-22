@@ -2,10 +2,14 @@
 # UNVERIFIED against a running Zetaris. Prints a status token only, never the body or the key.
 # A HTTP 200 whose JSON body contains an error object is a failure, unless the
 # error text says the schemastore container, view, database, or table already
-# exists. Re-running is then idempotent for those objects. If phoenix.repo_evidence
-# already exists from scripts/zetaris/04_phoenix_views.sql, "exists" leaves that
-# older view in place. Dropping it was not verified, so this script does not guess
-# a DROP statement.
+# exists. The match is the phrase "already exists" only. The word "duplicate" is
+# not treated as existence. Re-running is then idempotent for those objects.
+# If a schemastore view already exists, the script prints view-exists and a warning:
+# that view is left in place, and if it came from 04_phoenix_views.sql it is still
+# the GitHub-join view. Dropping it was not verified, so this script does not guess
+# a DROP statement. After the statements, it selects repo_id and data_origin from
+# phoenix.repo_evidence and checks the row count and that data_origin starts with
+# github_rest_api. A mismatch prints verify-failed.
 #
 # Requires ZETARIS_API_KEY in the environment. It is sent as a bearer token and
 # is never printed. Optional: ZETARIS_REST_URL (default http://localhost:8888/api/v1.0),
@@ -109,15 +113,13 @@ function Get-ZetarisErrorText([string]$content) {
 }
 
 function Test-AlreadyExists([string]$text) {
-    return $text -match "(?i)already exists|already exist|duplicate"
+    return $text -match "(?i)already exists|already exist"
 }
 
-$failed = $false
-foreach ($statement in $statements) {
-    $flat = (($statement.Sql -replace "\s+", " ").Trim())
+function Invoke-ZetarisSql([string]$sql) {
     $body = @{
         queryId = [guid]::NewGuid().ToString()
-        sql     = $flat
+        sql     = $sql
         source  = "SqlEditor"
         limit   = 100
     } | ConvertTo-Json -Compress
@@ -136,8 +138,7 @@ foreach ($statement in $statements) {
     catch {
         $resp = $_.Exception.Response
         if ($null -eq $resp) {
-            Write-Output "unreachable"
-            exit 1
+            return @{ Code = 0; Content = ""; Unreachable = $true }
         }
         $code = [int]$resp.StatusCode
         try {
@@ -146,10 +147,29 @@ foreach ($statement in $statements) {
         }
         catch { $content = "" }
     }
+    return @{ Code = $code; Content = $content; Unreachable = $false }
+}
+
+$failed = $false
+foreach ($statement in $statements) {
+    $flat = (($statement.Sql -replace "\s+", " ").Trim())
+    $result = Invoke-ZetarisSql $flat
+    if ($result.Unreachable) {
+        Write-Output "unreachable"
+        exit 1
+    }
+    $code = [int]$result.Code
+    $content = [string]$result.Content
     $errorText = Get-ZetarisErrorText $content
     $exists = ($statement.Kind -in @("database", "table", "container", "view")) -and (Test-AlreadyExists $errorText)
     if ($exists) {
-        Write-Output "exists"
+        if ($statement.Kind -eq "view") {
+            Write-Warning "A schemastore view already exists and was left in place. If it came from scripts/zetaris/04_phoenix_views.sql, phoenix.repo_evidence is still the GitHub-join view and does not read data/real. This script does not drop it."
+            Write-Output "view-exists"
+        }
+        else {
+            Write-Output "exists"
+        }
         continue
     }
     if ($errorText -or $code -ge 300 -or $code -eq 0) {
@@ -162,4 +182,43 @@ foreach ($statement in $statements) {
     Write-Output $code
 }
 if ($failed) { exit 1 }
-exit 0
+
+$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$localCsv = Join-Path $root "data/real/repo_evidence.csv"
+$expected = 0
+if (Test-Path -LiteralPath $localCsv) {
+    $expected = @(Import-Csv -LiteralPath $localCsv).Count
+}
+$check = Invoke-ZetarisSql "SELECT repo_id, data_origin FROM phoenix.repo_evidence"
+if ($check.Unreachable) {
+    Write-Output "verify-failed"
+    exit 1
+}
+$checkError = Get-ZetarisErrorText ([string]$check.Content)
+$verified = $false
+if (-not $checkError -and [int]$check.Code -ge 200 -and [int]$check.Code -lt 300) {
+    try {
+        $parsed = [string]$check.Content | ConvertFrom-Json
+        $headers = @($parsed.headers | ForEach-Object { "$_".ToLowerInvariant() })
+        $originIndex = [array]::IndexOf($headers, "data_origin")
+        $rows = @($parsed.data)
+        $originsOk = $originIndex -ge 0 -and $rows.Count -eq $expected -and $expected -gt 0
+        if ($originsOk) {
+            foreach ($line in $rows) {
+                $cells = @($line)
+                if ($originIndex -ge $cells.Count -or -not ([string]$cells[$originIndex]).StartsWith("github_rest_api")) {
+                    $originsOk = $false
+                    break
+                }
+            }
+        }
+        $verified = $originsOk
+    }
+    catch { $verified = $false }
+}
+if ($verified) {
+    Write-Output "verified rows=$expected"
+    exit 0
+}
+Write-Output "verify-failed"
+exit 1

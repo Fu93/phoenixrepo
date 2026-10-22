@@ -474,7 +474,16 @@ class InvestigationOrchestrator:
             "served_model": self.llm.served_model,
         }
         try:
-            parsed = parse_model_json(raw)
+            parsed = parse_model_json(
+                raw,
+                expected_keys={
+                    "archaeologist": ("claims",),
+                    "market_judge": ("decision", "explanation"),
+                    "architect": ("contract",),
+                    "builder": ("steps",),
+                    "diagnostician": ("action", "claims", "decision"),
+                }.get(role, ("decision", "claims", "steps", "contract", "explanation")),
+            )
         except InvestigationError as exc:
             self.trace.event(
                 agent_name=role,

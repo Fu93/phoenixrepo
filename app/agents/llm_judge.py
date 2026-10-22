@@ -49,7 +49,7 @@ def call_llm_judge(llm, *, subject: dict) -> LlmJudgeOutcome:
     requested = str(getattr(llm, "requested_model", "") or "")
     served = getattr(llm, "served_model", None)
     try:
-        payload = parse_model_json(raw)
+        payload = parse_model_json(raw, expected_keys=("decision", "reason", "claim_ids"))
     except InvestigationError:
         return LlmJudgeOutcome(False, "unparsed", "", [], raw, requested, served, latency_ms)
     decision = str(payload.get("decision") or "").strip().lower()

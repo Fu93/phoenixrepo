@@ -160,6 +160,9 @@ def validation_block_reason(row: dict[str, Any], signals: list[dict[str, Any]]) 
     if not row["has_license_file"]:
         return "has_license_file is false"
     if ci_kind(row["ci_status"]) == "failure":
+        for signal in signals:
+            if signal["signal"] == "ci_failure" and "toolchain setup step" in signal["detail"].lower():
+                return signal["detail"]
         return f"ci_status is {row['ci_status']}"
     for signal in signals:
         if signal["signal"] in {"tests_absent", "ci_failure"} and not signal["supports_revival"]:

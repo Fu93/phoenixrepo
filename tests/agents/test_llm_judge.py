@@ -209,6 +209,22 @@ def test_judge_401_is_logged_and_the_policy_verdict_remains(tmp_path):
     assert judged[0]["status"] == "unauthorized"
 
 
+def test_judge_generic_exception_is_logged_and_the_policy_verdict_remains(tmp_path):
+    def judge_raw(role):
+        del role
+        raise RuntimeError("judge connector reset")
+
+    result = _run_live(tmp_path, "sample/generic-qr", judge_raw)
+    assert result["decision"] == "NO_GO"
+    assert result["metadata"]["llm"]["judge"]["failure"] == "error"
+    assert "did not complete (error)" in result["metadata"]["verdict_text"]
+    records = [json.loads(line) for line in Path(result["log_file"]).read_text(encoding="utf-8").splitlines()]
+    judged = [record for record in records if record["action"] == "LLM_JUDGE"]
+    assert judged
+    assert judged[0]["status"] == "error"
+    assert "unavailable" in judged[0]["output_summary"]
+
+
 def test_sample_mode_does_not_call_the_llm_judge(tmp_path):
     settings = Settings(
         sample_mode=True,

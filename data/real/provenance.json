@@ -1,12 +1,13 @@
 {
-  "collected_at": "2026-10-22T14:49:13.058924+00:00",
+  "collected_at": "2026-10-22T15:14:30.161592+00:00",
   "generator": "scripts/curate_real_repos.py",
   "token_used": false,
   "token_written": false,
   "endpoints": [
     "GET /repos/{owner}/{repo}",
     "GET /repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
-    "GET /repos/{owner}/{repo}/actions/runs?per_page=1",
+    "GET /repos/{owner}/{repo}/actions/runs?per_page=30",
+    "GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs?per_page=20 (only when the eligible build/test conclusion is failure)",
     "GET /repos/{owner}/{repo}/readme",
     "GET /search/repositories?q={similar_query}&per_page=1",
     "GET /repos/{owner}/{repo}/contents/ (only when the tree call fails or is truncated)",
@@ -43,8 +44,8 @@
     "has_license_file": "true when the repo payload license object is non-null or the root listing contains a LICENSE* file. false when both checks succeeded and neither matched. Empty if the repo payload has no license key and the root listing is unavailable.",
     "has_tests": "true when the git tree (or, if that call fails, the root listing) contains a path segment test, tests, spec, specs, or __tests__, or a filename ending in _test.go, _test.py, _spec.rb, .spec.js, .spec.ts, .test.js, or .test.ts. false when the tree or listing succeeded and none matched. Empty when both calls failed. A truncated tree is noted in provenance and only the returned paths are used.",
     "has_ci": "true when the git tree contains a file under .github/workflows/, or (only if the tree call failed or was truncated) GET /contents/.github/workflows returns a non-empty listing, or the Actions runs API returns at least one workflow run. false when no workflow file was found and the runs list is empty. Empty if the deciding calls failed. A .github directory that is not workflows does not count.",
-    "ci_status": "Lowercased conclusion of the latest Actions workflow run (per_page=1). Empty when there is no run, the conclusion is null, or the call failed. Badge images in the README are not copied into this column.",
-    "similar_repo_count": "GitHub search total_count for a close-substitute query: up to three distinctive words from the description, same language, searched in name and description. If the description has no usable words, language:<language> <repo name> in:name. Empty when that query cannot be built or the search call failed. This is not a topic-size count and it is not a verdict.",
+    "ci_status": "Lowercased conclusion of the latest eligible build or test workflow run. Security and analysis scans (CodeQL and similar), runs awaiting approval (action_required), and fork pull requests are not eligible and are never recorded as success. Empty when no eligible run exists, the conclusion is null, or the call failed. Badge images in the README are not copied into this column.",
+    "similar_repo_count": "GitHub search total_count for a close-substitute query: up to three distinctive words from the description, same language, searched in name and description. If the description has no usable words, language:<language> <repo name> in:name. Empty when that query cannot be built, the search call failed, or the total was 0. A query built from the repository's own name or description finds at least that repository when search is working, so a zero total is not stored as a census of no substitutes. This is not a topic-size count and it is not a verdict.",
     "unique_capability": "The GitHub description copied verbatim. Empty when description is null or blank. This is not an independent uniqueness judgement.",
     "successor_url": "The first http(s) URL within 400 characters after the phrases 'in favor of', 'replaced by', 'successor', or 'moved to' in the README, skipping badge hosts. Empty when the README has no such phrase or the README call failed. The homepage is not used: it is usually the project's own site.",
     "category": "The first GitHub topic, otherwise primary_language, otherwise empty.",
@@ -53,7 +54,7 @@
   "collection_notes": [
     "successor_url is only a URL that the README places next to an explicit replacement phrase. A project homepage is not treated as a successor.",
     "similar_repo_count is a close name or description search total, not a topic-size count. The policy scores it with stated uncertainty and does not cut at 40.",
-    "An empty ci_status is unknown. It is not recorded as a failure.",
+    "An empty ci_status is unknown. It is not recorded as a failure. Security and analysis scans, action_required runs, and fork pull requests are not CI success.",
     "archived=true is a fact about the owner's freeze. It is not a revival vote."
   ],
   "repos": [
@@ -69,9 +70,17 @@
       "workflows_status": "from-tree",
       "readme_status": "200",
       "successor_snippet": "in favor of Go modules, which have had official support since Go 1.11. For more details, see https://golang.org/ref/mod.",
+      "ci_run_id": "",
       "ci_run_name": "",
       "ci_run_event": "",
       "ci_run_url": "",
+      "ci_run_path": "",
+      "ci_head_repo": "",
+      "ci_excluded": "",
+      "ci_unknown_note": "",
+      "ci_scan_ignored": "",
+      "ci_failing_step": "",
+      "jobs_status": "",
       "topics_status": "repository.topics",
       "topics": [
         "dependency-manager",
@@ -94,9 +103,17 @@
       "workflows_status": "from-tree",
       "readme_status": "200",
       "successor_snippet": "",
+      "ci_run_id": "",
       "ci_run_name": "",
       "ci_run_event": "",
       "ci_run_url": "",
+      "ci_run_path": "",
+      "ci_head_repo": "",
+      "ci_excluded": "",
+      "ci_unknown_note": "",
+      "ci_scan_ignored": "",
+      "ci_failing_step": "",
+      "jobs_status": "",
       "topics_status": "repository.topics",
       "topics": [],
       "homepage": "http://jxnblk.com/rgx",
@@ -114,9 +131,17 @@
       "workflows_status": "from-tree",
       "readme_status": "200",
       "successor_snippet": "",
+      "ci_run_id": "",
       "ci_run_name": "",
       "ci_run_event": "",
       "ci_run_url": "",
+      "ci_run_path": "",
+      "ci_head_repo": "",
+      "ci_excluded": "",
+      "ci_unknown_note": "",
+      "ci_scan_ignored": "",
+      "ci_failing_step": "",
+      "jobs_status": "",
       "topics_status": "repository.topics",
       "topics": [],
       "homepage": "",
@@ -134,9 +159,17 @@
       "workflows_status": "from-tree",
       "readme_status": "200",
       "successor_snippet": "",
+      "ci_run_id": "37141993934",
       "ci_run_name": "CI",
       "ci_run_event": "schedule",
       "ci_run_url": "https://github.com/jondot/hygen/actions/runs/37141993934",
+      "ci_run_path": ".github/workflows/ci.yml",
+      "ci_head_repo": "jondot/hygen",
+      "ci_excluded": "",
+      "ci_unknown_note": "",
+      "ci_scan_ignored": "",
+      "ci_failing_step": "Use Node.js 14.x",
+      "jobs_status": "200",
       "topics_status": "repository.topics",
       "topics": [
         "cli",
@@ -159,9 +192,17 @@
       "workflows_status": "from-tree",
       "readme_status": "200",
       "successor_snippet": "",
-      "ci_run_name": "CodeQL",
-      "ci_run_event": "schedule",
-      "ci_run_url": "https://github.com/42wim/matterbridge/actions/runs/39323383247",
+      "ci_run_id": "39166288272",
+      "ci_run_name": "Development",
+      "ci_run_event": "pull_request",
+      "ci_run_url": "https://github.com/42wim/matterbridge/actions/runs/39166288272",
+      "ci_run_path": ".github/workflows/development.yml",
+      "ci_head_repo": "RustyBower/matterbridge",
+      "ci_excluded": "action_required,fork_pr",
+      "ci_unknown_note": "Latest build/test workflow Development event pull_request conclusion action_required head RustyBower/matterbridge. That run is awaiting approval (action_required), so it is not CI success. That run is a fork pull request, so it is not the default branch build state and is not CI success. A security or analysis scan (CodeQL) concluded success and was not counted as CI.",
+      "ci_scan_ignored": "CodeQL",
+      "ci_failing_step": "",
+      "jobs_status": "",
       "topics_status": "repository.topics",
       "topics": [
         "bridge",
@@ -193,22 +234,47 @@
     {
       "url": "https://api.github.com/repos/golang/dep",
       "status": "200",
-      "remaining": "44"
+      "remaining": "55"
     },
     {
       "url": "https://api.github.com/repos/golang/dep/git/trees/master",
       "status": "200",
-      "remaining": "55"
+      "remaining": "46"
     },
     {
       "url": "https://api.github.com/repos/golang/dep/actions/runs",
       "status": "200",
-      "remaining": "38"
+      "remaining": "48"
     },
     {
       "url": "https://api.github.com/repos/golang/dep/readme",
       "status": "200",
-      "remaining": "37"
+      "remaining": "58"
+    },
+    {
+      "url": "https://api.github.com/search/repositories",
+      "status": "200",
+      "remaining": "9"
+    },
+    {
+      "url": "https://api.github.com/repos/jxnblk/rgx",
+      "status": "200",
+      "remaining": "54"
+    },
+    {
+      "url": "https://api.github.com/repos/jxnblk/rgx/git/trees/master",
+      "status": "200",
+      "remaining": "55"
+    },
+    {
+      "url": "https://api.github.com/repos/jxnblk/rgx/actions/runs",
+      "status": "200",
+      "remaining": "45"
+    },
+    {
+      "url": "https://api.github.com/repos/jxnblk/rgx/readme",
+      "status": "200",
+      "remaining": "34"
     },
     {
       "url": "https://api.github.com/search/repositories",
@@ -216,104 +282,89 @@
       "remaining": "8"
     },
     {
-      "url": "https://api.github.com/repos/jxnblk/rgx",
-      "status": "200",
-      "remaining": "48"
-    },
-    {
-      "url": "https://api.github.com/repos/jxnblk/rgx/git/trees/master",
-      "status": "200",
-      "remaining": "47"
-    },
-    {
-      "url": "https://api.github.com/repos/jxnblk/rgx/actions/runs",
-      "status": "200",
-      "remaining": "47"
-    },
-    {
-      "url": "https://api.github.com/repos/jxnblk/rgx/readme",
-      "status": "200",
-      "remaining": "46"
-    },
-    {
-      "url": "https://api.github.com/search/repositories",
-      "status": "200",
-      "remaining": "9"
-    },
-    {
       "url": "https://api.github.com/repos/discreteoptimization/setcover",
       "status": "200",
-      "remaining": "47"
+      "remaining": "39"
     },
     {
       "url": "https://api.github.com/repos/discreteoptimization/setcover/git/trees/master",
       "status": "200",
-      "remaining": "46"
+      "remaining": "42"
     },
     {
       "url": "https://api.github.com/repos/discreteoptimization/setcover/actions/runs",
       "status": "200",
-      "remaining": "43"
+      "remaining": "53"
     },
     {
       "url": "https://api.github.com/repos/discreteoptimization/setcover/readme",
       "status": "200",
-      "remaining": "51"
+      "remaining": "40"
+    },
+    {
+      "url": "https://api.github.com/search/repositories",
+      "status": "403",
+      "remaining": "0"
     },
     {
       "url": "https://api.github.com/search/repositories",
       "status": "200",
-      "remaining": "6"
+      "remaining": "7"
     },
     {
       "url": "https://api.github.com/repos/jondot/hygen",
       "status": "200",
-      "remaining": "52"
+      "remaining": "29"
     },
     {
       "url": "https://api.github.com/repos/jondot/hygen/git/trees/master",
       "status": "200",
-      "remaining": "9"
+      "remaining": "39"
     },
     {
       "url": "https://api.github.com/repos/jondot/hygen/actions/runs",
       "status": "200",
-      "remaining": "53"
+      "remaining": "34"
     },
     {
       "url": "https://api.github.com/repos/jondot/hygen/readme",
       "status": "200",
-      "remaining": "43"
-    },
-    {
-      "url": "https://api.github.com/search/repositories",
-      "status": "200",
-      "remaining": "6"
-    },
-    {
-      "url": "https://api.github.com/repos/42wim/matterbridge",
-      "status": "200",
-      "remaining": "52"
-    },
-    {
-      "url": "https://api.github.com/repos/42wim/matterbridge/git/trees/master",
-      "status": "200",
-      "remaining": "52"
-    },
-    {
-      "url": "https://api.github.com/repos/42wim/matterbridge/actions/runs",
-      "status": "200",
-      "remaining": "54"
-    },
-    {
-      "url": "https://api.github.com/repos/42wim/matterbridge/readme",
-      "status": "200",
-      "remaining": "51"
+      "remaining": "35"
     },
     {
       "url": "https://api.github.com/search/repositories",
       "status": "200",
       "remaining": "9"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/actions/runs/37141993934/jobs",
+      "status": "200",
+      "remaining": "30"
+    },
+    {
+      "url": "https://api.github.com/repos/42wim/matterbridge",
+      "status": "200",
+      "remaining": "38"
+    },
+    {
+      "url": "https://api.github.com/repos/42wim/matterbridge/git/trees/master",
+      "status": "200",
+      "remaining": "27"
+    },
+    {
+      "url": "https://api.github.com/repos/42wim/matterbridge/actions/runs",
+      "status": "200",
+      "remaining": "30"
+    },
+    {
+      "url": "https://api.github.com/repos/42wim/matterbridge/readme",
+      "status": "200",
+      "remaining": "27"
+    },
+    {
+      "url": "https://api.github.com/search/repositories",
+      "status": "200",
+      "remaining": "8"
     }
   ]
 }

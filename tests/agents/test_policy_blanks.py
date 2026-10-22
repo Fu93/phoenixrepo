@@ -74,6 +74,26 @@ def test_missing_ci_is_unknown_and_a_real_failure_still_blocks():
     failed, failed_reason = decide(_row(ci_status="failure"), [])
     assert failed == "RESURRECTION_FAILED"
     assert "ci_status is failure" in failed_reason
+    toolchain, toolchain_reason = decide(
+        _row(ci_status="failure"),
+        [
+            normalize_signal(
+                {
+                    "repo_id": "sample/phoenix-ledger",
+                    "signal": "ci_failure",
+                    "detail": (
+                        "The CI toolchain setup step (Use Node.js 14.x) failed, so CI has decayed. "
+                        "This is not a test failure."
+                    ),
+                    "supports_revival": "false",
+                }
+            )
+        ],
+    )
+    assert toolchain == "RESURRECTION_FAILED"
+    assert "Use Node.js 14.x" in toolchain_reason
+    assert "decayed" in toolchain_reason
+    assert "not a test failure" in toolchain_reason
 
 
 def test_real_licence_and_capability_are_kept():

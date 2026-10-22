@@ -8,9 +8,11 @@ from scripts.curate_real_repos import (
     build_signals,
     close_substitute_query,
     days_between,
+    failing_setup_step,
     latest_conclusion,
     path_shows_tests,
     root_names,
+    select_build_ci,
     successor_from_readme,
     workflows_in_paths,
     write_csv,
@@ -148,6 +150,7 @@ def test_search_failure_leaves_similar_count_empty_and_signals_do_not_invent_ci(
     assert "ci_failure" not in signals
     assert "ci_unknown" in signals
     assert "not a failure" in signals["ci_unknown"]["detail"]
+    assert "build or test" in signals["ci_unknown"]["detail"]
     assert "homepage" not in signals["successor_recorded"]["detail"]
     assert "policy bar of 40" not in signals["alternatives_factor"]["detail"]
     assert latest_conclusion({"workflow_runs": []}) == ("", False)
@@ -213,18 +216,133 @@ def test_committed_snapshot_matches_the_view_schema_and_provenance():
     assert rows["discreteoptimization/setcover"]["archived"] == "false"
     hygen_decision, hygen_reason = verdicts["jondot/hygen"]
     assert hygen_decision == "RESURRECTION_FAILED"
-    assert hygen_reason.startswith("ci_status is failure")
+    assert "Use Node.js 14.x" in hygen_reason
+    assert "decayed" in hygen_reason
+    assert "not a test failure" in hygen_reason
     assert notes["jondot/hygen"]["ci_run_event"] == "schedule"
-    assert notes["jondot/hygen"]["ci_run_url"] == "https://github.com/jondot/hygen/actions/runs/37141993934"
+    assert notes["jondot/hygen"]["ci_failing_step"] == "Use Node.js 14.x"
+    assert notes["jondot/hygen"]["ci_head_repo"] == "jondot/hygen"
+    assert "/jondot/hygen/actions/runs/" in notes["jondot/hygen"]["ci_run_url"]
     bridge_decision, bridge_reason = verdicts["42wim/matterbridge"]
     assert bridge_decision == "RESURRECTED"
-    assert "successful CI conclusion" in bridge_reason
+    assert "CI is unknown" in bridge_reason
+    assert "successful CI conclusion" not in bridge_reason
+    assert rows["42wim/matterbridge"]["ci_status"] == ""
     assert rows["42wim/matterbridge"]["archived"] == "false"
     assert rows["42wim/matterbridge"]["licence_spdx"] == "Apache-2.0"
-    assert notes["42wim/matterbridge"]["ci_run_name"] == "CodeQL"
-    assert notes["42wim/matterbridge"]["ci_run_url"] == "https://github.com/42wim/matterbridge/actions/runs/39323383247"
+    assert notes["42wim/matterbridge"]["ci_run_name"] == "Development"
+    assert "action_required" in notes["42wim/matterbridge"]["ci_excluded"]
+    assert "fork_pr" in notes["42wim/matterbridge"]["ci_excluded"]
+    assert notes["42wim/matterbridge"]["ci_scan_ignored"] == "CodeQL"
+    assert notes["42wim/matterbridge"]["ci_head_repo"] != "42wim/matterbridge"
+    bridge_signals = {item["signal"]: item for item in signals_by_repo["42wim/matterbridge"]}
+    assert "ci_success" not in bridge_signals
+    assert "action_required" in bridge_signals["ci_unknown"]["detail"]
+    assert "fork pull request" in bridge_signals["ci_unknown"]["detail"]
+    assert "CodeQL" in bridge_signals["ci_unknown"]["detail"]
     assert "golang/dep" in {item["full_name"] for item in provenance["repos"]}
     assert any(call["url"].endswith("/repos/golang/dep") for call in provenance["calls"])
+
+
+def test_codeql_success_and_a_fork_approval_are_not_build_ci():
+    actions = {
+        "workflow_runs": [
+            {
+                "id": 1,
+                "name": "CodeQL",
+                "path": ".github/workflows/codeql-analysis.yml",
+                "event": "schedule",
+                "status": "completed",
+                "conclusion": "success",
+                "head_branch": "master",
+                "head_repository": {"full_name": "acme/widget"},
+                "html_url": "https://github.com/acme/widget/actions/runs/1",
+            },
+            {
+                "id": 2,
+                "name": "Development",
+                "path": ".github/workflows/development.yml",
+                "event": "pull_request",
+                "status": "completed",
+                "conclusion": "action_required",
+                "head_branch": "topic",
+                "head_repository": {"full_name": "fork/widget"},
+                "html_url": "https://github.com/acme/widget/actions/runs/2",
+            },
+        ]
+    }
+    conclusion, has_run, facts = select_build_ci(actions, "acme/widget")
+    assert conclusion == ""
+    assert has_run is True
+    assert facts["name"] == "Development"
+    assert facts["excluded"] == "action_required,fork_pr"
+    assert facts["scan_ignored"] == "CodeQL"
+    row = build_profile(
+        _repo(full_name="acme/widget", license={"spdx_id": "MIT"}, language="Go"),
+        contents=["README.md"],
+        tree=["README.md", "bridge_test.go", ".github/workflows/development.yml"],
+        tree_truncated=False,
+        actions=actions,
+        workflows_present=True,
+        topics=[],
+        similar_count="1",
+        readme="No successor here.",
+        collected_at=COLLECTED,
+    )
+    assert row["ci_status"] == ""
+    unknown = next(item for item in build_signals(row) if item["signal"] == "ci_unknown")
+    assert "not CI success" in unknown["detail"]
+    assert "CodeQL" in unknown["detail"]
+
+
+def test_a_toolchain_setup_failure_is_not_called_a_test_failure():
+    jobs = {
+        "jobs": [
+            {
+                "name": "build (14.x, ubuntu-latest)",
+                "conclusion": "failure",
+                "steps": [
+                    {"name": "Run actions/checkout@v2", "conclusion": "success"},
+                    {"name": "Use Node.js 14.x", "conclusion": "failure"},
+                ],
+            }
+        ]
+    }
+    assert failing_setup_step(jobs) == "Use Node.js 14.x"
+    assert failing_setup_step({"jobs": [{"conclusion": "failure", "steps": [{"name": "npm test", "conclusion": "failure"}]}]}) == ""
+    actions = {
+        "workflow_runs": [
+            {
+                "id": 9,
+                "name": "CI",
+                "path": ".github/workflows/ci.yml",
+                "event": "schedule",
+                "status": "completed",
+                "conclusion": "failure",
+                "head_branch": "master",
+                "head_repository": {"full_name": "acme/widget"},
+                "html_url": "https://github.com/acme/widget/actions/runs/9",
+            }
+        ]
+    }
+    row = build_profile(
+        _repo(full_name="acme/widget", license={"spdx_id": "MIT"}, language="JavaScript", pushed_at="2024-01-01T00:00:00Z"),
+        contents=["README.md", "LICENSE"],
+        tree=["README.md", "src/__tests__/add.spec.ts", ".github/workflows/ci.yml"],
+        tree_truncated=False,
+        actions=actions,
+        workflows_present=True,
+        topics=[],
+        similar_count="1",
+        readme="",
+        collected_at=COLLECTED,
+    )
+    assert row["ci_status"] == "failure"
+    row["_ci_failing_step"] = "Use Node.js 14.x"
+    failure = next(item for item in build_signals(row) if item["signal"] == "ci_failure")
+    assert "Use Node.js 14.x" in failure["detail"]
+    assert "decayed" in failure["detail"]
+    assert "not a test failure" in failure["detail"]
 
 
 def test_write_csv_drops_private_columns(tmp_path):
