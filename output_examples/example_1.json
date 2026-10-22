@@ -1,8 +1,197 @@
 {
-  "run_id": "example-go",
-  "status": "error",
-  "error": {
-    "type": "NotImplemented",
-    "message": "Placeholder. Replace with a real run output during the build window."
+  "run_id": "phoenix-11fe0ad0",
+  "run_fingerprint": "282c58ddf1203febab8e8130022e328c799425ea0eaa6e05f6506b73f69e7fb7",
+  "mode": "sample",
+  "foundation_only": false,
+  "status": "COMPLETE",
+  "state": "RESURRECTED",
+  "evidence_count": 3,
+  "claims_count": 4,
+  "audit_events": 13,
+  "decision": "RESURRECTED",
+  "claim_verification": {
+    "claim_id": "CLM-DECISION",
+    "status": "SUPPORTED",
+    "confidence": 0.7,
+    "supporting_evidence_ids": [
+      "EV-SIGNAL-sample-phoenix-ledger-1-ci-success",
+      "EV-SIGNAL-sample-phoenix-ledger-0-tests-present",
+      "EV-PROFILE-sample-phoenix-ledger"
+    ],
+    "contradicting_evidence_ids": []
+  },
+  "evidence_pack": {
+    "path": "run_artifacts/phoenix-11fe0ad0/evidence-pack.json",
+    "context_path": "run_artifacts/phoenix-11fe0ad0/run-context.json",
+    "integrity_hash": "c025bc183e0f13b8146ab3bebd966e0224bb025b108866e77a7bf2cda6e04b35"
+  },
+  "log_file": "/tmp/phoenix-out-example_1.json-logs/trace-phoenix-11fe0ad0.jsonl",
+  "metadata": {
+    "investigation_version": "0.2.0",
+    "reason": "licence, abandonment, distinct capability, tests, and CI all have supporting rows",
+    "verdict_text": "Decision RESURRECTED for sample/phoenix-ledger. licence, abandonment, distinct capability, tests, and CI all have supporting rows. Licence MIT, days_since_push 640, similar_repo_count 2, unique_capability 'offline double-entry ledger with a signed audit trail', has_tests True, ci_status success. data_origin synthetic_labelled.",
+    "claims": [
+      {
+        "claim_id": "CLM-LICENCE",
+        "statement": "The recorded licence is MIT.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-phoenix-ledger",
+            "query_id": "c1f0e73a-d331-4838-ad37-51c6a12ac564",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      },
+      {
+        "claim_id": "CLM-ABANDONMENT",
+        "statement": "days_since_push is 640.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-phoenix-ledger",
+            "query_id": "c1f0e73a-d331-4838-ad37-51c6a12ac564",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      },
+      {
+        "claim_id": "CLM-UNIQUENESS",
+        "statement": "similar_repo_count is 2 and unique_capability is offline double-entry ledger with a signed audit trail.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-phoenix-ledger",
+            "query_id": "c1f0e73a-d331-4838-ad37-51c6a12ac564",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      },
+      {
+        "claim_id": "CLM-DECISION",
+        "statement": "Decision RESURRECTED for sample/phoenix-ledger. licence, abandonment, distinct capability, tests, and CI all have supporting rows. Licence MIT, days_since_push 640, similar_repo_count 2, unique_capability 'offline double-entry ledger with a signed audit trail', has_tests True, ci_status success. data_origin synthetic_labelled.",
+        "evidence": [
+          {
+            "evidence_id": "EV-SIGNAL-sample-phoenix-ledger-1-ci-success",
+            "query_id": "64a4a7cf-200a-40b0-a73c-22c3b8cb5092",
+            "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/phoenix-ledger'",
+            "source": "phoenix.revival_signals",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-SIGNAL-sample-phoenix-ledger-0-tests-present",
+            "query_id": "64a4a7cf-200a-40b0-a73c-22c3b8cb5092",
+            "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/phoenix-ledger'",
+            "source": "phoenix.revival_signals",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-PROFILE-sample-phoenix-ledger",
+            "query_id": "c1f0e73a-d331-4838-ad37-51c6a12ac564",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      }
+    ],
+    "zetaris": {
+      "mode": "sample-cache",
+      "queries": [
+        {
+          "query_id": "c1f0e73a-d331-4838-ad37-51c6a12ac564",
+          "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/phoenix-ledger'",
+          "source": "phoenix.repo_evidence",
+          "mode": "sample-cache"
+        },
+        {
+          "query_id": "64a4a7cf-200a-40b0-a73c-22c3b8cb5092",
+          "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/phoenix-ledger'",
+          "source": "phoenix.revival_signals",
+          "mode": "sample-cache"
+        }
+      ],
+      "load_bearing": true
+    },
+    "llm": {
+      "provider": "sample-standin",
+      "model": "deterministic-rule-standin",
+      "sample_standin": true,
+      "label": "SAMPLE_MODE deterministic stand-in. Not a live model reply. The stand-in reads the Zetaris rows in the prompt and applies the evidence policy.",
+      "explanation_accepted": true,
+      "primary_provider": "meterless"
+    },
+    "hmem": {
+      "engine": "H-MEM",
+      "recalled": [
+        {
+          "memory_id": "mem-985d3e30135c",
+          "content": "repository sample/phoenix-ledger category accounting The recorded licence is MIT.",
+          "score": 0.6737,
+          "evidence_refs": [
+            "EV-PROFILE-sample-phoenix-ledger"
+          ],
+          "layer": "working",
+          "run_id": "phoenix-11fe0ad0"
+        },
+        {
+          "memory_id": "mem-4d9c8f8830a5",
+          "content": "repository sample/phoenix-ledger category accounting days_since_push is 640.",
+          "score": 0.6086,
+          "evidence_refs": [
+            "EV-PROFILE-sample-phoenix-ledger"
+          ],
+          "layer": "working",
+          "run_id": "phoenix-11fe0ad0"
+        },
+        {
+          "memory_id": "mem-65eeb1f9c396",
+          "content": "repository sample/phoenix-ledger category accounting similar_repo_count is 2 and unique_capability is offline double-entry ledger with a signed audit trail.",
+          "score": 0.5943,
+          "evidence_refs": [
+            "EV-PROFILE-sample-phoenix-ledger"
+          ],
+          "layer": "working",
+          "run_id": "phoenix-11fe0ad0"
+        }
+      ],
+      "prior_verdicts": [],
+      "verdict_memory_id": "mem-a858ed71167d"
+    },
+    "collaboration": {
+      "agents": [
+        "archaeologist",
+        "market_judge",
+        "architect",
+        "builder",
+        "validator",
+        "diagnostician"
+      ],
+      "critique_events": [
+        {
+          "target_agent": "archaeologist",
+          "reason": "CLM-DEMAND has no evidence id.",
+          "retry_count": 0
+        },
+        {
+          "target_agent": "builder",
+          "reason": "Builder cannot write PASS. Validator is the only role that may accept a revival.",
+          "retry_count": 0
+        }
+      ],
+      "markovian_chunks": [
+        "archaeologist-1",
+        "archaeologist-2",
+        "market-judge-1",
+        "architect",
+        "builder-1",
+        "builder-2"
+      ]
+    },
+    "pre_existing_foundation": "Evidence graph, state machine, audit trail, and API shape from the 8 Oct 2026 skeleton.",
+    "scope": "The terminal state is an evidence-policy verdict over Zetaris rows. This run does not clone, compile, test, or republish the repository. RESURRECTED means the cited rows satisfy the revival rules. RESURRECTION_FAILED means the rows say it is worth reviving and the recorded tests or CI do not pass inside the repair budget. NO_GO means the rows fail the value rules."
   }
 }

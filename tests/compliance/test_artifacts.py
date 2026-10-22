@@ -8,7 +8,7 @@ from evidence.integrity import verify_integrity
 from evidence.pack import EvidencePack
 
 client = TestClient(app)
-SAMPLE = {"repository": "sample://phoenix", "mode": "sample", "max_repair_iterations": 0}
+SAMPLE = {"repository": "sample/phoenix-ledger", "mode": "sample", "max_repair_iterations": 0}
 
 
 def _run(tmp_path, monkeypatch) -> dict:

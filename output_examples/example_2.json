@@ -1,8 +1,181 @@
 {
-  "run_id": "example-nogo",
-  "status": "error",
-  "error": {
-    "type": "NotImplemented",
-    "message": "Placeholder. Replace with a real run output during the build window."
+  "run_id": "phoenix-b2c830ff",
+  "run_fingerprint": "319cc27e0525883811f46b10c7acef8535c463da9fdeeae5a58aeef7918250b2",
+  "mode": "sample",
+  "foundation_only": false,
+  "status": "COMPLETE",
+  "state": "NO_GO",
+  "evidence_count": 2,
+  "claims_count": 4,
+  "audit_events": 7,
+  "decision": "NO_GO",
+  "claim_verification": {
+    "claim_id": "CLM-DECISION",
+    "status": "SUPPORTED",
+    "confidence": 0.7,
+    "supporting_evidence_ids": [
+      "EV-PROFILE-sample-generic-qr",
+      "EV-SIGNAL-sample-generic-qr-0-commodity-category"
+    ],
+    "contradicting_evidence_ids": []
+  },
+  "evidence_pack": {
+    "path": "run_artifacts/phoenix-b2c830ff/evidence-pack.json",
+    "context_path": "run_artifacts/phoenix-b2c830ff/run-context.json",
+    "integrity_hash": "c752786231a50e18d8ae7578203a345ea06a04d366920ee8cc9eedc698d2d26d"
+  },
+  "log_file": "/tmp/phoenix-out-example_2.json-logs/trace-phoenix-b2c830ff.jsonl",
+  "metadata": {
+    "investigation_version": "0.2.0",
+    "reason": "similar_repo_count is 180 and unique_capability is ''",
+    "verdict_text": "Decision NO_GO for sample/generic-qr. similar_repo_count is 180 and unique_capability is ''. Licence MIT, days_since_push 900, similar_repo_count 180, unique_capability '', has_tests True, ci_status absent. data_origin synthetic_labelled.",
+    "claims": [
+      {
+        "claim_id": "CLM-LICENCE",
+        "statement": "The recorded licence is MIT.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-generic-qr",
+            "query_id": "3587e1db-c894-4cbb-8dbd-3ddd3043973d",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      },
+      {
+        "claim_id": "CLM-ABANDONMENT",
+        "statement": "days_since_push is 900.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-generic-qr",
+            "query_id": "3587e1db-c894-4cbb-8dbd-3ddd3043973d",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      },
+      {
+        "claim_id": "CLM-UNIQUENESS",
+        "statement": "similar_repo_count is 180 and unique_capability is empty.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-generic-qr",
+            "query_id": "3587e1db-c894-4cbb-8dbd-3ddd3043973d",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      },
+      {
+        "claim_id": "CLM-DECISION",
+        "statement": "Decision NO_GO for sample/generic-qr. similar_repo_count is 180 and unique_capability is ''. Licence MIT, days_since_push 900, similar_repo_count 180, unique_capability '', has_tests True, ci_status absent. data_origin synthetic_labelled.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-generic-qr",
+            "query_id": "3587e1db-c894-4cbb-8dbd-3ddd3043973d",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-SIGNAL-sample-generic-qr-0-commodity-category",
+            "query_id": "e1541d7a-7d2f-4f19-a4cd-d83d7d01b0f6",
+            "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/generic-qr'",
+            "source": "phoenix.revival_signals",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      }
+    ],
+    "zetaris": {
+      "mode": "sample-cache",
+      "queries": [
+        {
+          "query_id": "3587e1db-c894-4cbb-8dbd-3ddd3043973d",
+          "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/generic-qr'",
+          "source": "phoenix.repo_evidence",
+          "mode": "sample-cache"
+        },
+        {
+          "query_id": "e1541d7a-7d2f-4f19-a4cd-d83d7d01b0f6",
+          "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/generic-qr'",
+          "source": "phoenix.revival_signals",
+          "mode": "sample-cache"
+        }
+      ],
+      "load_bearing": true
+    },
+    "llm": {
+      "provider": "sample-standin",
+      "model": "deterministic-rule-standin",
+      "sample_standin": true,
+      "label": "SAMPLE_MODE deterministic stand-in. Not a live model reply. The stand-in reads the Zetaris rows in the prompt and applies the evidence policy.",
+      "explanation_accepted": true,
+      "primary_provider": "meterless"
+    },
+    "hmem": {
+      "engine": "H-MEM",
+      "recalled": [
+        {
+          "memory_id": "mem-bac6a8f45df7",
+          "content": "repository sample/generic-qr category qr The recorded licence is MIT.",
+          "score": 0.6737,
+          "evidence_refs": [
+            "EV-PROFILE-sample-generic-qr"
+          ],
+          "layer": "working",
+          "run_id": "phoenix-b2c830ff"
+        },
+        {
+          "memory_id": "mem-3ffba99e2da8",
+          "content": "repository sample/generic-qr category qr days_since_push is 900.",
+          "score": 0.6086,
+          "evidence_refs": [
+            "EV-PROFILE-sample-generic-qr"
+          ],
+          "layer": "working",
+          "run_id": "phoenix-b2c830ff"
+        },
+        {
+          "memory_id": "mem-604fd9c4c722",
+          "content": "repository sample/generic-qr category qr similar_repo_count is 180 and unique_capability is empty.",
+          "score": 0.5648,
+          "evidence_refs": [
+            "EV-PROFILE-sample-generic-qr"
+          ],
+          "layer": "working",
+          "run_id": "phoenix-b2c830ff"
+        }
+      ],
+      "prior_verdicts": [],
+      "verdict_memory_id": "mem-6057e33d93f3"
+    },
+    "collaboration": {
+      "agents": [
+        "archaeologist",
+        "market_judge",
+        "architect",
+        "builder",
+        "validator",
+        "diagnostician"
+      ],
+      "critique_events": [
+        {
+          "target_agent": "archaeologist",
+          "reason": "CLM-DEMAND has no evidence id.",
+          "retry_count": 0
+        }
+      ],
+      "markovian_chunks": [
+        "archaeologist-1",
+        "archaeologist-2",
+        "market-judge-1"
+      ]
+    },
+    "pre_existing_foundation": "Evidence graph, state machine, audit trail, and API shape from the 8 Oct 2026 skeleton.",
+    "scope": "The terminal state is an evidence-policy verdict over Zetaris rows. This run does not clone, compile, test, or republish the repository. RESURRECTED means the cited rows satisfy the revival rules. RESURRECTION_FAILED means the rows say it is worth reviving and the recorded tests or CI do not pass inside the repair budget. NO_GO means the rows fail the value rules."
   }
 }

@@ -1,8 +1,220 @@
 {
-  "run_id": "example-contradiction",
-  "status": "error",
-  "error": {
-    "type": "NotImplemented",
-    "message": "Placeholder. Replace with a real run output during the build window."
+  "run_id": "phoenix-364e88e5",
+  "run_fingerprint": "6c81897132822a2dcf4df36f8c270d1c75b46d1bca41df0e835f0c3bad4f22b3",
+  "mode": "sample",
+  "foundation_only": false,
+  "status": "COMPLETE",
+  "state": "RESURRECTION_FAILED",
+  "evidence_count": 5,
+  "claims_count": 4,
+  "audit_events": 16,
+  "decision": "RESURRECTION_FAILED",
+  "claim_verification": {
+    "claim_id": "CLM-DECISION",
+    "status": "SUPPORTED",
+    "confidence": 0.7,
+    "supporting_evidence_ids": [
+      "EV-PROFILE-sample-field-notes",
+      "EV-SIGNAL-sample-field-notes-4-ci-failure",
+      "EV-SIGNAL-sample-field-notes-2-tests-absent",
+      "EV-SIGNAL-sample-field-notes-0-tests-absent",
+      "EV-SIGNAL-sample-field-notes-1-ci-failure"
+    ],
+    "contradicting_evidence_ids": []
+  },
+  "evidence_pack": {
+    "path": "run_artifacts/phoenix-364e88e5/evidence-pack.json",
+    "context_path": "run_artifacts/phoenix-364e88e5/run-context.json",
+    "integrity_hash": "e722e1334cc2cf043e5d93fb4f5bee32e37fafec0ef89cfe234d3cf4b7d92c47"
+  },
+  "log_file": "/tmp/phoenix-out-example_3.json-logs/trace-phoenix-364e88e5.jsonl",
+  "metadata": {
+    "investigation_version": "0.2.0",
+    "reason": "has_tests is false",
+    "verdict_text": "Decision RESURRECTION_FAILED for sample/field-notes. has_tests is false. Licence Apache-2.0, days_since_push 500, similar_repo_count 4, unique_capability 'offline field notebook that keeps GPS tracks next to sketches', has_tests False, ci_status failure. data_origin synthetic_labelled.",
+    "claims": [
+      {
+        "claim_id": "CLM-LICENCE",
+        "statement": "The recorded licence is Apache-2.0.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-field-notes",
+            "query_id": "dd804606-0c59-41f2-afdc-6c69f5258c1e",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/field-notes'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      },
+      {
+        "claim_id": "CLM-ABANDONMENT",
+        "statement": "days_since_push is 500.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-field-notes",
+            "query_id": "dd804606-0c59-41f2-afdc-6c69f5258c1e",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/field-notes'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      },
+      {
+        "claim_id": "CLM-UNIQUENESS",
+        "statement": "similar_repo_count is 4 and unique_capability is offline field notebook that keeps GPS tracks next to sketches.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-field-notes",
+            "query_id": "dd804606-0c59-41f2-afdc-6c69f5258c1e",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/field-notes'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      },
+      {
+        "claim_id": "CLM-DECISION",
+        "statement": "Decision RESURRECTION_FAILED for sample/field-notes. has_tests is false. Licence Apache-2.0, days_since_push 500, similar_repo_count 4, unique_capability 'offline field notebook that keeps GPS tracks next to sketches', has_tests False, ci_status failure. data_origin synthetic_labelled.",
+        "evidence": [
+          {
+            "evidence_id": "EV-PROFILE-sample-field-notes",
+            "query_id": "dd804606-0c59-41f2-afdc-6c69f5258c1e",
+            "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/field-notes'",
+            "source": "phoenix.repo_evidence",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-SIGNAL-sample-field-notes-4-ci-failure",
+            "query_id": "9ff1676f-b6da-43ae-aa41-0365b8dd5c95",
+            "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/field-notes'",
+            "source": "phoenix.revival_signals",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-SIGNAL-sample-field-notes-2-tests-absent",
+            "query_id": "9ff1676f-b6da-43ae-aa41-0365b8dd5c95",
+            "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/field-notes'",
+            "source": "phoenix.revival_signals",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-SIGNAL-sample-field-notes-0-tests-absent",
+            "query_id": "abb82fea-8a6b-4268-8c8f-05d500294663",
+            "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/field-notes'",
+            "source": "phoenix.revival_signals",
+            "zetaris_mode": "sample-cache"
+          },
+          {
+            "evidence_id": "EV-SIGNAL-sample-field-notes-1-ci-failure",
+            "query_id": "abb82fea-8a6b-4268-8c8f-05d500294663",
+            "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/field-notes'",
+            "source": "phoenix.revival_signals",
+            "zetaris_mode": "sample-cache"
+          }
+        ]
+      }
+    ],
+    "zetaris": {
+      "mode": "sample-cache",
+      "queries": [
+        {
+          "query_id": "dd804606-0c59-41f2-afdc-6c69f5258c1e",
+          "sql": "SELECT repo_id, full_name, description, licence_spdx, primary_language, stars, forks, archived, days_since_push, open_issues, has_readme, has_license_file, has_tests, has_ci, ci_status, similar_repo_count, unique_capability, successor_url, category, html_url, data_origin FROM phoenix.repo_evidence WHERE repo_id = 'sample/field-notes'",
+          "source": "phoenix.repo_evidence",
+          "mode": "sample-cache"
+        },
+        {
+          "query_id": "abb82fea-8a6b-4268-8c8f-05d500294663",
+          "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/field-notes'",
+          "source": "phoenix.revival_signals",
+          "mode": "sample-cache"
+        },
+        {
+          "query_id": "9ff1676f-b6da-43ae-aa41-0365b8dd5c95",
+          "sql": "SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = 'sample/field-notes'",
+          "source": "phoenix.revival_signals",
+          "mode": "sample-cache"
+        }
+      ],
+      "load_bearing": true
+    },
+    "llm": {
+      "provider": "sample-standin",
+      "model": "deterministic-rule-standin",
+      "sample_standin": true,
+      "label": "SAMPLE_MODE deterministic stand-in. Not a live model reply. The stand-in reads the Zetaris rows in the prompt and applies the evidence policy.",
+      "explanation_accepted": true,
+      "primary_provider": "meterless"
+    },
+    "hmem": {
+      "engine": "H-MEM",
+      "recalled": [
+        {
+          "memory_id": "mem-61a37105f52e",
+          "content": "repository sample/field-notes category research The recorded licence is Apache-2.0.",
+          "score": 0.6861,
+          "evidence_refs": [
+            "EV-PROFILE-sample-field-notes"
+          ],
+          "layer": "working",
+          "run_id": "phoenix-364e88e5"
+        },
+        {
+          "memory_id": "mem-90fbd948a6f1",
+          "content": "repository sample/field-notes category research days_since_push is 500.",
+          "score": 0.6086,
+          "evidence_refs": [
+            "EV-PROFILE-sample-field-notes"
+          ],
+          "layer": "working",
+          "run_id": "phoenix-364e88e5"
+        },
+        {
+          "memory_id": "mem-960e53d65789",
+          "content": "repository sample/field-notes category research similar_repo_count is 4 and unique_capability is offline field notebook that keeps GPS tracks next to sketches.",
+          "score": 0.5094,
+          "evidence_refs": [
+            "EV-PROFILE-sample-field-notes"
+          ],
+          "layer": "working",
+          "run_id": "phoenix-364e88e5"
+        }
+      ],
+      "prior_verdicts": [],
+      "verdict_memory_id": "mem-5bc1b2afc9f2"
+    },
+    "collaboration": {
+      "agents": [
+        "archaeologist",
+        "market_judge",
+        "architect",
+        "builder",
+        "validator",
+        "diagnostician"
+      ],
+      "critique_events": [
+        {
+          "target_agent": "archaeologist",
+          "reason": "CLM-DEMAND has no evidence id.",
+          "retry_count": 0
+        },
+        {
+          "target_agent": "builder",
+          "reason": "Builder cannot write PASS. Validator is the only role that may accept a revival.",
+          "retry_count": 0
+        }
+      ],
+      "markovian_chunks": [
+        "archaeologist-1",
+        "archaeologist-2",
+        "market-judge-1",
+        "architect",
+        "builder-1",
+        "builder-2",
+        "diagnostician"
+      ]
+    },
+    "pre_existing_foundation": "Evidence graph, state machine, audit trail, and API shape from the 8 Oct 2026 skeleton.",
+    "scope": "The terminal state is an evidence-policy verdict over Zetaris rows. This run does not clone, compile, test, or republish the repository. RESURRECTED means the cited rows satisfy the revival rules. RESURRECTION_FAILED means the rows say it is worth reviving and the recorded tests or CI do not pass inside the repair budget. NO_GO means the rows fail the value rules."
   }
 }

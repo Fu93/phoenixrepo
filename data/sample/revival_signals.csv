@@ -1,0 +1,6 @@
+repo_id,signal,detail,supports_revival
+sample/phoenix-ledger,tests_present,The cached profile records a test suite.,true
+sample/phoenix-ledger,ci_success,The cached profile records the last CI result as success.,true
+sample/generic-qr,commodity_category,Many similar projects are recorded and no distinct capability is recorded.,false
+sample/field-notes,tests_absent,The cached profile records no test suite.,false
+sample/field-notes,ci_failure,The cached profile records the last CI result as failure.,false

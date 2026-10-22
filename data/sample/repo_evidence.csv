@@ -1,0 +1,4 @@
+repo_id,full_name,description,licence_spdx,primary_language,stars,forks,archived,days_since_push,open_issues,has_readme,has_license_file,has_tests,has_ci,ci_status,similar_repo_count,unique_capability,successor_url,category,html_url,data_origin
+sample/phoenix-ledger,sample/phoenix-ledger,Offline double-entry ledger with a signed local audit trail,MIT,Python,12,1,false,640,3,true,true,true,true,success,2,offline double-entry ledger with a signed audit trail,,accounting,sample://phoenix-ledger,synthetic_labelled
+sample/generic-qr,sample/generic-qr,Browser QR code generator,MIT,JavaScript,4,0,false,900,8,true,true,true,false,absent,180,,,qr,sample://generic-qr,synthetic_labelled
+sample/field-notes,sample/field-notes,Offline field notebook that keeps GPS tracks next to sketches,Apache-2.0,Kotlin,7,1,false,500,5,true,true,false,true,failure,4,offline field notebook that keeps GPS tracks next to sketches,,research,sample://field-notes,synthetic_labelled
