@@ -15,6 +15,8 @@ ROLES = (
     "planner",
     "reviewer",
     "equivalence",
+    "venture_analyst",
+    "venture_reviewer",
 )
 
 _DIR = Path(__file__).resolve().parent
