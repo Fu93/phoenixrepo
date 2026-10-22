@@ -13,6 +13,10 @@
 # sends for discovery. It does not call /healthz. POST /run is skipped unless
 # that probe is HTTP 200, Zetaris SELECT 1 is HTTP 200, and GET /health reports
 # sample_mode false.
+#
+# Before the live probes it runs scripts/discovery_story.py when python, python3,
+# or py is on PATH. That script prints the committed idea-filter verdicts and
+# does not call GitHub. A missing interpreter records discovery_story skipped.
 
 $ErrorActionPreference = "Stop"
 Set-ExecutionPolicy -Scope Process Bypass -Force
@@ -26,6 +30,25 @@ function Add-Check([System.Collections.Generic.List[object]]$checks, [string]$na
 }
 
 $checks = New-Object System.Collections.Generic.List[object]
+$storyFailed = $false
+$storyCmd = $null
+foreach ($candidate in @("python3", "python", "py")) {
+    if (Get-Command $candidate -ErrorAction SilentlyContinue) {
+        $storyCmd = $candidate
+        break
+    }
+}
+if ($null -eq $storyCmd) {
+    Add-Check $checks "discovery_story" "skipped"
+}
+else {
+    & $storyCmd (Join-Path $root "scripts\discovery_story.py")
+    if ($LASTEXITCODE -eq 0) { Add-Check $checks "discovery_story" "ok" }
+    else {
+        Add-Check $checks "discovery_story" "failed"
+        $storyFailed = $true
+    }
+}
 $docker = & docker version --format "{{.Server.Version}}" 2>$null
 if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($docker)) {
     Add-Check $checks "docker" "ok"
@@ -108,7 +131,8 @@ if (-not $ready) {
     Add-Check $checks "post_run" "skipped"
 }
 else {
-    # Offline policy on the committed snapshot: NO_GO, RESURRECTION_FAILED, RESURRECTED.
+    # Revival snapshot verdicts for these three: NO_GO, RESURRECTION_FAILED, CANDIDATE.
+    # The idea-filter story is the offline discovery_story check above.
     $repos = @("golang/dep", "jondot/hygen", "42wim/matterbridge")
     foreach ($repo in $repos) {
         $payload = @{ repository = $repo; mode = "live"; max_repair_iterations = 0 } | ConvertTo-Json -Compress
@@ -141,5 +165,6 @@ $summary = Join-Path $root "logs\demo-live.md"
 ($checks | ConvertTo-Json -Depth 4) | Set-Content -Path $checkPath -Encoding utf8
 ($runs | ConvertTo-Json -Depth 4) | Set-Content -Path $runPath -Encoding utf8
 py -3 (Join-Path $root "scripts\demo_summary.py") --checks $checkPath --runs $runPath --output $summary
+if ($storyFailed) { exit 1 }
 if (-not $ready) { exit 1 }
 exit 0

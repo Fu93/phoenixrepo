@@ -1,0 +1,14 @@
+repo_id,html_url,description,readme_excerpt,problem_excerpt,user_excerpt,scope_excerpt,code_paths,created_at,pushed_at,days_since_push,stargazers_count,forks_count,open_issues,licence_spdx,core_terms,cohort,data_origin,collected_at
+tharani-2006/Invoice-generator-application,https://github.com/tharani-2006/Invoice-generator-application,"Full-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.","![License](https://img.shields.io/badge/license-MIT-green.svg)
+A full-stack web application for creating, managing, and sending professional invoices with multiple customizable templates.
+Invoice Generator is a comprehensive, production-ready application designed for businesses and freelancers to streamline their invoicing process.","Full-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.",businesses and freelancers,"creating, managing, and sending professional invoices with multiple customizable templates",client/src/App.jsx|client/src/services/pdfUtils.js|server/src/main/java/tharani/dev/invoicegeneratorApi/service/InvoiceService.java,2025-11-26T00:03:22Z,2026-02-28T17:11:12Z,236,0,0,0,,invoice|pdf,discovery,github_rest_api:2026-10-22T19:11:28Z,2026-10-22T19:11:28+00:00
+SergioMendolia/ytkb,https://github.com/SergioMendolia/ytkb,"A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.","A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.
+- **Download**: Download all pages from a YouTrack knowledge base, preserving hierarchy and order
+- **Diff**: Compare local files with server versions to see what's changed
+- **Push**: Push changes back to YouTrack (update only, no creation)
+- **Tree**: Display the article hierarchy as an ASCII tree with star status and article IDs
+- **Star**: Add or remove stars (favorites) on articles, with optional recursive mode for all children
+- [ ] Manage images and attachments
+- [ ] Allow page creation from new md files
+go build -o ytkb
+go install","A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",edit them in your editor of choice,"Push changes back to YouTrack (update only, no creation)",main.go|cmd/push.go|cmd/download.go|internal/api/client.go|internal/markdown/parser.go|internal/filesystem/files.go,2025-12-03T19:40:58Z,2026-03-31T19:56:26Z,205,0,0,0,,knowledge base|push changes back,discovery,github_rest_api:2026-10-22T19:11:28Z,2026-10-22T19:11:28+00:00

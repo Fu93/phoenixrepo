@@ -9,6 +9,8 @@ from typing import Any
 
 from app.adapters.sample_zetaris import SampleZetaris
 from app.adapters.zetaris import ZetarisClient, ZetarisResult
+from app.agents.discovery_planner import build_discovery_prd, render_discovery_markdown
+from app.agents.market_filter import apply_market_overlay, showcase_prior_art_note
 from app.agents.planner import (
     attempt_evidence_id,
     build_revival_prd,
@@ -41,7 +43,16 @@ from app.llm.parsing import parse_model_json
 from app.llm.provider import BoundLLM, build_llm
 from app.llm.standin import SampleStandIn
 from app.paths import repo_root
-from app.sql_catalog import attempts_sql, profile_sql, require_repo_id, signals_sql, sources_sql
+from app.sql_catalog import (
+    attempts_sql,
+    demand_sql,
+    discovery_sql,
+    prior_art_sql,
+    profile_sql,
+    require_repo_id,
+    signals_sql,
+    sources_sql,
+)
 from app.trace_log import HackathonTrace
 from artifacts.store import ArtifactStore
 from audit.trail import AuditTrail
@@ -156,6 +167,13 @@ class InvestigationOrchestrator:
             )
         judgment = self._judge(row, signals, known, recalled)
         decision, policy_reason, self.upgrade = apply_revival_attempts(row, signals, attempts)
+        decision, policy_reason = apply_market_overlay(
+            decision,
+            policy_reason,
+            self.discovery_rows,
+            self.prior_rows,
+            self.demand_rows,
+        )
         self._advance(PhoenixState.RECONNAISSANCE_COMPLETE, "Repository row loaded from Zetaris.", [profile_evidence_id])
         self._advance(PhoenixState.EVIDENCE_COMPLETE, "Profile and revival signals loaded.", list(known))
         self._advance(PhoenixState.INTENT_RECONSTRUCTED, "Claims are tied to Zetaris rows.", [profile_evidence_id])
@@ -163,7 +181,9 @@ class InvestigationOrchestrator:
         self._advance(PhoenixState.VALUE_DECISION, decision, [profile_evidence_id])
 
         repairs_used = 0
-        if decision != "NO_GO":
+        if decision == "ALREADY_EXISTS":
+            self._advance(PhoenixState.ALREADY_EXISTS, policy_reason, [profile_evidence_id])
+        elif decision != "NO_GO":
             self._architect(row, profile_evidence_id)
             self._builder(row, decision, known)
             self._advance(PhoenixState.PRODUCT_BLUEPRINT_COMPLETE, "Revival contract drafted.", [profile_evidence_id])
@@ -190,7 +210,10 @@ class InvestigationOrchestrator:
                 self._advance(PhoenixState.CANDIDATE, policy_reason, list(known))
             else:
                 self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
-            self._planner(row, signals, attempts, sources, known)
+            if self.discovery_rows and decision == "CANDIDATE":
+                self._discovery_planner()
+            else:
+                self._planner(row, signals, attempts, sources, known)
         else:
             self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
 
@@ -201,6 +224,10 @@ class InvestigationOrchestrator:
                 verdict_text = verdict_text.rstrip() + " Revival has not yet been attempted."
         else:
             verdict_text = explanation(row, decision, policy_reason)
+        if self.prior_rows and not self.discovery_rows:
+            note = showcase_prior_art_note(self.prior_rows)
+            if note not in verdict_text:
+                verdict_text = verdict_text.rstrip() + " " + note
         judge_note = self._judge_verdict_note()
         if judge_note:
             verdict_text = verdict_text.rstrip() + " " + judge_note
@@ -274,6 +301,9 @@ class InvestigationOrchestrator:
         signal_result = self._query(signals_sql(self.repository))
         attempt_result = self._query(attempts_sql(self.repository))
         source_result = self._query(sources_sql(self.repository))
+        discovery_result = self._query(discovery_sql(self.repository))
+        prior_result = self._query(prior_art_sql(self.repository))
+        demand_result = self._query(demand_sql(self.repository))
         if not profile_result.rows:
             raise InvestigationError(
                 "RepositoryNotInZetaris",
@@ -288,6 +318,12 @@ class InvestigationOrchestrator:
         self.signal_result = signal_result
         self.attempt_result = attempt_result
         self.source_result = source_result
+        self.discovery_result = discovery_result
+        self.prior_result = prior_result
+        self.demand_result = demand_result
+        self.discovery_rows = [dict(item) for item in discovery_result.rows]
+        self.prior_rows = [dict(item) for item in prior_result.rows]
+        self.demand_rows = [dict(item) for item in demand_result.rows]
         self.trace.event(
             agent_name="archaeologist",
             action="EVIDENCE_COLLECTION_COMPLETED",
@@ -471,6 +507,21 @@ class InvestigationOrchestrator:
             )
             self.revival_prd = self._write_prd(accepted)
 
+    def _discovery_planner(self) -> None:
+        """Plan-only productise document. The model does not draft this cohort."""
+
+        document = build_discovery_prd(
+            self.discovery_rows[0],
+            self.prior_rows,
+            self.demand_rows,
+            {
+                "discovery": _query_cite(self.discovery_result),
+                "prior_art": _query_cite(self.prior_result),
+                "demand": _query_cite(self.demand_result),
+            },
+        )
+        self.revival_prd = self._write_prd(label_prd(document, model_produced=False))
+
     def _write_prd(self, document: dict) -> dict[str, Any]:
         import os
 
@@ -486,7 +537,7 @@ class InvestigationOrchestrator:
             base = prd_basename(str(document["repo_id"]))
             markdown_file = directory / f"{base}.prd.md"
             json_file = directory / f"{base}.prd.json"
-            markdown_file.write_text(render_markdown(document), encoding="utf-8")
+            markdown_file.write_text(_markdown_for(document), encoding="utf-8")
             json_file.write_text(render_json(document), encoding="utf-8")
             markdown_path = str(markdown_file)
             json_path = str(json_file)
@@ -1207,6 +1258,10 @@ class InvestigationOrchestrator:
                     "cannot override NO_GO, missing tests, or a missing licence file. A qualifying "
                     "stage-1 failure is RESURRECTION_FAILED and cites that run. The latest attempt "
                     "wins. Refactor and upgrade are an upgrade result and do not change the verdict. "
+                    "A discovery row is judged from the README and from external demand for the problem. "
+                    "The repository's own stars, forks, and issues are not that signal. "
+                    "ALREADY_EXISTS means a maintained free open-source alternative covers every cited "
+                    "core phrase and does not get a revival plan. "
                     "The trace hash chain shows the record was not altered after the run. It does not "
                     "show that the record is true."
                 ),
@@ -1245,7 +1300,7 @@ class InvestigationOrchestrator:
         markdown_path = self.revival_prd.get("markdown_path") or ""
         json_path = self.revival_prd.get("json_path") or ""
         if markdown_path:
-            Path(markdown_path).write_text(render_markdown(document), encoding="utf-8")
+            Path(markdown_path).write_text(_markdown_for(document), encoding="utf-8")
         if json_path:
             Path(json_path).write_text(render_json(document), encoding="utf-8")
 
@@ -1274,6 +1329,16 @@ class InvestigationOrchestrator:
     def _check_run_budget(self) -> None:
         if time.monotonic() - self.started > self.settings.run_timeout_seconds:
             raise InvestigationError("RunTimeout", "The investigation exceeded its run timeout.", 504)
+
+
+def _markdown_for(document: dict) -> str:
+    if document.get("kind") == "discovery":
+        return render_discovery_markdown(document)
+    return render_markdown(document)
+
+
+def _query_cite(result: ZetarisResult) -> dict[str, str]:
+    return {"query_id": result.query_id, "sql": result.sql, "content_hash": result.content_hash}
 
 
 def _planner_evidence_text(row: dict, signals: list[dict], attempts: list[dict], sources: list[dict]) -> str:

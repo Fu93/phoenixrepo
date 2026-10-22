@@ -1,0 +1,540 @@
+{
+  "collected_at": "2026-10-22T19:11:28+00:00",
+  "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+  "token_used": false,
+  "token_written": false,
+  "commands": [
+    "gh api repos/<owner>/<name>",
+    "gh api -H Accept:application/vnd.github.raw repos/<owner>/<name>/readme",
+    "gh api repos/<owner>/<name>/git/trees/HEAD?recursive=1",
+    "gh api repos/foliant-docs/foliant/issues/80",
+    "gh api repos/foliant-docs/foliant/pulls/80",
+    "gh api search/issues?q=\"knowledge base\" youtrack markdown is:issue",
+    "gh api search/repositories?q=youtrack markdown knowledge in:description stars:>20 pushed:>2026-04-22",
+    "gh api search/repositories?q=code generator in:description inject template stars:>1000 pushed:>2025-10-01",
+    "gh api repos/Fu93/hygen/actions/runs/39828539248",
+    "gh api repos/Fu93/hygen/actions/runs/39828539248/jobs",
+    "gh api repos/Fu93/hygen/pulls/1",
+    "gh api repos/Fu93/hygen/pulls/1/commits"
+  ],
+  "readme_sha256": {
+    "tharani-2006/Invoice-generator-application": "2dff75f313bc47e883b61f55fa08c453c219dc80b9b4d340e626a32667798cd4",
+    "al1abb/invoify": "259a9dc2d41e42605401a31c37775930dc165cdb83c0b1ea6ebf61e30f8ba88e",
+    "SergioMendolia/ytkb": "32559bf1654b1d9415f00d53ebd5b3c18ead5d47a12d883101b02d079a541fb1",
+    "foliant-docs/foliant": "bdc52b2ec605720d6f49e1d506953b382c7da6e7669d47e7e07f19b3b68db13b",
+    "plopjs/plop": "8284e5541eacf1296aaa5910ed2b1fa6c581c2570604f6f3f9408e3d4fdb0abe",
+    "yeoman/yo": "1b6069e0b58cc0fb36cfa945b580752ae73aa5b3104fce45312afd060b750c59",
+    "cookiecutter/cookiecutter": "6645f3e153b13a68c43131aad90dcdb538bc1b3ed1060d67c54fe1d42316bd2f",
+    "jondot/hygen": "8a08e1add4ca7826889c3ccaf61c0b41e088ef0442a70f0370fcb78141d8602a"
+  },
+  "repos": {
+    "NapalmDeath/youtrack-outline-importer": {
+      "full_name": "NapalmDeath/youtrack-outline-importer",
+      "description": "Convert Youtrack KnowledgeBase markdown to outline format",
+      "html_url": "https://github.com/NapalmDeath/youtrack-outline-importer",
+      "created_at": "2024-07-06T09:41:21Z",
+      "pushed_at": "2024-07-07T12:56:57Z",
+      "updated_at": "2024-07-07T12:57:00Z",
+      "stargazers_count": 0,
+      "forks_count": 0,
+      "open_issues_count": 0,
+      "size": 4,
+      "license": null,
+      "default_branch": "main",
+      "language": "Python"
+    },
+    "SergioMendolia/ytkb": {
+      "full_name": "SergioMendolia/ytkb",
+      "description": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+      "html_url": "https://github.com/SergioMendolia/ytkb",
+      "created_at": "2025-12-03T19:40:58Z",
+      "pushed_at": "2026-03-31T19:56:26Z",
+      "updated_at": "2026-03-31T19:55:12Z",
+      "stargazers_count": 0,
+      "forks_count": 0,
+      "open_issues_count": 0,
+      "size": 7133,
+      "license": null,
+      "default_branch": "main",
+      "language": "Go"
+    },
+    "al1abb/invoify": {
+      "full_name": "al1abb/invoify",
+      "description": "An invoice generator app built using Next.js, Typescript, and Shadcn",
+      "html_url": "https://github.com/al1abb/invoify",
+      "created_at": "2023-09-17T16:56:48Z",
+      "pushed_at": "2026-08-24T02:55:34Z",
+      "updated_at": "2026-10-22T17:09:45Z",
+      "stargazers_count": 6376,
+      "forks_count": 741,
+      "open_issues_count": 39,
+      "size": 4663,
+      "license": {
+        "spdx_id": "MIT",
+        "key": "mit"
+      },
+      "default_branch": "master",
+      "language": "TypeScript"
+    },
+    "billpeet/yt-cli": {
+      "full_name": "billpeet/yt-cli",
+      "description": "YouTrack CLI tool for AI agent and developer use — text/markdown output by default",
+      "html_url": "https://github.com/billpeet/yt-cli",
+      "created_at": "2026-02-17T21:30:04Z",
+      "pushed_at": "2026-08-17T07:39:14Z",
+      "updated_at": "2026-08-17T07:39:51Z",
+      "stargazers_count": 0,
+      "forks_count": 0,
+      "open_issues_count": 0,
+      "size": 48,
+      "license": null,
+      "default_branch": "master",
+      "language": "TypeScript"
+    },
+    "cookiecutter/cookiecutter": {
+      "full_name": "cookiecutter/cookiecutter",
+      "description": "A cross-platform command-line utility that creates projects from cookiecutters (project templates), e.g. Python package projects, C projects.",
+      "html_url": "https://github.com/cookiecutter/cookiecutter",
+      "created_at": "2013-07-14T18:31:22Z",
+      "pushed_at": "2026-04-01T17:46:44Z",
+      "updated_at": "2026-10-22T13:03:22Z",
+      "stargazers_count": 25161,
+      "forks_count": 2299,
+      "open_issues_count": 330,
+      "size": 3499,
+      "license": {
+        "spdx_id": "BSD-3-Clause",
+        "key": "bsd-3-clause"
+      },
+      "default_branch": "main",
+      "language": "Python"
+    },
+    "foliant-docs/foliant": {
+      "full_name": "foliant-docs/foliant",
+      "description": "Comprehensive markdown-based documentation toolkit",
+      "html_url": "https://github.com/foliant-docs/foliant",
+      "created_at": "2016-02-25T20:39:34Z",
+      "pushed_at": "2026-03-29T13:40:56Z",
+      "updated_at": "2026-07-10T09:24:31Z",
+      "stargazers_count": 177,
+      "forks_count": 8,
+      "open_issues_count": 21,
+      "size": 10138,
+      "license": {
+        "spdx_id": "MIT",
+        "key": "mit"
+      },
+      "default_branch": "master",
+      "language": "Python"
+    },
+    "jondot/hygen": {
+      "full_name": "jondot/hygen",
+      "description": "The simple, fast, and scalable code generator that lives in your project.",
+      "html_url": "https://github.com/jondot/hygen",
+      "created_at": "2017-08-13T07:38:43Z",
+      "pushed_at": "2024-07-09T11:40:47Z",
+      "updated_at": "2026-10-22T05:53:42Z",
+      "stargazers_count": 5927,
+      "forks_count": 275,
+      "open_issues_count": 102,
+      "size": 10500,
+      "license": {
+        "spdx_id": "MIT",
+        "key": "mit"
+      },
+      "default_branch": "master",
+      "language": "JavaScript"
+    },
+    "legions-developer/invoicely": {
+      "full_name": "legions-developer/invoicely",
+      "description": "Invoicely is a simple and easy to use invoice generator where you can create beautiful and professional invoices in minutes. ~ Proudly OSS",
+      "html_url": "https://github.com/legions-developer/invoicely",
+      "created_at": "2025-04-30T08:45:57Z",
+      "pushed_at": "2026-10-05T18:18:38Z",
+      "updated_at": "2026-10-20T16:52:31Z",
+      "stargazers_count": 925,
+      "forks_count": 116,
+      "open_issues_count": 2,
+      "size": 18340,
+      "license": {
+        "spdx_id": "MIT",
+        "key": "mit"
+      },
+      "default_branch": "main",
+      "language": "TypeScript"
+    },
+    "plopjs/plop": {
+      "full_name": "plopjs/plop",
+      "description": "Consistency Made Simple",
+      "html_url": "https://github.com/plopjs/plop",
+      "created_at": "2014-04-30T14:53:08Z",
+      "pushed_at": "2026-10-16T10:34:37Z",
+      "updated_at": "2026-10-22T05:53:43Z",
+      "stargazers_count": 7686,
+      "forks_count": 298,
+      "open_issues_count": 91,
+      "size": 6657,
+      "license": {
+        "spdx_id": "MIT",
+        "key": "mit"
+      },
+      "default_branch": "main",
+      "language": "JavaScript"
+    },
+    "siporoz/youtrack-ai-context-exporter": {
+      "full_name": "siporoz/youtrack-ai-context-exporter",
+      "description": "Chrome extension that copies YouTrack issue context as Markdown for LLM workflows",
+      "html_url": "https://github.com/siporoz/youtrack-ai-context-exporter",
+      "created_at": "2026-05-06T04:39:05Z",
+      "pushed_at": "2026-05-06T04:39:08Z",
+      "updated_at": "2026-05-06T04:39:11Z",
+      "stargazers_count": 0,
+      "forks_count": 0,
+      "open_issues_count": 0,
+      "size": 19,
+      "license": {
+        "spdx_id": "MIT",
+        "key": "mit"
+      },
+      "default_branch": "main",
+      "language": "TypeScript"
+    },
+    "tharani-2006/Invoice-generator-application": {
+      "full_name": "tharani-2006/Invoice-generator-application",
+      "description": "Full-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.",
+      "html_url": "https://github.com/tharani-2006/Invoice-generator-application",
+      "created_at": "2025-11-26T00:03:22Z",
+      "pushed_at": "2026-02-28T17:11:12Z",
+      "updated_at": "2026-02-28T17:11:15Z",
+      "stargazers_count": 0,
+      "forks_count": 0,
+      "open_issues_count": 0,
+      "size": 24789,
+      "license": null,
+      "default_branch": "main",
+      "language": "JavaScript"
+    },
+    "udamir/youtrack-markdown-snippet": {
+      "full_name": "udamir/youtrack-markdown-snippet",
+      "description": "Youtrack widget allows to embed article/issue parts into markdown content",
+      "html_url": "https://github.com/udamir/youtrack-markdown-snippet",
+      "created_at": "2025-07-13T13:24:57Z",
+      "pushed_at": "2026-08-05T13:13:10Z",
+      "updated_at": "2026-08-05T13:14:23Z",
+      "stargazers_count": 4,
+      "forks_count": 0,
+      "open_issues_count": 1,
+      "size": 651,
+      "license": {
+        "spdx_id": "MIT",
+        "key": "mit"
+      },
+      "default_branch": "master",
+      "language": "TypeScript"
+    },
+    "yeoman/yo": {
+      "full_name": "yeoman/yo",
+      "description": "CLI tool for running Yeoman generators",
+      "html_url": "https://github.com/yeoman/yo",
+      "created_at": "2013-02-11T13:24:05Z",
+      "pushed_at": "2026-08-01T07:43:18Z",
+      "updated_at": "2026-10-19T21:03:55Z",
+      "stargazers_count": 3964,
+      "forks_count": 406,
+      "open_issues_count": 39,
+      "size": 2962,
+      "license": {
+        "spdx_id": "BSD-2-Clause",
+        "key": "bsd-2-clause"
+      },
+      "default_branch": "main",
+      "language": "JavaScript"
+    }
+  },
+  "candidates": [
+    {
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "readme_excerpt": "![License](https://img.shields.io/badge/license-MIT-green.svg)\nA full-stack web application for creating, managing, and sending professional invoices with multiple customizable templates.\nInvoice Generator is a comprehensive, production-ready application designed for businesses and freelancers to streamline their invoicing process.",
+      "problem_excerpt": "Full-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.",
+      "user_excerpt": "businesses and freelancers",
+      "scope_excerpt": "creating, managing, and sending professional invoices with multiple customizable templates",
+      "code_paths": [
+        "client/src/App.jsx",
+        "client/src/services/pdfUtils.js",
+        "server/src/main/java/tharani/dev/invoicegeneratorApi/service/InvoiceService.java"
+      ],
+      "core_terms": [
+        "invoice",
+        "pdf"
+      ],
+      "cohort": "discovery"
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "readme_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Download**: Download all pages from a YouTrack knowledge base, preserving hierarchy and order\n- **Diff**: Compare local files with server versions to see what's changed\n- **Push**: Push changes back to YouTrack (update only, no creation)\n- **Tree**: Display the article hierarchy as an ASCII tree with star status and article IDs\n- **Star**: Add or remove stars (favorites) on articles, with optional recursive mode for all children\n- [ ] Manage images and attachments\n- [ ] Allow page creation from new md files\ngo build -o ytkb\ngo install",
+      "problem_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+      "user_excerpt": "edit them in your editor of choice",
+      "scope_excerpt": "Push changes back to YouTrack (update only, no creation)",
+      "code_paths": [
+        "main.go",
+        "cmd/push.go",
+        "cmd/download.go",
+        "internal/api/client.go",
+        "internal/markdown/parser.go",
+        "internal/filesystem/files.go"
+      ],
+      "core_terms": [
+        "knowledge base",
+        "push changes back"
+      ],
+      "cohort": "discovery"
+    }
+  ],
+  "prior_art": [
+    {
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "alternative_id": "al1abb/invoify",
+      "excerpt": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF.",
+      "candidate_excerpt": "Full-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.",
+      "required_terms": [
+        "invoice",
+        "pdf"
+      ]
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "alternative_id": "foliant-docs/foliant",
+      "excerpt": "Comprehensive markdown-based documentation toolkit Foliant is an all-in-one single-source documentation authoring tool.",
+      "candidate_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Push**: Push changes back to YouTrack (update only, no creation)",
+      "required_terms": [
+        "knowledge base",
+        "push changes back"
+      ]
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "alternative_id": "billpeet/yt-cli",
+      "excerpt": "YouTrack CLI tool for AI agent and developer use — text/markdown output by default",
+      "candidate_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Push**: Push changes back to YouTrack (update only, no creation)",
+      "required_terms": [
+        "knowledge base",
+        "push changes back"
+      ]
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "alternative_id": "NapalmDeath/youtrack-outline-importer",
+      "excerpt": "Convert Youtrack KnowledgeBase markdown to outline format",
+      "candidate_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Push**: Push changes back to YouTrack (update only, no creation)",
+      "required_terms": [
+        "knowledge base",
+        "push changes back"
+      ]
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "alternative_id": "udamir/youtrack-markdown-snippet",
+      "excerpt": "Youtrack widget allows to embed article/issue parts into markdown content",
+      "candidate_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Push**: Push changes back to YouTrack (update only, no creation)",
+      "required_terms": [
+        "knowledge base",
+        "push changes back"
+      ]
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "alternative_id": "siporoz/youtrack-ai-context-exporter",
+      "excerpt": "Chrome extension that copies YouTrack issue context as Markdown for LLM workflows",
+      "candidate_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Push**: Push changes back to YouTrack (update only, no creation)",
+      "required_terms": [
+        "knowledge base",
+        "push changes back"
+      ]
+    },
+    {
+      "repo_id": "jondot/hygen",
+      "alternative_id": "plopjs/plop",
+      "excerpt": "Micro-generator framework that makes it easy for an entire team to create files with a level of uniformity.",
+      "candidate_excerpt": "`hygen` is the simple, fast, and scalable code generator that lives _in_ your project.\n- ✅ Injecting into existing files",
+      "required_terms": [
+        "code generator",
+        "injecting into existing files"
+      ]
+    },
+    {
+      "repo_id": "jondot/hygen",
+      "alternative_id": "yeoman/yo",
+      "excerpt": "CLI tool for running Yeoman generators A generator is basically a plugin that can be run with the `yo` command to scaffold complete projects or useful parts.",
+      "candidate_excerpt": "`hygen` is the simple, fast, and scalable code generator that lives _in_ your project.\n- ✅ Injecting into existing files",
+      "required_terms": [
+        "code generator",
+        "injecting into existing files"
+      ]
+    },
+    {
+      "repo_id": "jondot/hygen",
+      "alternative_id": "cookiecutter/cookiecutter",
+      "excerpt": "A cross-platform command-line utility that creates projects from cookiecutters (project templates), e.g. Python package projects, C projects.",
+      "candidate_excerpt": "`hygen` is the simple, fast, and scalable code generator that lives _in_ your project.\n- ✅ Injecting into existing files",
+      "required_terms": [
+        "code generator",
+        "injecting into existing files"
+      ]
+    }
+  ],
+  "demand": [
+    {
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "signal_id": "invoify-related-repo",
+      "kind": "related_repo",
+      "alternative_id": "al1abb/invoify",
+      "excerpt": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF."
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "signal_id": "foliant-pr-80",
+      "kind": "github_issue",
+      "url": "https://github.com/foliant-docs/foliant/pull/80",
+      "excerpt": "Adds a new built-in preprocessor (`youtrack`) that fetches issues and knowledge base articles from a YouTrack instance via the REST API and generates markdown files for inclusion in Foliant projects.",
+      "comments": 2,
+      "reactions": 2
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "signal_id": "ytkb-issue-search",
+      "kind": "github_search",
+      "url": "https://api.github.com/search/issues?q=%22knowledge%20base%22%20youtrack%20markdown%20is%3Aissue",
+      "query": "\"knowledge base\" youtrack markdown is:issue",
+      "metric_name": "total_count",
+      "metric_value": 10,
+      "excerpt": ""
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "signal_id": "ytkb-repo-search",
+      "kind": "github_search",
+      "url": "https://api.github.com/search/repositories?q=youtrack%20markdown%20knowledge%20in%3Adescription%20stars%3A%3E20%20pushed%3A%3E2026-04-22",
+      "query": "youtrack markdown knowledge in:description stars:>20 pushed:>2026-04-22",
+      "metric_name": "total_count",
+      "metric_value": 0,
+      "excerpt": ""
+    },
+    {
+      "repo_id": "jondot/hygen",
+      "signal_id": "hygen-repo-search",
+      "kind": "github_search",
+      "url": "https://api.github.com/search/repositories?q=code%20generator%20in%3Adescription%20inject%20template%20stars%3A%3E1000%20pushed%3A%3E2025-10-01",
+      "query": "code generator in:description inject template stars:>1000 pushed:>2025-10-01",
+      "metric_name": "total_count",
+      "metric_value": 0,
+      "excerpt": ""
+    }
+  ],
+  "searches": {
+    "ytkb_issues": {
+      "query": "\"knowledge base\" youtrack markdown is:issue",
+      "total_count": 10,
+      "incomplete_results": false
+    },
+    "ytkb_repos": {
+      "query": "youtrack markdown knowledge in:description stars:>20 pushed:>2026-04-22",
+      "total_count": 0,
+      "incomplete_results": false
+    },
+    "hygen_repos": {
+      "query": "code generator in:description inject template stars:>1000 pushed:>2025-10-01",
+      "total_count": 0,
+      "incomplete_results": false
+    }
+  },
+  "foliant_pull_80": {
+    "html_url": "https://github.com/foliant-docs/foliant/pull/80",
+    "state": "open",
+    "merged_at": null,
+    "comments": 2
+  },
+  "hygen_fork": {
+    "pr_url": "https://github.com/Fu93/hygen/pull/1",
+    "state": "open",
+    "draft": true,
+    "merged": false,
+    "title": "Revive hygen: CI, security pins, Windows tests, and generator fixes",
+    "head_sha": "807e36152abb6563717c1b2f480084f3d8bb736c",
+    "base": "master",
+    "commits": [
+      {
+        "message": "revive: bump CI to checkout/setup-node v4 and Node 20/22",
+        "sha": "44e4b16ec57a68d4639e4d985b1823e961cc6702"
+      },
+      {
+        "message": "refactor: upgrade ejs to ^3.1.10 and degit to ^2.8.6",
+        "sha": "4ca65df16dbde96781fb5227056a3d217f505060"
+      },
+      {
+        "message": "upgrade: make hygen --version and -v print the version",
+        "sha": "1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a"
+      },
+      {
+        "message": "U1: bump TypeScript toolchain packages within the same major",
+        "sha": "5753a8e53b680404dfe66204684b5bafec83651c"
+      },
+      {
+        "message": "U2: pin patched production copies of advisory dependencies",
+        "sha": "78a45b53ed6c2b07a6b20106b3483a1707ea46bc"
+      },
+      {
+        "message": "U3: pin gh-pages 6.3.0 inside the patched range",
+        "sha": "168e0b45af41f408302458108a5fb69369771465"
+      },
+      {
+        "message": "U4: load chalk templates from chalk/source/templates",
+        "sha": "12ef4b9f2c5d68dedf3ed3866d4d7eaefd6b435a"
+      },
+      {
+        "message": "U5: append inject bodies onto the matched line",
+        "sha": "fc2d898f6fa2aaf5737744fac1d37b5f0e62b255"
+      },
+      {
+        "message": "U6: repeat one template per array entry with each",
+        "sha": "c5961de8933bfb6ca7b5c6491dade74d09d31136"
+      },
+      {
+        "message": "U7: run yarn test:win32 on windows-latest",
+        "sha": "807e36152abb6563717c1b2f480084f3d8bb736c"
+      }
+    ],
+    "u7_run": {
+      "html_url": "https://github.com/Fu93/hygen/actions/runs/39828539248",
+      "status": "in_progress",
+      "conclusion": null,
+      "head_sha": "807e36152abb6563717c1b2f480084f3d8bb736c",
+      "event": "pull_request",
+      "name": "CI",
+      "display_title": "Revive hygen: CI, security pins, Windows tests, and generator fixes",
+      "run_number": 8,
+      "updated_at": "2026-10-22T18:07:09Z"
+    },
+    "u7_jobs": [
+      {
+        "name": "build (22.x, ubuntu-latest)",
+        "conclusion": "success",
+        "status": "completed"
+      },
+      {
+        "name": "build (20.x, windows-latest)",
+        "conclusion": "success",
+        "status": "completed"
+      },
+      {
+        "name": "build (22.x, windows-latest)",
+        "conclusion": "success",
+        "status": "completed"
+      },
+      {
+        "name": "build (20.x, ubuntu-latest)",
+        "conclusion": "success",
+        "status": "completed"
+      }
+    ]
+  }
+}
