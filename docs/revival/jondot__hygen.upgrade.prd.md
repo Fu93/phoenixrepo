@@ -1,0 +1,301 @@
+# Upgrade PRD: jondot/hygen
+
+Drafted by: deterministic. llm_drafted: false.
+Kind: upgrade. This is the refactor and upgrade plan after the minimal revival.
+It does not replace docs/revival/jondot__hygen.prd.md.
+Commit: 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a
+Fork: Fu93/hygen
+Agent branch: cursor/revive-hygen-326e
+Base CI: https://github.com/Fu93/hygen/actions/runs/39821847516
+Evidence collected at: 2026-10-22T17:44:32Z
+
+## Problem statement
+
+Non-factual framing. This section sets the task. It is not a cited evidence claim.
+
+The minimal revival commit is the starting point. The remaining work is a refactor of the outdated TypeScript toolchain and the advisories that still have a patched release, a Windows run of the existing win32 test, and three small upstream issues. Each task is its own commit so the ubuntu CI can stay green between them.
+
+## Evidence-backed findings
+
+- F1: package.json version 6.2.11 at commit 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a. dependencies ejs ^3.1.10, degit ^2.8.6. scripts.test is `yarn test:code && yarn test:require`, scripts.test:win32 is `yarn jest --runInBand --testPathIgnorePatterns '.*metaverse-conditional.*'`, scripts.build is `yarn build:lib && yarn build:changelog`.
+  - evidence: EV-PACKAGE; content_hash: c93270421a993c35c644f0e61b8bf6e338abefb1abb8722004d06cf86732cca0; evidence: EV-PROVENANCE; content_hash: 67174fa1daffbadd45c86af6611f231f0fcfbbe69b4de6ca715fadbb1785ca56
+- F2: `yarn outdated --json` exited 1 and listed 25 packages: @types/jest current 27.4.0 wanted 27.5.2 latest 30.0.0 (devDependencies); @types/node current 17.0.19 wanted 17.0.45 latest 26.6.5 (dependencies); chalk current 4.1.2 wanted 4.1.2 latest 6.0.1 (dependencies); change-case current 3.1.0 wanted 3.1.0 latest 5.4.4 (dependencies); conventional-changelog-cli current 2.0.34 wanted 2.2.2 latest 5.0.0 (devDependencies); debug current 4.3.3 wanted 4.4.3 latest 4.4.3 (dependencies); degit current 2.8.6 wanted 2.8.6 latest 3.10.1 (dependencies); dir-compare current 4.0.0 wanted 4.2.0 latest 5.0.0 (devDependencies); ejs current 3.1.10 wanted 3.1.10 latest 7.0.2 (dependencies); enquirer current 2.3.6 wanted 2.4.1 latest 2.4.1 (dependencies); eslint-plugin-prettier current 4.0.0 wanted 4.2.5 latest 5.5.7 (devDependencies); execa current 5.0.0 wanted 5.1.1 latest 10.2.0 (dependencies); fs-extra current 10.0.0 wanted 10.1.0 latest 11.4.1 (dependencies); gh-pages current 3.1.0 wanted 3.2.3 latest 6.3.0 (devDependencies); ignore-walk current 4.0.1 wanted 4.0.1 latest 9.0.0 (dependencies); inflection current 1.12.0 wanted 1.13.4 latest 3.0.2 (dependencies); jest current 27.5.1 wanted 27.5.1 latest 30.5.2 (devDependencies); ora current 5.4.1 wanted 5.4.1 latest 9.4.1 (dependencies); pkg current 5.5.2 wanted 5.8.1 latest 5.8.1 (devDependencies); react current 17.0.2 wanted 17.0.2 latest 19.3.1 (devDependencies); stylomatic current 0.3.1 wanted 0.3.2 latest 0.8.1 (devDependencies); ts-jest current 27.1.3 wanted 27.1.5 latest 29.4.15 (devDependencies); ts-node current 10.5.0 wanted 10.9.2 latest 10.9.2 (devDependencies); typescript current 4.5.5 wanted 4.9.5 latest 7.0.2 (devDependencies); yargs-parser current 21.0.0 wanted 21.1.1 latest 22.0.0 (dependencies).
+  - evidence: EV-OUTDATED; content_hash: 544210799fb8718c9d57935d9b0d554c95e4eb968a28d6ef73e119ab4e5b6b06; evidence: EV-PROVENANCE; content_hash: 67174fa1daffbadd45c86af6611f231f0fcfbbe69b4de6ca715fadbb1785ca56
+- F3: `yarn audit --json` exited 30 with 1518 auditAdvisory rows. vulnerabilities info 0, low 81, moderate 564, high 731, critical 142; totalDependencies 1598.
+  - evidence: EV-AUDIT-FULL; content_hash: dd9e09354778691ae0951ff42aa441fcadb0a72179e93327232437ea39c65c03; evidence: EV-PROVENANCE; content_hash: 67174fa1daffbadd45c86af6611f231f0fcfbbe69b4de6ca715fadbb1785ca56
+- F4: `yarn audit --groups dependencies --json` exited 14. vulnerabilities info 0, low 1, moderate 5, high 14, critical 0; dependencies 97; 20 advisories. GHSA-93q8-gq69-wqmw high ansi-regex vulnerable >=5.0.0 <5.0.1 patched >=5.0.1 path ora>strip-ansi>ansi-regex; GHSA-f8q6-p94x-37v3 high minimatch vulnerable <3.0.5 patched >=3.0.5 path ignore-walk>minimatch; GHSA-3ppc-4f35-3m26 high minimatch vulnerable <3.1.3 patched >=3.1.3 path ignore-walk>minimatch; GHSA-7r86-cg39-jmmj high minimatch vulnerable <3.1.3 patched >=3.1.3 path ignore-walk>minimatch; GHSA-23c5-xmqv-rm74 high minimatch vulnerable <3.1.4 patched >=3.1.4 path ignore-walk>minimatch; GHSA-3xgq-45jj-v275 high cross-spawn vulnerable >=7.0.0 <7.0.5 patched >=7.0.5 path execa>cross-spawn; GHSA-v6h2-p8h4-qcjw low brace-expansion vulnerable >=1.0.0 <=1.1.11 patched >=1.1.12 path ignore-walk>minimatch>brace-expansion; GHSA-f886-m6hf-6m8v moderate brace-expansion vulnerable <1.1.13 patched >=1.1.13 path ignore-walk>minimatch>brace-expansion; GHSA-3jxr-9vmj-r5cp high brace-expansion vulnerable <1.1.16 patched >=1.1.16 path ignore-walk>minimatch>brace-expansion; GHSA-mh99-v99m-4gvg high brace-expansion vulnerable <1.1.17 patched >=1.1.17 path ignore-walk>minimatch>brace-expansion; GHSA-rgw5-rvv9-x895 high brace-expansion vulnerable <1.1.18 patched >=1.1.18 path ignore-walk>minimatch>brace-expansion; GHSA-q2hr-2g5m-vwhr moderate brace-expansion vulnerable <1.1.21 patched >=1.1.21 path ignore-walk>minimatch>brace-expansion; GHSA-qhr7-859c-m2p7 high brace-expansion vulnerable <1.1.20 patched >=1.1.20 path ignore-walk>minimatch>brace-expansion; GHSA-6j4f-fj2g-mc7p high brace-expansion vulnerable <1.1.19 patched >=1.1.19 path ignore-walk>minimatch>brace-expansion; GHSA-mh29-5h37-fv8m moderate js-yaml vulnerable <3.14.2 patched >=3.14.2 path front-matter>js-yaml; GHSA-h67p-54hq-rp68 moderate js-yaml vulnerable <3.15.0 patched >=3.15.0 path front-matter>js-yaml; GHSA-52cp-r559-cp3m high js-yaml vulnerable >=3.0.0 <3.15.0 patched >=3.15.0 path front-matter>js-yaml; GHSA-5p4m-2wfm-xmqj high js-yaml vulnerable >=3.0.0 <3.15.1 patched >=3.15.1 path front-matter>js-yaml; GHSA-2883-xcg3-v3hh high js-yaml vulnerable >=3.0.0 <3.15.2 patched >=3.15.2 path front-matter>js-yaml; GHSA-hp3w-g68c-fv3c moderate sprintf-js vulnerable <=1.1.3 patched <0.0.0 path front-matter>js-yaml>argparse>sprintf-js.
+  - evidence: EV-AUDIT-PROD; content_hash: 9d4d577bebbf301842baf672345569c0ff851fb969e01c1f4a2e980ebecbd860; evidence: EV-PROVENANCE; content_hash: 67174fa1daffbadd45c86af6611f231f0fcfbbe69b4de6ca715fadbb1785ca56
+- F5: High or critical advisory rows by the first segment of resolution.path: stylomatic 550, jest 209, conventional-changelog-cli 48, zeroconf-typescript-eslint 31, pkg 10, dir-compare 9, gh-pages 7, ts-jest 4, front-matter 3, execa 1, ora 1.
+  - evidence: EV-AUDIT-FULL; content_hash: dd9e09354778691ae0951ff42aa441fcadb0a72179e93327232437ea39c65c03
+- F6: CI run 39821847516 https://github.com/Fu93/hygen/actions/runs/39821847516 name CI event pull_request head 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a branch cursor/revive-hygen-326e conclusion success. build (20.x, ubuntu-latest) conclusion success; skipped steps: Set git to use LF, Run yarn test:win32. build (22.x, ubuntu-latest) conclusion success; skipped steps: Set git to use LF, Run yarn test:win32.
+  - evidence: EV-CI; content_hash: 8521027ddff2447aa53c0ce5e921100a2f8497119fa383ae7c73708cd4acd438
+- F7: Workflow .github/workflows/ci.yml at that commit: line 21: # Node 20 and 22 both pass the suite. Windows is omitted: yarn test:win32; line 22: # has not been verified, and the win32 job below stays gated on windows-latest.; line 23: node-version: [20.x, 22.x]; line 24: os: [ubuntu-latest]; line 30: if: matrix.os == 'windows-latest'; line 32: - uses: actions/checkout@v4; line 34: uses: actions/setup-node@v4; line 36: node-version: ${{ matrix.node-version }}; line 38: # Metaverse snapshots normalize paths with /.*hygen\/src/. The repo checkout; line 39: # is /home/runner/work/hygen/hygen, which satisfies that regex.; line 41: - run: yarn build; line 42: - run: yarn hygen:build -- init self; line 44: - run: yarn test; line 46: - run: yarn test:win32; line 47: if: matrix.os == 'windows-latest'.
+  - evidence: EV-WORKFLOW; content_hash: 3fc7f42bf4d592b99aecc23b32a2ea5f6d1f85c846fd7ac5c5f95bf249eb1ec6
+- F8: Open GitHub issues 86 and open pull requests 15 on jondot/hygen. Rank is reactions.total_count, then comments, then issue number.
+  - evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498
+- F9: Fork pull https://github.com/Fu93/hygen/pull/1 state open draft True merged False head cursor/revive-hygen-326e 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a base master title Revive hygen: CI on Node 20/22, security bumps, and --version.
+  - evidence: EV-PR; content_hash: 731fd604bb04cfc1b5328f0a98a81153ec652a52bd40eff7a25e6264a1e0c8f1
+- F10: src/logger.ts:4 `const { yellow, red, green, magenta, template }: any = chalk`. chalk 4.1.2 has node_modules/chalk/source/templates.js (exists True). src/__tests__/metaverse-utils.ts:20 `const normalize = (s) => s.replace(/\\/g, '/').replace(/.*hygen\/src/, '')`.
+  - evidence: EV-SNIPPETS; content_hash: 0cc9edf1631e18c4e78066bd7ba177c541fb995088a0bc11e206123d96bb0973
+- F11: Collection commands ran on Node v22.23.4 with yarn 1.22.22. outdated sha256 2cbdab0814ce711390a81ff8ba7d2e2d0632285519c112e6648851e395a30369; full audit sha256 f8fcea7956df979af48c9c50c57ff4d97550c7154eb758a12ef040fb9bfeff12 (16130360 bytes, stored reduced); production audit sha256 3a2ef4e1cdd0280d557aa028c559dc3e7daf5b2e4bdc3fe95731e1cbff463b44. GET /user HTTP 403 Resource not accessible by integration. windows job: not run.
+  - evidence: EV-PROVENANCE; content_hash: 67174fa1daffbadd45c86af6611f231f0fcfbbe69b4de6ca715fadbb1785ca56
+
+## Planner decisions
+
+- D1: Skip #212 https://github.com/jondot/hygen/issues/212 (reactions 18, comments 2): governance: the title is about maintainers, not a code change.
+  - evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498
+- D2: Skip #458 https://github.com/jondot/hygen/issues/458 (reactions 15, comments 5): status question: the title asks whether the project is alive.
+  - evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498
+- D3: Skip #111 https://github.com/jondot/hygen/issues/111 (reactions 7, comments 7): question: the title does not specify a change.
+  - evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498
+- D4: Skip #106 https://github.com/jondot/hygen/issues/106 (reactions 7, comments 5): unspecified: the body says the end of the edit is not known.
+  - evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498
+- D5: Skip #208 https://github.com/jondot/hygen/issues/208 (reactions 7, comments 4): wider than one commit: the body names afterAll, beforeAll, beforeEach, and afterEach.
+  - evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498
+- D6: #316 https://github.com/jondot/hygen/issues/316 also has a fenced expected behavior (reactions 5, comments 3) and is the next issue after the three. It is not scheduled. The plan keeps three issue commits.
+  - evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498
+- D7: Do not bump ejs: current 3.1.10 equals wanted 3.1.10, latest 7.0.2 is a different major, and ejs is not a module in the 20 production advisories.
+  - evidence: EV-OUTDATED; content_hash: 544210799fb8718c9d57935d9b0d554c95e4eb968a28d6ef73e119ab4e5b6b06; evidence: EV-AUDIT-PROD; content_hash: 9d4d577bebbf301842baf672345569c0ff851fb969e01c1f4a2e980ebecbd860
+- D8: Do not bump degit: current 2.8.6 equals wanted 2.8.6, latest 3.10.1 is a different major, and degit is not a module in the 20 production advisories.
+  - evidence: EV-OUTDATED; content_hash: 544210799fb8718c9d57935d9b0d554c95e4eb968a28d6ef73e119ab4e5b6b06; evidence: EV-AUDIT-PROD; content_hash: 9d4d577bebbf301842baf672345569c0ff851fb969e01c1f4a2e980ebecbd860
+- D9: Do not bump pkg as a fix. GHSA-22r3-9w55-cj54 vulnerable <=5.8.1 patched <0.0.0. current 5.5.2 wanted 5.8.1 latest 5.8.1. The patched value names no release, and the wanted release stays inside the vulnerable range.
+  - evidence: EV-AUDIT-FULL; content_hash: dd9e09354778691ae0951ff42aa441fcadb0a72179e93327232437ea39c65c03; evidence: EV-OUTDATED; content_hash: 544210799fb8718c9d57935d9b0d554c95e4eb968a28d6ef73e119ab4e5b6b06
+- D10: Do not schedule #378 as a remaining build failure. Title build fails due to new yargs-parser dependency update. Both cited jobs concluded success on the step `Run yarn build`.
+  - evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498; evidence: EV-CI; content_hash: 8521027ddff2447aa53c0ce5e921100a2f8497119fa383ae7c73708cd4acd438
+
+## Tasks
+
+Commit order is the order below. Each task is one commit. The ubuntu jobs stay the gate between commits.
+
+### U1 — Same-major TypeScript toolchain bump
+
+Change: In one commit, move only the wanted versions that stay on the same major: typescript 4.5.5 to 4.9.5 (latest 7.0.2), ts-jest 27.1.3 to 27.1.5 (latest 29.4.15), ts-node 10.5.0 to 10.9.2 (latest 10.9.2), @types/jest 27.4.0 to 27.5.2 (latest 30.0.0). Leave jest current 27.5.1 equals wanted 27.5.1 (latest 30.5.2) unchanged in this commit. Do not move typescript, ts-jest, @types/jest, or jest to the latest major.
+
+Acceptance: On the existing ubuntu-latest matrix, the steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x.
+
+Risk: typescript 4.9.5 can reject types that 4.5.5 accepted. The wanted jest line stays 27.5.1, so this commit does not take the jest 30 upgrade.
+
+Hypothesis: These 4 bumps were not installed for this plan. A green `yarn test` after the bump is a hypothesis until CI on this commit says so.
+
+Evidence:
+- evidence: EV-OUTDATED; content_hash: 544210799fb8718c9d57935d9b0d554c95e4eb968a28d6ef73e119ab4e5b6b06
+- evidence: EV-PACKAGE; content_hash: c93270421a993c35c644f0e61b8bf6e338abefb1abb8722004d06cf86732cca0
+- evidence: EV-CI; content_hash: 8521027ddff2447aa53c0ce5e921100a2f8497119fa383ae7c73708cd4acd438
+
+Prompt:
+
+```text
+Work on https://github.com/Fu93/hygen branch cursor/revive-hygen-326e starting from commit 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a. Do not reset that commit. The green CI run is https://github.com/Fu93/hygen/actions/runs/39821847516 (jobs build (20.x, ubuntu-latest) and build (22.x, ubuntu-latest), conclusion success). Keep those two ubuntu jobs green.
+
+Task U1 — Same-major TypeScript toolchain bump
+Change: In one commit, move only the wanted versions that stay on the same major: typescript 4.5.5 to 4.9.5 (latest 7.0.2), ts-jest 27.1.3 to 27.1.5 (latest 29.4.15), ts-node 10.5.0 to 10.9.2 (latest 10.9.2), @types/jest 27.4.0 to 27.5.2 (latest 30.0.0). Leave jest current 27.5.1 equals wanted 27.5.1 (latest 30.5.2) unchanged in this commit. Do not move typescript, ts-jest, @types/jest, or jest to the latest major.
+Acceptance command that runs in CI: On the existing ubuntu-latest matrix, the steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x.
+Risk: typescript 4.9.5 can reject types that 4.5.5 accepted. The wanted jest line stays 27.5.1, so this commit does not take the jest 30 upgrade.
+Hypothesis: These 4 bumps were not installed for this plan. A green `yarn test` after the bump is a hypothesis until CI on this commit says so.
+Do not add network calls to the test suite. Do not bump ejs or degit in this commit.
+```
+
+### U2 — Production resolutions for advisories that have a patched release
+
+Change: Add yarn resolutions, and nothing else, at the strictest patched floor of each production module that has one: ansi-regex@5.0.1 (GHSA-93q8-gq69-wqmw). Installed copies inside a cited vulnerable range: 5.0.0 at ansi-regex. brace-expansion@1.1.21 (GHSA-v6h2-p8h4-qcjw, GHSA-f886-m6hf-6m8v, GHSA-3jxr-9vmj-r5cp, GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895, GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p). Installed copies inside a cited vulnerable range: 1.1.8 at brace-expansion. cross-spawn@7.0.5 (GHSA-3xgq-45jj-v275). Installed copies inside a cited vulnerable range: 7.0.3 at cross-spawn. js-yaml@3.15.2 (GHSA-mh29-5h37-fv8m, GHSA-h67p-54hq-rp68, GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh). Installed copies inside a cited vulnerable range: 3.14.0 at js-yaml. minimatch@3.1.4 (GHSA-f8q6-p94x-37v3, GHSA-3ppc-4f35-3m26, GHSA-7r86-cg39-jmmj, GHSA-23c5-xmqv-rm74). Installed copies inside a cited vulnerable range: 3.0.4 at minimatch. Do not add a resolution for sprintf-js GHSA-hp3w-g68c-fv3c patched <0.0.0 (vulnerable <=1.1.3). That patched value has no release. Do not claim this commit clears the full-tree audit.
+
+Acceptance: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x. `yarn audit --groups dependencies` is not a step in the cited workflow, so it is not the CI gate.
+
+Risk: Yarn 1 resolutions match by package name and can move copies that are outside the production ranges, including the installed js-yaml 4.1.0 copies under eslint. The reduced audit stores 5 js-yaml 4.x rows; their example paths start at stylomatic. Those rows are not part of the 20-row production audit.
+
+Hypothesis: The resolutions were not installed and the audit was not re-run. It is a hypothesis that the production audit then omits the listed GHSA ids and that `yarn test` still exits 0.
+
+Evidence:
+- evidence: EV-AUDIT-PROD; content_hash: 9d4d577bebbf301842baf672345569c0ff851fb969e01c1f4a2e980ebecbd860
+- evidence: EV-AUDIT-FULL; content_hash: dd9e09354778691ae0951ff42aa441fcadb0a72179e93327232437ea39c65c03
+- evidence: EV-SNIPPETS; content_hash: 0cc9edf1631e18c4e78066bd7ba177c541fb995088a0bc11e206123d96bb0973
+- evidence: EV-WORKFLOW; content_hash: 3fc7f42bf4d592b99aecc23b32a2ea5f6d1f85c846fd7ac5c5f95bf249eb1ec6
+
+Prompt:
+
+```text
+Work on https://github.com/Fu93/hygen branch cursor/revive-hygen-326e starting from commit 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a. Do not reset that commit. The green CI run is https://github.com/Fu93/hygen/actions/runs/39821847516 (jobs build (20.x, ubuntu-latest) and build (22.x, ubuntu-latest), conclusion success). Keep those two ubuntu jobs green.
+
+Task U2 — Production resolutions for advisories that have a patched release
+Change: Add yarn resolutions, and nothing else, at the strictest patched floor of each production module that has one: ansi-regex@5.0.1 (GHSA-93q8-gq69-wqmw). Installed copies inside a cited vulnerable range: 5.0.0 at ansi-regex. brace-expansion@1.1.21 (GHSA-v6h2-p8h4-qcjw, GHSA-f886-m6hf-6m8v, GHSA-3jxr-9vmj-r5cp, GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895, GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p). Installed copies inside a cited vulnerable range: 1.1.8 at brace-expansion. cross-spawn@7.0.5 (GHSA-3xgq-45jj-v275). Installed copies inside a cited vulnerable range: 7.0.3 at cross-spawn. js-yaml@3.15.2 (GHSA-mh29-5h37-fv8m, GHSA-h67p-54hq-rp68, GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh). Installed copies inside a cited vulnerable range: 3.14.0 at js-yaml. minimatch@3.1.4 (GHSA-f8q6-p94x-37v3, GHSA-3ppc-4f35-3m26, GHSA-7r86-cg39-jmmj, GHSA-23c5-xmqv-rm74). Installed copies inside a cited vulnerable range: 3.0.4 at minimatch. Do not add a resolution for sprintf-js GHSA-hp3w-g68c-fv3c patched <0.0.0 (vulnerable <=1.1.3). That patched value has no release. Do not claim this commit clears the full-tree audit.
+Acceptance command that runs in CI: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x. `yarn audit --groups dependencies` is not a step in the cited workflow, so it is not the CI gate.
+Risk: Yarn 1 resolutions match by package name and can move copies that are outside the production ranges, including the installed js-yaml 4.1.0 copies under eslint. The reduced audit stores 5 js-yaml 4.x rows; their example paths start at stylomatic. Those rows are not part of the 20-row production audit.
+Hypothesis: The resolutions were not installed and the audit was not re-run. It is a hypothesis that the production audit then omits the listed GHSA ids and that `yarn test` still exits 0.
+Do not add network calls to the test suite. Do not bump ejs or degit in this commit.
+```
+
+### U3 — Bump gh-pages to a release inside its patched range
+
+Change: gh-pages current 3.1.0, wanted 3.2.3, latest 6.3.0. GHSA-8mmm-9v2q-x3f9 is vulnerable <5.0.0 and patched >=5.0.0. The wanted release 3.2.3 is still inside <5.0.0, so the wanted bump is not the fix. Pin a release that satisfies >=5.0.0. Latest observed is 6.3.0; this plan does not require that exact latest. gh-pages is a devDependency. package.json scripts.docs:publish is `cd hygen.io && yarn deploy`, and the extracted workflow lines do not mention docs:publish.
+
+Acceptance: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x.
+
+Risk: A jump from 3.1.0 to a 5.0.0 release can change docs:publish. package.json scripts.docs:publish is `cd hygen.io && yarn deploy`, and the extracted workflow lines do not mention docs:publish.
+
+Hypothesis: No gh-pages release at or above 5.0.0 was installed for this plan. A later audit that no longer reports this GHSA, and a working docs publish, are hypotheses.
+
+Evidence:
+- evidence: EV-OUTDATED; content_hash: 544210799fb8718c9d57935d9b0d554c95e4eb968a28d6ef73e119ab4e5b6b06
+- evidence: EV-AUDIT-FULL; content_hash: dd9e09354778691ae0951ff42aa441fcadb0a72179e93327232437ea39c65c03
+- evidence: EV-PACKAGE; content_hash: c93270421a993c35c644f0e61b8bf6e338abefb1abb8722004d06cf86732cca0
+- evidence: EV-WORKFLOW; content_hash: 3fc7f42bf4d592b99aecc23b32a2ea5f6d1f85c846fd7ac5c5f95bf249eb1ec6
+
+Prompt:
+
+```text
+Work on https://github.com/Fu93/hygen branch cursor/revive-hygen-326e starting from commit 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a. Do not reset that commit. The green CI run is https://github.com/Fu93/hygen/actions/runs/39821847516 (jobs build (20.x, ubuntu-latest) and build (22.x, ubuntu-latest), conclusion success). Keep those two ubuntu jobs green.
+
+Task U3 — Bump gh-pages to a release inside its patched range
+Change: gh-pages current 3.1.0, wanted 3.2.3, latest 6.3.0. GHSA-8mmm-9v2q-x3f9 is vulnerable <5.0.0 and patched >=5.0.0. The wanted release 3.2.3 is still inside <5.0.0, so the wanted bump is not the fix. Pin a release that satisfies >=5.0.0. Latest observed is 6.3.0; this plan does not require that exact latest. gh-pages is a devDependency. package.json scripts.docs:publish is `cd hygen.io && yarn deploy`, and the extracted workflow lines do not mention docs:publish.
+Acceptance command that runs in CI: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x.
+Risk: A jump from 3.1.0 to a 5.0.0 release can change docs:publish. package.json scripts.docs:publish is `cd hygen.io && yarn deploy`, and the extracted workflow lines do not mention docs:publish.
+Hypothesis: No gh-pages release at or above 5.0.0 was installed for this plan. A later audit that no longer reports this GHSA, and a working docs publish, are hypotheses.
+Do not add network calls to the test suite. Do not bump ejs or degit in this commit.
+```
+
+### U4 — Issue #411: Re-apply fix for chalk template
+
+Change: #411 https://github.com/jondot/hygen/issues/411 reactions 6 (+1 6) comments 0 updated 2022-10-03T12:28:54Z. The body points at a patch of dist/logger.js that loads `chalk/source/templates`. src/logger.ts:4 still destructures `template` from chalk. Change the TypeScript source, not only dist/logger.js. node_modules/chalk/source/templates.js exists at chalk 4.1.2. Do not bump chalk: yarn outdated shows current equal to wanted.
+
+Acceptance: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x, including a new test that encodes the behavior quoted from the issue.
+
+Risk: The issue's diff targets dist/logger.js. Shipping only that file would be overwritten by the next `yarn build`.
+
+Hypothesis: The name of the new test is a hypothesis. The issue does not name a test.
+
+Evidence:
+- evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498
+- evidence: EV-SNIPPETS; content_hash: 0cc9edf1631e18c4e78066bd7ba177c541fb995088a0bc11e206123d96bb0973
+- evidence: EV-OUTDATED; content_hash: 544210799fb8718c9d57935d9b0d554c95e4eb968a28d6ef73e119ab4e5b6b06
+
+Prompt:
+
+```text
+Work on https://github.com/Fu93/hygen branch cursor/revive-hygen-326e starting from commit 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a. Do not reset that commit. The green CI run is https://github.com/Fu93/hygen/actions/runs/39821847516 (jobs build (20.x, ubuntu-latest) and build (22.x, ubuntu-latest), conclusion success). Keep those two ubuntu jobs green.
+
+Task U4 — Issue #411: Re-apply fix for chalk template
+Change: #411 https://github.com/jondot/hygen/issues/411 reactions 6 (+1 6) comments 0 updated 2022-10-03T12:28:54Z. The body points at a patch of dist/logger.js that loads `chalk/source/templates`. src/logger.ts:4 still destructures `template` from chalk. Change the TypeScript source, not only dist/logger.js. node_modules/chalk/source/templates.js exists at chalk 4.1.2. Do not bump chalk: yarn outdated shows current equal to wanted.
+Acceptance command that runs in CI: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x, including a new test that encodes the behavior quoted from the issue.
+Risk: The issue's diff targets dist/logger.js. Shipping only that file would be overwritten by the next `yarn build`.
+Hypothesis: The name of the new test is a hypothesis. The issue does not name a test.
+Do not add network calls to the test suite. Do not bump ejs or degit in this commit.
+```
+
+### U5 — Issue #96: [feature] Append a line during inject
+
+Change: #96 https://github.com/jondot/hygen/issues/96 reactions 8 (+1 8) comments 1 updated 2021-05-30T11:54:00Z. The body wants `dependencies = A,B` to become `dependencies = A,B,C` on the same line, not a new line. The issue does not name a frontmatter key. Add the assertion in src/__tests__/injector.spec.ts. src/__tests__/render.spec.ts:155 `// FIXME this test doesn't seem to be actually testing injection unless i'm missing something`.
+
+Acceptance: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x, including a new test that encodes the behavior quoted from the issue.
+
+Risk: A new frontmatter key can change inject output for templates that already use inject.
+
+Hypothesis: The frontmatter key name is a hypothesis. The issue does not name one.
+
+Evidence:
+- evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498
+- evidence: EV-SNIPPETS; content_hash: 0cc9edf1631e18c4e78066bd7ba177c541fb995088a0bc11e206123d96bb0973
+
+Prompt:
+
+```text
+Work on https://github.com/Fu93/hygen branch cursor/revive-hygen-326e starting from commit 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a. Do not reset that commit. The green CI run is https://github.com/Fu93/hygen/actions/runs/39821847516 (jobs build (20.x, ubuntu-latest) and build (22.x, ubuntu-latest), conclusion success). Keep those two ubuntu jobs green.
+
+Task U5 — Issue #96: [feature] Append a line during inject
+Change: #96 https://github.com/jondot/hygen/issues/96 reactions 8 (+1 8) comments 1 updated 2021-05-30T11:54:00Z. The body wants `dependencies = A,B` to become `dependencies = A,B,C` on the same line, not a new line. The issue does not name a frontmatter key. Add the assertion in src/__tests__/injector.spec.ts. src/__tests__/render.spec.ts:155 `// FIXME this test doesn't seem to be actually testing injection unless i'm missing something`.
+Acceptance command that runs in CI: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x, including a new test that encodes the behavior quoted from the issue.
+Risk: A new frontmatter key can change inject output for templates that already use inject.
+Hypothesis: The frontmatter key name is a hypothesis. The issue does not name one.
+Do not add network calls to the test suite. Do not bump ejs or degit in this commit.
+```
+
+### U6 — Issue #396: generating multiple files from one template
+
+Change: #396 https://github.com/jondot/hygen/issues/396 reactions 11 (+1 11) comments 1 updated 2022-05-20T14:58:24Z. The body wants one generator run over the array ['john', 'house', 'car'] to write app/john/handler.js, app/house/handler.js, and app/car/handler.js without copying the template. The issue does not name a frontmatter key or a loop syntax.
+
+Acceptance: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x, including a new test that encodes the behavior quoted from the issue.
+
+Risk: Choosing a syntax the issue does not name can miss the behavior the comments expect.
+
+Hypothesis: The template syntax that drives the loop is a hypothesis.
+
+Evidence:
+- evidence: EV-ISSUES; content_hash: af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498
+
+Prompt:
+
+```text
+Work on https://github.com/Fu93/hygen branch cursor/revive-hygen-326e starting from commit 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a. Do not reset that commit. The green CI run is https://github.com/Fu93/hygen/actions/runs/39821847516 (jobs build (20.x, ubuntu-latest) and build (22.x, ubuntu-latest), conclusion success). Keep those two ubuntu jobs green.
+
+Task U6 — Issue #396: generating multiple files from one template
+Change: #396 https://github.com/jondot/hygen/issues/396 reactions 11 (+1 11) comments 1 updated 2022-05-20T14:58:24Z. The body wants one generator run over the array ['john', 'house', 'car'] to write app/john/handler.js, app/house/handler.js, and app/car/handler.js without copying the template. The issue does not name a frontmatter key or a loop syntax.
+Acceptance command that runs in CI: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x, including a new test that encodes the behavior quoted from the issue.
+Risk: Choosing a syntax the issue does not name can miss the behavior the comments expect.
+Hypothesis: The template syntax that drives the loop is a hypothesis.
+Do not add network calls to the test suite. Do not bump ejs or degit in this commit.
+```
+
+### U7 — Add windows-latest and run yarn test:win32
+
+Change: The cited workflow matrix os line is .github/workflows/ci.yml:24 `os: [ubuntu-latest]` and the win32 step is .github/workflows/ci.yml:46 `- run: yarn test:win32`. build (20.x, ubuntu-latest) skipped `Run yarn test:win32` build (22.x, ubuntu-latest) skipped `Run yarn test:win32`. Add windows-latest to the os matrix so the existing gated step runs. Do not mark the job as passed in the pull request text until a windows-latest job conclusion is success.
+
+Acceptance: A job `build (20.x, windows-latest)` runs the step `yarn test:win32` and that job's conclusion is success.
+
+Risk: src/__tests__/metaverse-utils.ts:20 rewrites backslashes and then applies `/.*hygen\/src/`. The workflow comment names the ubuntu checkout `/home/runner/work/hygen/hygen`. A windows checkout path was not observed.
+
+Hypothesis: Whether `yarn test:win32` passes on windows-latest is a hypothesis. GET /user returned HTTP 403 (Resource not accessible by integration), so this collection did not push a throwaway branch to observe it.
+
+Evidence:
+- evidence: EV-CI; content_hash: 8521027ddff2447aa53c0ce5e921100a2f8497119fa383ae7c73708cd4acd438
+- evidence: EV-WORKFLOW; content_hash: 3fc7f42bf4d592b99aecc23b32a2ea5f6d1f85c846fd7ac5c5f95bf249eb1ec6
+- evidence: EV-SNIPPETS; content_hash: 0cc9edf1631e18c4e78066bd7ba177c541fb995088a0bc11e206123d96bb0973
+- evidence: EV-PROVENANCE; content_hash: 67174fa1daffbadd45c86af6611f231f0fcfbbe69b4de6ca715fadbb1785ca56
+
+Prompt:
+
+```text
+Work on https://github.com/Fu93/hygen branch cursor/revive-hygen-326e starting from commit 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a. Do not reset that commit. The green CI run is https://github.com/Fu93/hygen/actions/runs/39821847516 (jobs build (20.x, ubuntu-latest) and build (22.x, ubuntu-latest), conclusion success). Keep those two ubuntu jobs green.
+
+Task U7 — Add windows-latest and run yarn test:win32
+Change: The cited workflow matrix os line is .github/workflows/ci.yml:24 `os: [ubuntu-latest]` and the win32 step is .github/workflows/ci.yml:46 `- run: yarn test:win32`. build (20.x, ubuntu-latest) skipped `Run yarn test:win32` build (22.x, ubuntu-latest) skipped `Run yarn test:win32`. Add windows-latest to the os matrix so the existing gated step runs. Do not mark the job as passed in the pull request text until a windows-latest job conclusion is success.
+Acceptance command that runs in CI: A job `build (20.x, windows-latest)` runs the step `yarn test:win32` and that job's conclusion is success.
+Risk: src/__tests__/metaverse-utils.ts:20 rewrites backslashes and then applies `/.*hygen\/src/`. The workflow comment names the ubuntu checkout `/home/runner/work/hygen/hygen`. A windows checkout path was not observed.
+Hypothesis: Whether `yarn test:win32` passes on windows-latest is a hypothesis. GET /user returned HTTP 403 (Resource not accessible by integration), so this collection did not push a throwaway branch to observe it.
+Do not add network calls to the test suite. Do not bump ejs or degit in this commit.
+```
+
+### U8 — Major TypeScript and Jest bump
+
+Change: In its own last commit, the latest majors are: typescript 4.5.5 to 7.0.2; ts-jest 27.1.3 to 29.4.15; @types/jest 27.4.0 to 30.0.0; jest 27.5.1 to 30.5.2. The full audit has 209 high or critical rows whose resolution path starts at jest and 550 whose path starts at stylomatic. Do not claim either count drops until `yarn audit` is re-run.
+
+Acceptance: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x.
+
+Risk: Jest 30 and TypeScript 7 are separate majors from the versions CI already ran. Landing them earlier would block the smaller commits if the suite goes red.
+
+Hypothesis: Neither latest major was installed for this plan. A green suite, and any change in the advisory counts, is a hypothesis.
+
+Evidence:
+- evidence: EV-OUTDATED; content_hash: 544210799fb8718c9d57935d9b0d554c95e4eb968a28d6ef73e119ab4e5b6b06
+- evidence: EV-AUDIT-FULL; content_hash: dd9e09354778691ae0951ff42aa441fcadb0a72179e93327232437ea39c65c03
+- evidence: EV-CI; content_hash: 8521027ddff2447aa53c0ce5e921100a2f8497119fa383ae7c73708cd4acd438
+
+Prompt:
+
+```text
+Work on https://github.com/Fu93/hygen branch cursor/revive-hygen-326e starting from commit 1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a. Do not reset that commit. The green CI run is https://github.com/Fu93/hygen/actions/runs/39821847516 (jobs build (20.x, ubuntu-latest) and build (22.x, ubuntu-latest), conclusion success). Keep those two ubuntu jobs green.
+
+Task U8 — Major TypeScript and Jest bump
+Change: In its own last commit, the latest majors are: typescript 4.5.5 to 7.0.2; ts-jest 27.1.3 to 29.4.15; @types/jest 27.4.0 to 30.0.0; jest 27.5.1 to 30.5.2. The full audit has 209 high or critical rows whose resolution path starts at jest and 550 whose path starts at stylomatic. Do not claim either count drops until `yarn audit` is re-run.
+Acceptance command that runs in CI: The existing ubuntu-latest steps `yarn build` and `yarn test` exit 0 for Node 20.x and Node 22.x.
+Risk: Jest 30 and TypeScript 7 are separate majors from the versions CI already ran. Landing them earlier would block the smaller commits if the suite goes red.
+Hypothesis: Neither latest major was installed for this plan. A green suite, and any change in the advisory counts, is a hypothesis.
+Do not add network calls to the test suite. Do not bump ejs or degit in this commit.
+```
+
+## Out of scope
+
+Non-factual framing. These limits are instructions, not cited evidence claims.
+
+- Do not redo the revival commit's Node 20/22 workflow, the ejs and degit floors, or the --version flag.
+- Do not merge the fork pull request.
+- Do not treat a hypothesis as an observed CI result.
+- Do not add network calls to the hygen test suite.

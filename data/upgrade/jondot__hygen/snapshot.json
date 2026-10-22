@@ -1,0 +1,1931 @@
+{
+  "repo_id": "jondot/hygen",
+  "fork": "Fu93/hygen",
+  "commit": "1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a",
+  "agent_branch": "cursor/revive-hygen-326e",
+  "collected_at": "2026-10-22T17:44:32Z",
+  "evidence": {
+    "EV-PROVENANCE": {
+      "collected_at": "2026-10-22T17:44:32Z",
+      "fork": "Fu93/hygen",
+      "commit": "1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a",
+      "agent_branch": "cursor/revive-hygen-326e",
+      "node": "v22.23.4",
+      "yarn": "1.22.22",
+      "npm": "10.9.9",
+      "windows_job": "not run",
+      "github_user": {
+        "status": 403,
+        "message": "Resource not accessible by integration"
+      },
+      "commands": {
+        "outdated": {
+          "argv": "yarn outdated --json",
+          "exit_code": 1,
+          "sha256": "2cbdab0814ce711390a81ff8ba7d2e2d0632285519c112e6648851e395a30369"
+        },
+        "audit_full": {
+          "argv": "yarn audit --json",
+          "exit_code": 30,
+          "sha256": "f8fcea7956df979af48c9c50c57ff4d97550c7154eb758a12ef040fb9bfeff12",
+          "bytes": 16130360
+        },
+        "audit_prod": {
+          "argv": "yarn audit --groups dependencies --json",
+          "exit_code": 14,
+          "sha256": "3a2ef4e1cdd0280d557aa028c559dc3e7daf5b2e4bdc3fe95731e1cbff463b44"
+        }
+      },
+      "files": {
+        "outdated.ndjson": {
+          "sha256": "2cbdab0814ce711390a81ff8ba7d2e2d0632285519c112e6648851e395a30369"
+        },
+        "audit-prod.ndjson": {
+          "sha256": "3a2ef4e1cdd0280d557aa028c559dc3e7daf5b2e4bdc3fe95731e1cbff463b44"
+        },
+        "audit-full.reduced.json": {
+          "sha256": "b707a3877310fb9ed3a19475d94cc9b67141d246bb28adfb8b2db821c3772e6c"
+        },
+        "issues.json": {
+          "sha256": "070352dd8520b4e2d6372a6eff3651265f1f6d9d59ec589f09944a2da9cd7387"
+        }
+      }
+    },
+    "EV-PACKAGE": {
+      "name": "hygen",
+      "version": "6.2.11",
+      "description": "The scalable code generator that saves you time.",
+      "keywords": [
+        "template",
+        "generator",
+        "hygen",
+        "boilerplate",
+        "redux",
+        "react"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/jondot/hygen",
+      "main": "dist/index.js",
+      "bin": {
+        "hygen": "./dist/bin.js"
+      },
+      "scripts": {
+        "standalone": "rm -rf standalone; yarn build:lib && yarn pkg package.json --out-path standalone && node scripts/standalone.js",
+        "standalone:brew-sha": "shasum -a 256 standalone/*.macos.*.tar.gz",
+        "build:changelog": "conventional-changelog -i CHANGELOG.md -p angular > CHANGELOG.md",
+        "build:lib": "tsc",
+        "build": "yarn build:lib && yarn build:changelog",
+        "release": "yarn build && git commit -am 'build'; yarn version && git push --tags && git push origin master",
+        "test:win32": "yarn jest --runInBand --testPathIgnorePatterns '.*metaverse-conditional.*'",
+        "test": "yarn test:code && yarn test:require",
+        "test:code": "yarn jest --runInBand",
+        "test:require": "node dist/bin.timed.js; node dist/bin.timed.js; node dist/bin.timed.js init self; rm -rf _templates",
+        "watch": "yarn jest --watch",
+        "hygen": "ts-node src/bin.ts",
+        "hygen:build": "node dist/bin.js",
+        "hygen:timed": "node dist/bin.timed.js",
+        "docs:prepare": "cd hygen.io && yarn",
+        "docs:watch": "cd hygen.io && yarn start",
+        "docs:build": "cd hygen.io && yarn build",
+        "docs:publish": "cd hygen.io && yarn deploy"
+      },
+      "dependencies": {
+        "@types/node": "^17.0.19",
+        "chalk": "^4.1.2",
+        "change-case": "^3.1.0",
+        "debug": "^4.3.3",
+        "degit": "^2.8.6",
+        "ejs": "^3.1.10",
+        "enquirer": "^2.3.6",
+        "execa": "^5.0.0",
+        "front-matter": "^4.0.2",
+        "fs-extra": "^10.0.0",
+        "ignore-walk": "^4.0.1",
+        "inflection": "^1.12.0",
+        "ora": "^5.0.0",
+        "yargs-parser": "^21.0.0"
+      },
+      "devDependencies": {
+        "@types/jest": "^27.4.0",
+        "@types/node": "^17.0.19",
+        "conventional-changelog-cli": "^2.0.34",
+        "dir-compare": "^4.0.0",
+        "eslint-plugin-prettier": "^4.0.0",
+        "gh-pages": "^3.1.0",
+        "jest": "^27.5.1",
+        "pkg": "^5.5.2",
+        "react": "17.0.2",
+        "stylomatic": "^0.3.1",
+        "time-require": "^0.1.2",
+        "ts-jest": "^27.1.3",
+        "ts-node": "^10.5.0",
+        "typescript": "^4.5.5",
+        "zeroconf-typescript-eslint": "^2.4.0"
+      },
+      "jest": {
+        "transform": {
+          "^.+\\.tsx?$": "ts-jest"
+        },
+        "testRegex": "src/__tests__/.*\\.spec\\.ts$",
+        "moduleFileExtensions": [
+          "ts",
+          "tsx",
+          "js",
+          "jsx",
+          "json",
+          "node"
+        ]
+      },
+      "pkg": {
+        "scripts": "dist/**/*.js",
+        "assets": "src/**/*",
+        "outPath": "standalone",
+        "targets": [
+          "node17-macos",
+          "node17-linux",
+          "node17-win"
+        ]
+      }
+    },
+    "EV-OUTDATED": {
+      "rows": [
+        {
+          "package": "@types/jest",
+          "current": "27.4.0",
+          "wanted": "27.5.2",
+          "latest": "30.0.0",
+          "package_type": "devDependencies",
+          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/jest"
+        },
+        {
+          "package": "@types/node",
+          "current": "17.0.19",
+          "wanted": "17.0.45",
+          "latest": "26.6.5",
+          "package_type": "dependencies",
+          "url": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node"
+        },
+        {
+          "package": "chalk",
+          "current": "4.1.2",
+          "wanted": "4.1.2",
+          "latest": "6.0.1",
+          "package_type": "dependencies",
+          "url": "https://github.com/chalk/chalk#readme"
+        },
+        {
+          "package": "change-case",
+          "current": "3.1.0",
+          "wanted": "3.1.0",
+          "latest": "5.4.4",
+          "package_type": "dependencies",
+          "url": "https://github.com/blakeembrey/change-case/tree/master/packages/change-case#readme"
+        },
+        {
+          "package": "conventional-changelog-cli",
+          "current": "2.0.34",
+          "wanted": "2.2.2",
+          "latest": "5.0.0",
+          "package_type": "devDependencies",
+          "url": "https://github.com/conventional-changelog/conventional-changelog/tree/master/packages/conventional-changelog-cli#readme"
+        },
+        {
+          "package": "debug",
+          "current": "4.3.3",
+          "wanted": "4.4.3",
+          "latest": "4.4.3",
+          "package_type": "dependencies",
+          "url": "https://github.com/debug-js/debug#readme"
+        },
+        {
+          "package": "degit",
+          "current": "2.8.6",
+          "wanted": "2.8.6",
+          "latest": "3.10.1",
+          "package_type": "dependencies",
+          "url": "https://github.com/Rich-Harris/degit#readme"
+        },
+        {
+          "package": "dir-compare",
+          "current": "4.0.0",
+          "wanted": "4.2.0",
+          "latest": "5.0.0",
+          "package_type": "devDependencies",
+          "url": "https://github.com/gliviu/dir-compare#readme"
+        },
+        {
+          "package": "ejs",
+          "current": "3.1.10",
+          "wanted": "3.1.10",
+          "latest": "7.0.2",
+          "package_type": "dependencies",
+          "url": "https://github.com/mde/ejs"
+        },
+        {
+          "package": "enquirer",
+          "current": "2.3.6",
+          "wanted": "2.4.1",
+          "latest": "2.4.1",
+          "package_type": "dependencies",
+          "url": "https://github.com/enquirer/enquirer"
+        },
+        {
+          "package": "eslint-plugin-prettier",
+          "current": "4.0.0",
+          "wanted": "4.2.5",
+          "latest": "5.5.7",
+          "package_type": "devDependencies",
+          "url": "https://github.com/prettier/eslint-plugin-prettier#readme"
+        },
+        {
+          "package": "execa",
+          "current": "5.0.0",
+          "wanted": "5.1.1",
+          "latest": "10.2.0",
+          "package_type": "dependencies",
+          "url": "https://github.com/sindresorhus/execa#readme"
+        },
+        {
+          "package": "fs-extra",
+          "current": "10.0.0",
+          "wanted": "10.1.0",
+          "latest": "11.4.1",
+          "package_type": "dependencies",
+          "url": "https://github.com/jprichardson/node-fs-extra"
+        },
+        {
+          "package": "gh-pages",
+          "current": "3.1.0",
+          "wanted": "3.2.3",
+          "latest": "6.3.0",
+          "package_type": "devDependencies",
+          "url": "https://github.com/tschaub/gh-pages"
+        },
+        {
+          "package": "ignore-walk",
+          "current": "4.0.1",
+          "wanted": "4.0.1",
+          "latest": "9.0.0",
+          "package_type": "dependencies",
+          "url": "https://github.com/npm/ignore-walk#readme"
+        },
+        {
+          "package": "inflection",
+          "current": "1.12.0",
+          "wanted": "1.13.4",
+          "latest": "3.0.2",
+          "package_type": "dependencies",
+          "url": "https://github.com/dreamerslab/node.inflection#readme"
+        },
+        {
+          "package": "jest",
+          "current": "27.5.1",
+          "wanted": "27.5.1",
+          "latest": "30.5.2",
+          "package_type": "devDependencies",
+          "url": "https://jestjs.io/"
+        },
+        {
+          "package": "ora",
+          "current": "5.4.1",
+          "wanted": "5.4.1",
+          "latest": "9.4.1",
+          "package_type": "dependencies",
+          "url": "https://github.com/sindresorhus/ora#readme"
+        },
+        {
+          "package": "pkg",
+          "current": "5.5.2",
+          "wanted": "5.8.1",
+          "latest": "5.8.1",
+          "package_type": "devDependencies",
+          "url": "https://github.com/vercel/pkg#readme"
+        },
+        {
+          "package": "react",
+          "current": "17.0.2",
+          "wanted": "17.0.2",
+          "latest": "19.3.1",
+          "package_type": "devDependencies",
+          "url": "https://react.dev/"
+        },
+        {
+          "package": "stylomatic",
+          "current": "0.3.1",
+          "wanted": "0.3.2",
+          "latest": "0.8.1",
+          "package_type": "devDependencies",
+          "url": ""
+        },
+        {
+          "package": "ts-jest",
+          "current": "27.1.3",
+          "wanted": "27.1.5",
+          "latest": "29.4.15",
+          "package_type": "devDependencies",
+          "url": "https://kulshekhar.github.io/ts-jest"
+        },
+        {
+          "package": "ts-node",
+          "current": "10.5.0",
+          "wanted": "10.9.2",
+          "latest": "10.9.2",
+          "package_type": "devDependencies",
+          "url": "https://typestrong.org/ts-node"
+        },
+        {
+          "package": "typescript",
+          "current": "4.5.5",
+          "wanted": "4.9.5",
+          "latest": "7.0.2",
+          "package_type": "devDependencies",
+          "url": "https://www.typescriptlang.org/"
+        },
+        {
+          "package": "yargs-parser",
+          "current": "21.0.0",
+          "wanted": "21.1.1",
+          "latest": "22.0.0",
+          "package_type": "dependencies",
+          "url": "https://github.com/yargs/yargs-parser#readme"
+        }
+      ]
+    },
+    "EV-AUDIT-FULL": {
+      "advisory_rows": 1518,
+      "summary": {
+        "vulnerabilities": {
+          "info": 0,
+          "low": 81,
+          "moderate": 564,
+          "high": 731,
+          "critical": 142
+        },
+        "dependencies": 1598,
+        "devDependencies": 0,
+        "optionalDependencies": 0,
+        "totalDependencies": 1598
+      },
+      "high_critical_by_root": {
+        "conventional-changelog-cli": 48,
+        "dir-compare": 9,
+        "execa": 1,
+        "front-matter": 3,
+        "gh-pages": 7,
+        "jest": 209,
+        "ora": 1,
+        "pkg": 10,
+        "stylomatic": 550,
+        "ts-jest": 4,
+        "zeroconf-typescript-eslint": 31
+      },
+      "direct_advisories": [
+        {
+          "id": 1097162,
+          "ghsa": "GHSA-8mmm-9v2q-x3f9",
+          "module": "gh-pages",
+          "severity": "critical",
+          "vulnerable": "<5.0.0",
+          "patched": ">=5.0.0",
+          "title": "tschaub gh-pages vulnerable to prototype pollution",
+          "path": "gh-pages"
+        },
+        {
+          "id": 1096454,
+          "ghsa": "GHSA-22r3-9w55-cj54",
+          "module": "pkg",
+          "severity": "moderate",
+          "vulnerable": "<=5.8.1",
+          "patched": "<0.0.0",
+          "title": "Pkg Local Privilege Escalation",
+          "path": "pkg"
+        }
+      ],
+      "js_yaml_4x": [
+        {
+          "ghsa": "GHSA-2883-xcg3-v3hh",
+          "vulnerable": ">=4.0.0 <4.3.2",
+          "patched": ">=4.3.2",
+          "example_path": "stylomatic>eslint>@eslint/eslintrc>js-yaml"
+        },
+        {
+          "ghsa": "GHSA-52cp-r559-cp3m",
+          "vulnerable": ">=4.0.0 <4.3.0",
+          "patched": ">=4.3.0",
+          "example_path": "stylomatic>eslint>@eslint/eslintrc>js-yaml"
+        },
+        {
+          "ghsa": "GHSA-5p4m-2wfm-xmqj",
+          "vulnerable": ">=4.0.0 <4.3.1",
+          "patched": ">=4.3.1",
+          "example_path": "stylomatic>eslint>@eslint/eslintrc>js-yaml"
+        },
+        {
+          "ghsa": "GHSA-h67p-54hq-rp68",
+          "vulnerable": ">=4.0.0 <=4.1.1",
+          "patched": ">=4.2.0",
+          "example_path": "stylomatic>eslint>@eslint/eslintrc>js-yaml"
+        },
+        {
+          "ghsa": "GHSA-mh29-5h37-fv8m",
+          "vulnerable": ">=4.0.0 <4.1.1",
+          "patched": ">=4.1.1",
+          "example_path": "stylomatic>eslint>@eslint/eslintrc>js-yaml"
+        }
+      ],
+      "source_sha256": "f8fcea7956df979af48c9c50c57ff4d97550c7154eb758a12ef040fb9bfeff12",
+      "source_bytes": 16130360
+    },
+    "EV-AUDIT-PROD": {
+      "summary": {
+        "vulnerabilities": {
+          "info": 0,
+          "low": 1,
+          "moderate": 5,
+          "high": 14,
+          "critical": 0
+        },
+        "dependencies": 97,
+        "devDependencies": 0,
+        "optionalDependencies": 0,
+        "totalDependencies": 97
+      },
+      "advisories": [
+        {
+          "id": 1094092,
+          "ghsa": "GHSA-93q8-gq69-wqmw",
+          "module": "ansi-regex",
+          "severity": "high",
+          "vulnerable": ">=5.0.0 <5.0.1",
+          "patched": ">=5.0.1",
+          "title": "Inefficient Regular Expression Complexity in chalk/ansi-regex",
+          "path": "ora>strip-ansi>ansi-regex",
+          "dev": false
+        },
+        {
+          "id": 1096485,
+          "ghsa": "GHSA-f8q6-p94x-37v3",
+          "module": "minimatch",
+          "severity": "high",
+          "vulnerable": "<3.0.5",
+          "patched": ">=3.0.5",
+          "title": "minimatch ReDoS vulnerability",
+          "path": "ignore-walk>minimatch",
+          "dev": false
+        },
+        {
+          "id": 1113459,
+          "ghsa": "GHSA-3ppc-4f35-3m26",
+          "module": "minimatch",
+          "severity": "high",
+          "vulnerable": "<3.1.3",
+          "patched": ">=3.1.3",
+          "title": "minimatch has a ReDoS via repeated wildcards with non-matching literal in pattern",
+          "path": "ignore-walk>minimatch",
+          "dev": false
+        },
+        {
+          "id": 1113538,
+          "ghsa": "GHSA-7r86-cg39-jmmj",
+          "module": "minimatch",
+          "severity": "high",
+          "vulnerable": "<3.1.3",
+          "patched": ">=3.1.3",
+          "title": "minimatch has ReDoS: matchOne() combinatorial backtracking via multiple non-adjacent GLOBSTAR segments",
+          "path": "ignore-walk>minimatch",
+          "dev": false
+        },
+        {
+          "id": 1113546,
+          "ghsa": "GHSA-23c5-xmqv-rm74",
+          "module": "minimatch",
+          "severity": "high",
+          "vulnerable": "<3.1.4",
+          "patched": ">=3.1.4",
+          "title": "minimatch ReDoS: nested *() extglobs generate catastrophically backtracking regular expressions",
+          "path": "ignore-walk>minimatch",
+          "dev": false
+        },
+        {
+          "id": 1104664,
+          "ghsa": "GHSA-3xgq-45jj-v275",
+          "module": "cross-spawn",
+          "severity": "high",
+          "vulnerable": ">=7.0.0 <7.0.5",
+          "patched": ">=7.0.5",
+          "title": "Regular Expression Denial of Service (ReDoS) in cross-spawn",
+          "path": "execa>cross-spawn",
+          "dev": false
+        },
+        {
+          "id": 1105443,
+          "ghsa": "GHSA-v6h2-p8h4-qcjw",
+          "module": "brace-expansion",
+          "severity": "low",
+          "vulnerable": ">=1.0.0 <=1.1.11",
+          "patched": ">=1.1.12",
+          "title": "brace-expansion Regular Expression Denial of Service vulnerability",
+          "path": "ignore-walk>minimatch>brace-expansion",
+          "dev": false
+        },
+        {
+          "id": 1115540,
+          "ghsa": "GHSA-f886-m6hf-6m8v",
+          "module": "brace-expansion",
+          "severity": "moderate",
+          "vulnerable": "<1.1.13",
+          "patched": ">=1.1.13",
+          "title": "brace-expansion: Zero-step sequence causes process hang and memory exhaustion",
+          "path": "ignore-walk>minimatch>brace-expansion",
+          "dev": false
+        },
+        {
+          "id": 1123897,
+          "ghsa": "GHSA-3jxr-9vmj-r5cp",
+          "module": "brace-expansion",
+          "severity": "high",
+          "vulnerable": "<1.1.16",
+          "patched": ">=1.1.16",
+          "title": "brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups",
+          "path": "ignore-walk>minimatch>brace-expansion",
+          "dev": false
+        },
+        {
+          "id": 1130588,
+          "ghsa": "GHSA-mh99-v99m-4gvg",
+          "module": "brace-expansion",
+          "severity": "high",
+          "vulnerable": "<1.1.17",
+          "patched": ">=1.1.17",
+          "title": "brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash",
+          "path": "ignore-walk>minimatch>brace-expansion",
+          "dev": false
+        },
+        {
+          "id": 1130737,
+          "ghsa": "GHSA-rgw5-rvv9-x895",
+          "module": "brace-expansion",
+          "severity": "high",
+          "vulnerable": "<1.1.18",
+          "patched": ">=1.1.18",
+          "title": "brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation",
+          "path": "ignore-walk>minimatch>brace-expansion",
+          "dev": false
+        },
+        {
+          "id": 1240100,
+          "ghsa": "GHSA-q2hr-2g5m-vwhr",
+          "module": "brace-expansion",
+          "severity": "moderate",
+          "vulnerable": "<1.1.21",
+          "patched": ">=1.1.21",
+          "title": "brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service",
+          "path": "ignore-walk>minimatch>brace-expansion",
+          "dev": false
+        },
+        {
+          "id": 1240104,
+          "ghsa": "GHSA-qhr7-859c-m2p7",
+          "module": "brace-expansion",
+          "severity": "high",
+          "vulnerable": "<1.1.20",
+          "patched": ">=1.1.20",
+          "title": "brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion",
+          "path": "ignore-walk>minimatch>brace-expansion",
+          "dev": false
+        },
+        {
+          "id": 1240108,
+          "ghsa": "GHSA-6j4f-fj2g-mc7p",
+          "module": "brace-expansion",
+          "severity": "high",
+          "vulnerable": "<1.1.19",
+          "patched": ">=1.1.19",
+          "title": "brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion",
+          "path": "ignore-walk>minimatch>brace-expansion",
+          "dev": false
+        },
+        {
+          "id": 1112714,
+          "ghsa": "GHSA-mh29-5h37-fv8m",
+          "module": "js-yaml",
+          "severity": "moderate",
+          "vulnerable": "<3.14.2",
+          "patched": ">=3.14.2",
+          "title": "js-yaml has prototype pollution in merge (<<)",
+          "path": "front-matter>js-yaml",
+          "dev": false
+        },
+        {
+          "id": 1121859,
+          "ghsa": "GHSA-h67p-54hq-rp68",
+          "module": "js-yaml",
+          "severity": "moderate",
+          "vulnerable": "<3.15.0",
+          "patched": ">=3.15.0",
+          "title": "JS-YAML: Quadratic-complexity DoS in merge key handling via repeated aliases",
+          "path": "front-matter>js-yaml",
+          "dev": false
+        },
+        {
+          "id": 1123912,
+          "ghsa": "GHSA-52cp-r559-cp3m",
+          "module": "js-yaml",
+          "severity": "high",
+          "vulnerable": ">=3.0.0 <3.15.0",
+          "patched": ">=3.15.0",
+          "title": "js-yaml: YAML merge-key chains can force quadratic CPU consumption",
+          "path": "front-matter>js-yaml",
+          "dev": false
+        },
+        {
+          "id": 1138114,
+          "ghsa": "GHSA-5p4m-2wfm-xmqj",
+          "module": "js-yaml",
+          "severity": "high",
+          "vulnerable": ">=3.0.0 <3.15.1",
+          "patched": ">=3.15.1",
+          "title": "JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) \u2014 CVE-2026-59870 fix not backported",
+          "path": "front-matter>js-yaml",
+          "dev": false
+        },
+        {
+          "id": 1193726,
+          "ghsa": "GHSA-2883-xcg3-v3hh",
+          "module": "js-yaml",
+          "severity": "high",
+          "vulnerable": ">=3.0.0 <3.15.2",
+          "patched": ">=3.15.2",
+          "title": "js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources",
+          "path": "front-matter>js-yaml",
+          "dev": false
+        },
+        {
+          "id": 1241202,
+          "ghsa": "GHSA-hp3w-g68c-fv3c",
+          "module": "sprintf-js",
+          "severity": "moderate",
+          "vulnerable": "<=1.1.3",
+          "patched": "<0.0.0",
+          "title": "sprintf-js vulnerable to denial of service through unbounded precision specifiers",
+          "path": "front-matter>js-yaml>argparse>sprintf-js",
+          "dev": false
+        }
+      ]
+    },
+    "EV-CI": {
+      "id": 39821847516,
+      "html_url": "https://github.com/Fu93/hygen/actions/runs/39821847516",
+      "name": "CI",
+      "event": "pull_request",
+      "status": "completed",
+      "conclusion": "success",
+      "head_branch": "cursor/revive-hygen-326e",
+      "head_sha": "1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a",
+      "jobs": [
+        {
+          "name": "build (20.x, ubuntu-latest)",
+          "conclusion": "success",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Set git to use LF",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Use Node.js 20.x",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run yarn install",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run yarn build",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run yarn hygen:build -- init self",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run yarn test",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run yarn test:win32",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Use Node.js 20.x",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "build (22.x, ubuntu-latest)",
+          "conclusion": "success",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Set git to use LF",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Use Node.js 22.x",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run yarn install",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run yarn build",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run yarn hygen:build -- init self",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run yarn test",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run yarn test:win32",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Use Node.js 22.x",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ]
+    },
+    "EV-WORKFLOW": {
+      "path": ".github/workflows/ci.yml",
+      "lines": [
+        {
+          "line": 21,
+          "text": "        # Node 20 and 22 both pass the suite. Windows is omitted: yarn test:win32"
+        },
+        {
+          "line": 22,
+          "text": "        # has not been verified, and the win32 job below stays gated on windows-latest."
+        },
+        {
+          "line": 23,
+          "text": "        node-version: [20.x, 22.x]"
+        },
+        {
+          "line": 24,
+          "text": "        os: [ubuntu-latest]"
+        },
+        {
+          "line": 30,
+          "text": "      if: matrix.os == 'windows-latest'"
+        },
+        {
+          "line": 32,
+          "text": "    - uses: actions/checkout@v4"
+        },
+        {
+          "line": 34,
+          "text": "      uses: actions/setup-node@v4"
+        },
+        {
+          "line": 36,
+          "text": "        node-version: ${{ matrix.node-version }}"
+        },
+        {
+          "line": 38,
+          "text": "    # Metaverse snapshots normalize paths with /.*hygen\\/src/. The repo checkout"
+        },
+        {
+          "line": 39,
+          "text": "    # is /home/runner/work/hygen/hygen, which satisfies that regex."
+        },
+        {
+          "line": 41,
+          "text": "    - run: yarn build"
+        },
+        {
+          "line": 42,
+          "text": "    - run: yarn hygen:build -- init self"
+        },
+        {
+          "line": 44,
+          "text": "    - run: yarn test"
+        },
+        {
+          "line": 46,
+          "text": "    - run: yarn test:win32"
+        },
+        {
+          "line": 47,
+          "text": "      if: matrix.os == 'windows-latest'"
+        }
+      ]
+    },
+    "EV-ISSUES": {
+      "open_issues": 86,
+      "open_pull_requests": 15,
+      "issues": [
+        {
+          "number": 458,
+          "title": "Is Hygen dead?",
+          "html_url": "https://github.com/jondot/hygen/issues/458",
+          "comments": 5,
+          "reactions_total": 15,
+          "reactions_plus_one": 0,
+          "updated_at": "2025-12-09T21:38:01Z",
+          "body": "The last commit was done 2 years ago, the official webiste https://hygen.io/ is no longer working and the even the domain is lost.\n\nSo is hygen still alive?"
+        },
+        {
+          "number": 457,
+          "title": "Moved to ejs now helpers aren\u2019t loading",
+          "html_url": "https://github.com/jondot/hygen/issues/457",
+          "comments": 1,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2025-08-23T01:14:12Z",
+          "body": "Any idea how the helpers are being loaded?\n\nI defined them in `.hygen.js`:\n\n```js\nexport default {\n\thelpers: {\n\t\tgetFilename: (locals, include_date) => {\n\t\t\t// \u2026\n\t\t}\n\t}\n}\n```\n\nBut then when I use them in the template, they are undefined:\n\n```sh\nLoaded templates: _templates\nTypeError: ejs:1\n >> 1| src/posts/<%= h.getFilename(locals) %>.md\n\nh.getFilename is not a function\n```"
+        },
+        {
+          "number": 455,
+          "title": "hygen.io domain is expired / documentation not available",
+          "html_url": "https://github.com/jondot/hygen/issues/455",
+          "comments": 3,
+          "reactions_total": 3,
+          "reactions_plus_one": 3,
+          "updated_at": "2025-02-02T13:04:55Z",
+          "body": "[hygen.io](https://hygen.io/) domain seems to be expired therefore the documentation which is linked in the Readme.md file is not available anymore.\n\n![Image](https://github.com/user-attachments/assets/64b4f2d4-06a9-46b3-923b-9f991430c5f3)"
+        },
+        {
+          "number": 452,
+          "title": "[support] Unable to load my generator",
+          "html_url": "https://github.com/jondot/hygen/issues/452",
+          "comments": 1,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2024-09-27T21:57:21Z",
+          "body": "I recently created a generator: https://github.com/italomaia/hygen-axum-podman-template\r\n\r\nNow I'm trying to test it with `hygen-add`, but I'm getting the following error:\r\n\r\n```bash\r\n> hygen-add axum-podman\r\n\r\n\r\nCan't add hygen-axum-podman\r\n\r\n [Error: ENOENT: no such file or directory, scandir 'node_modules/hygen-axum-podman/_templates'] {\r\n  errno: -2,\r\n  code: 'ENOENT',\r\n  syscall: 'scandir',\r\n  path: 'node_modules/hygen-axum-podman/_templates'\r\n}\r\n```\r\n\r\nIf I create `node_modules/hygen-axum-podman/_templates` with mkdir, hygen-add manages to download the template, but then `npx hygen` is unable to use it. Any ideas?"
+        },
+        {
+          "number": 450,
+          "title": "hygen --version treated as error",
+          "html_url": "https://github.com/jondot/hygen/issues/450",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2024-07-15T17:59:00Z",
+          "body": "It seems that the --version output is treated as a error ... while trying to programatically use this \r\n\r\ni have to check for for a string :\r\n\r\n```\r\n  ipcMain.handle('check-hygen-command', async () => {\r\n    return new Promise<boolean>((resolve) => {\r\n      exec('hygen --version', (error, stdout, stderr) => {\r\n        if (stdout.includes('Hygen v')) {\r\n          resolve(true);\r\n        } else {\r\n          resolve(false);\r\n        }\r\n      });\r\n    });\r\n  });\r\n```\r\n  \r\n  \r\n  instead of niceley resovling like this :)\r\n  \r\n```\r\n  ipcMain.handle('check-hygen-command', async () => {\r\n    return new Promise<boolean>((resolve) => {\r\n      exec('hygen --version', (error, stdout, stderr) => {\r\n        if (error) {\r\n          resolve(false);\r\n        } else {\r\n          resolve(true);\r\n        }\r\n      });\r\n    });\r\n  });\r\n```\r\n\r\nhygen --version\r\n\r\nError: please specify a generator.\r\nHygen v6.2.11\r\n\r\nAvailable actions:\r\ninit: init repo, init self\r\n\r\nC:\\Users\\myname>hygen -v\r\n\r\nError: please specify a generator.\r\nHygen v6.2.11\r\n\r\nAvailable actions:\r\ninit: init repo, init self\r\n\r\n\r\n"
+        },
+        {
+          "number": 448,
+          "title": "ejs compilation error",
+          "html_url": "https://github.com/jondot/hygen/issues/448",
+          "comments": 1,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2024-09-05T15:46:04Z",
+          "body": "hi,\r\n\r\nis it possible to show which file and which line number is causing the ejs error? for example:\r\n\r\nSyntaxError: Unexpected token 'for' while compiling ejs\r\n\r\nit is quite confusing and difficult to find the line and file\r\n\r\nthank you"
+        },
+        {
+          "number": 446,
+          "title": "template file from option doesn't work ejs",
+          "html_url": "https://github.com/jondot/hygen/issues/446",
+          "comments": 0,
+          "reactions_total": 1,
+          "reactions_plus_one": 0,
+          "updated_at": "2024-05-31T10:20:53Z",
+          "body": "```\r\n---\r\nto: appinfo.json\r\nfrom: template/appinfo.json\r\nforce: true\r\n---\r\n```\r\n\r\n// template/appinfo.json\r\n```\r\n{\r\n  \"id\": \"com.test.app<%= env === 'dev' ? '-dev' : env === 'stage' ? '-stage' : '' %>\"\r\n}\r\n```\r\n\r\n// output: appinfo.json\r\n```\r\n{\r\n  \"id\": \"com.test.app<%= env === 'dev' ? '-dev' : env === 'stage' ? '-stage' : '' %>\"\r\n}\r\n```\r\n\r\noutput file doesn't work ejs function. "
+        },
+        {
+          "number": 445,
+          "title": "Multiple outputs with with one template",
+          "html_url": "https://github.com/jondot/hygen/issues/445",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2024-05-15T13:03:10Z",
+          "body": "Hi,\r\nIs possible in hygen to generate multiple files from one template?\r\nI need something like this, but I have not been able to find solution. \r\n```js\r\n---\r\nto: app/workers/file1.js\r\nto: app/workers/file2.js\r\n---\r\n\r\nclass <%= Name %> {\r\n    work(){\r\n        // your code here!\r\n    }\r\n}\r\n```\r\nThanks for advice!"
+        },
+        {
+          "number": 443,
+          "title": "Kindly asking... is this still maintained?",
+          "html_url": "https://github.com/jondot/hygen/issues/443",
+          "comments": 5,
+          "reactions_total": 5,
+          "reactions_plus_one": 1,
+          "updated_at": "2025-04-15T16:58:38Z",
+          "body": "First, thank you for the excellent piece of software! I've been having a lot of fun with it recently. :)\r\n\r\nSo, I sent a PR a few days ago adding support for multiple template directories with action conflict resolution.\r\n\r\nSince then, I noticed that there isn't much activity going on, so I wanted to know if this project is still maintained, and if that's something that makes sense for the project\r\n\r\n@jondot If it's not maintained, and you would like to pass it on to someone else, I'm volunteering, and maybe other people would too.\r\n\r\nhygen was just what I was looking for in a generator I want to continue it one way or another\r\n\r\nagain, thank you!"
+        },
+        {
+          "number": 441,
+          "title": "FAQ Toggle Issue",
+          "html_url": "https://github.com/jondot/hygen/issues/441",
+          "comments": 0,
+          "reactions_total": 1,
+          "reactions_plus_one": 0,
+          "updated_at": "2024-02-01T05:30:57Z",
+          "body": "In the pricing page at FAQ section the second faq toggle is not working , i had refresh more than 4 times , but still not working.When you click on the faq it goes stuck not opening the answer and either not rotating the icon.\r\n![FAQIssue](https://github.com/jondot/hygen/assets/126334526/adc0fdb9-ee95-4b29-b5d2-461dd9b6df91)\r\n\r\n\r\nI am ready to fix it, please allow this repo to me.\r\nThanks!"
+        },
+        {
+          "number": 440,
+          "title": "[BUGFIX] whitespace error with frontmatter section",
+          "html_url": "https://github.com/jondot/hygen/issues/440",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2024-01-12T22:31:55Z",
+          "body": "Hi, I'm not very good at English, so I'll try to point out the error I found. In frontmatter section, if you leave spaces between line breaks with the \"---\" symbols, it does not render the template:\r\n\r\n```\r\n// in this case it doesn't work\r\n---                      <----------- whitespace in this line\r\nto: app/<%= name %>/create-<%= name %>-handler.model.ts\r\n---\r\n```\r\n\r\n```\r\n// in this case it work (no whitespace in next line)\r\n---\r\nto: app/<%= name %>/create-<%= name %>-handler.model.ts\r\n---\r\n```\r\nI don't know how this library works behind the scenes, but maybe with a .trim(), this error will be solved.\r\n\r\nPD: Very good library, I'm using it and it's helping me a lot :)"
+        },
+        {
+          "number": 439,
+          "title": "hygen vs code extension?",
+          "html_url": "https://github.com/jondot/hygen/issues/439",
+          "comments": 0,
+          "reactions_total": 2,
+          "reactions_plus_one": 2,
+          "updated_at": "2024-01-04T03:09:13Z",
+          "body": "hi,\r\n\r\nany plan for extension to support template file .t? \ud83d\ude03"
+        },
+        {
+          "number": 438,
+          "title": "skip_if needs to support variable",
+          "html_url": "https://github.com/jondot/hygen/issues/438",
+          "comments": 3,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2024-04-01T18:16:35Z",
+          "body": "i wish this could work:\r\n```\r\n---\r\nskip_if: \"<%=pluralName %>: \"\r\n---\r\n```\r\n\r\nive my work around, but would love to see this instead"
+        },
+        {
+          "number": 433,
+          "title": "Project with type Modules skips index.cjs",
+          "html_url": "https://github.com/jondot/hygen/issues/433",
+          "comments": 4,
+          "reactions_total": 2,
+          "reactions_plus_one": 2,
+          "updated_at": "2024-08-21T13:00:37Z",
+          "body": "Hi team,\r\n\r\nIn addition to [this related issue](https://github.com/jondot/hygen/issues/406) where `prompt.cjs` wasn't working, the same is true for `index.cjs`, which is required for projects with `\"type\": \"module\"` specified in the `package.json`\r\n\r\nWe need to add `index.cjs` to the `hooksfiles` variable.  I will submit a PR."
+        },
+        {
+          "number": 432,
+          "title": "fail to load custom template path ",
+          "html_url": "https://github.com/jondot/hygen/issues/432",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2023-08-29T02:19:14Z",
+          "body": "I try to load hygen from custom template path \r\n`HYGEN_TMPLS= ~/.hygen/_templates hygen comp init`\r\n\r\nbut it try to refer pnpm/global path \r\n\r\n`/home/tree/.local/share/pnpm/global/5/.pnpm/hygen@6.2.11/node_modules/hygen/src/templates`\r\n\r\nshould I use npm only to use custom template path ? \r\n\r\n"
+        },
+        {
+          "number": 431,
+          "title": "Help Wanted - Generator Fails Inconsistently Without Any Indication Of Error",
+          "html_url": "https://github.com/jondot/hygen/issues/431",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2023-06-29T01:30:26Z",
+          "body": "OS: Linux, Ubuntu: 20.04.1 LTS\r\nHygen v6.2.11\r\n\r\nNote that this is behavior has been witnessed across multiple dev machines while both running from binary and running via npx.\r\n\r\nObserved behavior - \r\n1. Project generation fails without any displayed error without any variance in input. \r\n2. Failure occurs without any modification to template files or user input.  \r\n3. Exit status is 0 on successful run and exit status is 1 on failed generation.  Nothing is logged out to indicate any type of error.\r\n4. This behavior is observed when running directly from hygen from the command line.  \r\n5. This behavior is occurs more frequently when running hygen within an ubuntu:jammy container.  \r\n6. The frequency of failure varies and we have not been able to identify the underlying pattern/issue that causes this.\r\n\r\nAn insight or clues into resolving this issue/getting any logs would be highly appreciated.\r\n\r\nSee below for example output.  It can be seen that template generation succeeds the first few times and then fails.  No modifications were made to the underlying files between runs.  \r\n\r\n```\r\nUSER@HOSTNAME:~/PATH$ hygen hello-world go\r\n\u2714 What's the name of this project? (no spaces) [e.g.: \"my-project\"] \u00b7 a\r\n\u2714 Would you like to add a UI? (y/N) \u00b7 false\r\n\r\nLoaded templates: _templates\r\n       FORCED: src/a/file1.sh\r\n       shell: cd /home/USER/PATH && chmod +x src/a/file1.sh\r\n       FORCED: src/a/file2.sh\r\n       shell: cd /home/USER/PATH && chmod +x src/a/file2.sh\r\n       FORCED: src/a/Dockerfile\r\n       FORCED: src/a/.dockerignore\r\n       FORCED: src/a/go.mod\r\n       FORCED: src/a/go.sum\r\n       FORCED: src/a/main.go\r\n\r\n\r\nUSER@HOSTNAME:~/PATH$ hygen hello-world go\r\n\u2714 What's the name of this project? (no spaces) [e.g.: \"my-project\"] \u00b7 a\r\n\u2714 Would you like to add a UI? (y/N) \u00b7 false\r\n\r\nLoaded templates: _templates\r\n       FORCED: src/a/file1.sh\r\n       shell: cd /home/USER/PATH && chmod +x src/a/file1.sh\r\n       FORCED: src/a/file2.sh\r\n       shell: cd /home/USER/PATH && chmod +x src/a/file2.sh\r\n       FORCED: src/a/Dockerfile\r\n       FORCED: src/a/.dockerignore\r\n       FORCED: src/a/go.mod\r\n       FORCED: src/a/go.sum\r\n       FORCED: src/a/main.go\r\n\r\n\r\nUSER@HOSTNAME:~/PATH$ hygen hello-world go\r\n\u2714 What's the name of this project? (no spaces) [e.g.: \"my-project\"] \u00b7 a\r\n\u2714 Would you like to add a UI? (y/N) \u00b7 false\r\n\r\nLoaded templates: _templates\r\n       FORCED: src/a/file1.sh\r\n       shell: cd /home/USER/PATH && chmod +x src/a/file1.sh\r\n       FORCED: src/a/file2.sh\r\n       shell: cd /home/USER/PATH && chmod +x src/a/file2.sh\r\n       FORCED: src/a/Dockerfile\r\n       FORCED: src/a/.dockerignore\r\n       FORCED: src/a/go.mod\r\n       FORCED: src/a/go.sum\r\n       FORCED: src/a/main.go\r\n\r\nUSER@HOSTNAME:~/PATH$ hygen hello-world go\r\n\u2714 What's the name of this project? (no spaces) [e.g.: \"my-project\"] \u00b7 a\r\n\u2714 Would you like to add a UI? (y/N) \u00b7 false\r\n\r\n\r\nLoaded templates: _templates\r\n       FORCED: src/a/file1.sh\r\n```\r\n\r\n"
+        },
+        {
+          "number": 430,
+          "title": "Inject \"after\" skips extra line",
+          "html_url": "https://github.com/jondot/hygen/issues/430",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2023-06-28T13:11:44Z",
+          "body": "Hi, \r\n\r\nMy template seems to be injecting content at a wrong place.   I suspect there is something wrong with my template, its just I do not see what.    This is the [template file:](https://github.com/jondot/hygen/blob/d35d15efb9a92241e3cab1a0a78fa471631c3460/repro/_templates/app/docker_compose/add_app_db_migration.jinja) \r\n\r\n```\r\n---\r\nto: <%= project_path %>/docker-compose.yml\r\nafter: >\r\n  services:\r\ninject: true\r\nskip_if: >\r\n  first_line\r\n---\r\nfirst_line\r\nlast_line\r\n```\r\n\r\nThis template should modify [this docker-compose file](https://github.com/jondot/hygen/blob/d35d15efb9a92241e3cab1a0a78fa471631c3460/repro/target_file/docker-compose.yml), and add two new lines just below `services:` tag. However, injection happens after `my-app: # auto-generated` line, not after `services:`.\r\n\r\n\r\n\r\nBelow are steps to reproduce, and all files are in a branch, which you can see in this PR: https://github.com/jondot/hygen/pull/429/files\r\n\r\n\r\n\r\n------------\r\n# \r\n\r\nSteps to reproduce \r\n```\r\nhygen app docker_compose:add_app_db_migration --project_path ./target_file\r\n```\r\n\r\nActual output:\r\n```\r\ndiff --git a/target_file/docker-compose.yml b/target_file/docker-compose.yml\r\nindex 17173ea..f6fb3c1 100644\r\n--- a/target_file/docker-compose.yml\r\n+++ b/target_file/docker-compose.yml\r\n@@ -2,6 +2,9 @@ version: \"3.5\"\r\n\r\n services:\r\n   my-app: # auto-generated\r\n+first_line\r\n+last_line\r\n+\r\n     image: \"my-image\"\r\n     container_name: container-name\r\n     environment:\r\n```\r\n\r\n\r\nExpected output:\r\n```\r\ndiff --git a/target_file/docker-compose.yml b/target_file/docker-compose.yml\r\nindex 17173ea..2ddcbc2 100644\r\n--- a/target_file/docker-compose.yml\r\n+++ b/target_file/docker-compose.yml\r\n@@ -1,6 +1,9 @@\r\n version: \"3.5\"\r\n\r\n services:\r\n+first_line\r\n+last_line\r\n+\r\n   my-app: # auto-generated\r\n     image: \"my-image\"\r\n     container_name: container-name\r\n```\r\n"
+        },
+        {
+          "number": 426,
+          "title": "Skip some or all prompts according to variables defined in template file?",
+          "html_url": "https://github.com/jondot/hygen/issues/426",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2023-04-19T15:08:11Z",
+          "body": "I have some template files under a folder `doc/new`.\r\n\r\nOne template (file.ejs.t) looks like:\r\n```\r\n---\r\nto: doc/<%= name %>.md\r\n---\r\n```\r\nAnd one (random.ejs.t) looks like:\r\n```\r\n---\r\nto: doc/<%= h.customRandomGen() %>.md\r\n---\r\n```\r\n\r\nThe second one used a custom util function to generate a random file name.\r\nBut a filename `name` is required to be input for the first one.\r\n\r\nI created a `prompt.js` under `doc/new`:\r\n```\r\nmodule.exports = [\r\n  {\r\n    type: \"input\",\r\n    name: \"name\",\r\n    message: \"File name:\",\r\n    validate: function (value) {\r\n      if (value.trim().length === 0) {\r\n        return \"File name can't be empty!\";\r\n      }\r\n      return true;\r\n    },\r\n  }\r\n];\r\n```\r\n\r\nAnd I can generate files by `doc new:file` or `doc new:random`.\r\n\r\nFor `doc new:file`, it's ok to ask for a `name` input, but for `doc new:random`, no input is needed, but the prompt shows and since the validation I defined, I can't input empty.\r\n\r\nIs there any way to filter the prompts array, based on the variables appeared in template file?\r\n\r\nSo for template A, which uses a required `name` and optional `desc`, template B which uses only a required `name`, template C which uses optional `desc`, and template D which uses no input,\r\nI can define a single array of prompts:\r\n```\r\nmodule.exports = [\r\n  { ... name: \"name\", ...}, \r\n  { ... name: \"desc\", ...}, \r\n];\r\n```\r\nAnd the prompts are filtered:\r\ntemplate A: `name`,`desc`\r\ntemplate B: `name`\r\ntemplate C: `desc`\r\ntemplate D: nothing\r\n\r\nIs there any way to do this?"
+        },
+        {
+          "number": 423,
+          "title": "pnpm",
+          "html_url": "https://github.com/jondot/hygen/issues/423",
+          "comments": 2,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2024-01-04T03:16:35Z",
+          "body": "If using pnpm as a package manager I believe the hygen command can't find local templates \r\n\r\ncommand `pnpm hygen Component new Navigator`\r\nor `npx hygen Component new Navigator`\r\nerror message...\r\n```\r\nLoaded templates: node_modules/.pnpm/hygen@6.2.10/node_modules/hygen/src/templates\r\nError: I can't find action 'new' for generator 'Component'.\r\n\r\n      You can try:\r\n      1. 'hygen init self' to initialize your project, and\r\n      2. 'hygen generator new --name Component' to build the generator you wanted.\r\n\r\n      Check out the quickstart for more: http://www.hygen.io/docs/quick-start\r\n      \r\nHygen v6.2.10\r\n\r\nAvailable actions:\r\ninit: init repo, init self\r\n```\r\n\r\nsame command when dependencies are installed using yarn in same project works"
+        },
+        {
+          "number": 422,
+          "title": "Inject multiple node dependencies within one template, each with dedicated skip_if's",
+          "html_url": "https://github.com/jondot/hygen/issues/422",
+          "comments": 1,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2024-03-17T06:19:11Z",
+          "body": "I want to know if it is possible, and if not, feasible, to create one template for injecting multiple (let's say node) dependencies to the package.json with one template, but each of them may be coupled to a different `skip_if`. For instance:\r\n\r\n```\r\n// Project setup (1.0)\r\n_templates/\r\n  proxy/\r\n    controller/\r\n      controller.ejs.t\r\n      dependencies.ejs.t\r\npackage.json\r\n```\r\n\r\nWhereas the controller template scaffolds something like follows:\r\n\r\n```\r\n// controller.ejs.t\r\n---\r\nto: app/controller/<%= name %>.controller.ts\r\n---\r\nimport { Body, Controller, Post, Get } from '@nestjs/common'\r\n<% if(locals.healthcheck) {-%>import { ApiResponse, ApiExcludeEndpoint } from '@nestjs/swagger'<% } -%>\r\n\r\n@Controller()\r\nexport class Controller {\r\n    constructor() {}\r\n\r\n# THIS IS ONLY AVAILABLE IF healthcheck GETS PASSED AS PROPERTY\r\n<% if (locals.healthcheck) { -%>\r\n    @ApiExcludeEndpoint()\r\n    @Get(`${BASE_URL}${HEALTH_CHECK}`)\r\n    @ApiResponse({ status: 200, description: 'Proxy service is up and running.' })\r\n    async health(): Promise<void> {}\r\n<% } -%>\r\n\r\n    @Post()\r\n    async proxyRequest(@Body() request: ProxyRequestDto) {\r\n        // no op\r\n    }\r\n}\r\n\r\n```\r\nWe can see in the controller example above, that some dependencies will only be necessary to import and therefore maintained in the `package.json` if the optional code block gets included in the file creation.\r\n\r\nCurrently, the only possibility, at least as it seems to me, would be to create one template for each dependency:\r\n\r\n```\r\n// dependencies.ejs.t, mandatory dependencies\r\n---\r\ninject: true\r\nto: package.json\r\nafter: devDependencies\r\nskip_if: nestjs/common\r\nsh: cd <%= cwd %> && yarn\r\n---\r\n    \"@nestjs/common\":\"*\",\r\n\r\n```\r\n\r\n```\r\n// dependencies.health.ejs.t, optional dependencies (only if healthcheck is included)\r\n---\r\ninject: true\r\nto: package.json\r\nafter: devDependencies\r\nskip_if: nestjs/swagger\r\nsh: cd <%= cwd %> && yarn\r\n---\r\n    <% if(locals.healthcheck) {-%>\"@nestjs/swagger\":\"*\",<% } -%>\r\n\r\n```\r\nWhich leads us to the following template setup\r\n```\r\n// Project setup (2.0)\r\n_templates/\r\n  proxy/\r\n    controller/\r\n      controller.ejs.t\r\n      dependencies.ejs.t\r\n      dependencies.health.ejs.t\r\npackage.json\r\n```\r\n\r\nThis would be fine for this scenario, however, it would scale linear with increasing complexity of your templates.\r\nIt would be nice to have something like aggregations of Frontmatter templates like this:\r\n```\r\n// dependencies.ejs.t\r\n---\r\ninject: true\r\nto: package.json\r\nafter: devDependencies\r\nskip_if: nestjs/common\r\nsh: cd <%= cwd %> && yarn\r\n---\r\n    \"@nestjs/common\":\"*\",\r\n\r\n---\r\ninject: true\r\nto: package.json\r\nafter: devDependencies\r\nskip_if: nestjs/swagger\r\nsh: cd <%= cwd %> && yarn\r\n---\r\n    <% if(locals.healthcheck) {-%>\"@nestjs/swagger\":\"*\",<% } -%>\r\n```\r\n\r\nAs far as I know, nothing comparable is possible currently. Can you help me out with this?\r\n\r\nKind regards!"
+        },
+        {
+          "number": 421,
+          "title": "SSL for Homepage in Docs",
+          "html_url": "https://github.com/jondot/hygen/issues/421",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2023-03-03T15:24:10Z",
+          "body": "Corresponds to PR-https://github.com/jondot/hygen/pull/420\r\n\r\n---\r\nI found several unsecure links without SSL enabled. Also aligned the url scheme of the hygen homepage referenced in the docs and doc strings across the project. There is one left in the repository description, which is still pointing to http://hygen.io/ which may be changed into https://hygen.io/, too."
+        },
+        {
+          "number": 417,
+          "title": "[Docs] www.hygen.io does not redirect HTTP --> HTTPS",
+          "html_url": "https://github.com/jondot/hygen/issues/417",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-11-24T10:49:07Z",
+          "body": "Navigating to the Hygen website without a protocol specified (for example, by clicking the www.hygen.io link in the Github sidebar) serves the site without redirecting to HTTPS, resulting in a \"Not Secure\" badge. If it's hosted with Github Pages, looks like this would be the setting to change: [https://docs.github.com/en/pages/getting-started-with-github-pages/securing-your-github-pages-site-with-https#enforcing-https-for-your-github-pages-site](https://docs.github.com/en/pages/getting-started-with-github-pages/securing-your-github-pages-site-with-https#enforcing-https-for-your-github-pages-site)\r\n\r\n![](https://user-images.githubusercontent.com/12928449/203765599-51dc5a60-af07-4280-99de-ea60b69d8228.png)"
+        },
+        {
+          "number": 415,
+          "title": "Could I have some order about when each template should be executed?",
+          "html_url": "https://github.com/jondot/hygen/issues/415",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-11-06T23:01:10Z",
+          "body": "I would like to set in what order my templates should be executed, like a \"queue\". Is there any option where could I do it?"
+        },
+        {
+          "number": 414,
+          "title": "How to ignore template directories?",
+          "html_url": "https://github.com/jondot/hygen/issues/414",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-11-05T10:01:06Z",
+          "body": "I have seen the docs and searched the issues but couldn't find a clear answer to the question.\r\n\r\nHow can I have hygen ignore a template subdirectory that contains, for example, static assets.\r\n\r\nI've seen mention of `.hygenignore`, which is in the source code, but can't exactly work out how it works. I have tried and place a `.hygenignore` at the root of the repo, and at the root of the command. None worked.\r\n\r\n```\r\n# .hygenignore\r\nimg/\r\n```\r\n\r\nThe docs don't mention this possibility at all. The issues are not clear on instructions of how to achieve the same.\r\n\r\nAny clues?"
+        },
+        {
+          "number": 411,
+          "title": "Re-apply fix for chalk template",
+          "html_url": "https://github.com/jondot/hygen/issues/411",
+          "comments": 0,
+          "reactions_total": 6,
+          "reactions_plus_one": 6,
+          "updated_at": "2022-10-03T12:28:54Z",
+          "body": "Hi! \ud83d\udc4b \r\n      \r\nFirstly, thanks for your work on this project! \ud83d\ude42\r\n\r\nhttps://github.com/jondot/hygen/pull/335 introduced a fix for `chalk.template` that I think was overwritten in error by https://github.com/jondot/hygen/commit/6c43f266dbaf2e82f7b3c23a732025cd8b349031. Applying the below patch will restore the `template` support but a better solution would be to modify the TypeScript source code so future regressions are prevented.\r\n\r\nToday I used [patch-package](https://github.com/ds300/patch-package) to patch `hygen@6.2.11` for the project I'm working on.\r\n\r\nHere is the diff that solved my problem:\r\n\r\n```diff\r\ndiff --git a/node_modules/hygen/dist/logger.js b/node_modules/hygen/dist/logger.js\r\nindex 312f112..036c45d 100644\r\n--- a/node_modules/hygen/dist/logger.js\r\n+++ b/node_modules/hygen/dist/logger.js\r\n@@ -5,7 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {\r\n Object.defineProperty(exports, \"__esModule\", { value: true });\r\n const chalk_1 = __importDefault(require(\"chalk\"));\r\n // chalk 4.1.2 doesn't type template property\r\n-const { yellow, red, green, magenta, template } = chalk_1.default;\r\n+const { yellow, red, green, magenta } = chalk_1.default;\r\n+const template = require('chalk/source/templates');\r\n class Logger {\r\n     constructor(log) {\r\n         this.log = log;\r\n```\r\n\r\n<em>This issue body was [partially generated by patch-package](https://github.com/ds300/patch-package/issues/296).</em>\r\n"
+        },
+        {
+          "number": 406,
+          "title": "Project with type Modules skips prompt",
+          "html_url": "https://github.com/jondot/hygen/issues/406",
+          "comments": 2,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2023-09-01T05:59:39Z",
+          "body": "Hey everyone. I have a project that has type set to `module` in the `package.json` file. \r\n\r\nWe have been using Hygen for a while and we recently updated our entire app. The last thing we need to fix up is the Hygen generators. \r\n\r\nIt seems that with `type: module` in the `package.json` file, the `prompt.js` file is just skipped. This leads to errors where the templates are looking for the specific inputs that are not being requested.\r\n\r\nFollowing some other issues here and there, I have tried renaming `prompt.js` to `prompt.cjs` and `prompt.mjs`. Both are skipped completely. \r\n\r\nI had also tried to use `export default` in place of `module.exports` but all this doesn't matter as the file is skipped anyway. \r\n\r\nHere is the error output\r\n```\r\nError [ERR_REQUIRE_ESM]: require() of ES Module /Users/kmul/code/temp/_templates/fake/with-prompt/prompt.js from /Users/kmul/code/temp/node_modules/hygen/dist/prompt.js not supported.\r\n/Users/kmul/code/temp/_templates/fake/with-prompt/prompt.js is treated as an ES module file as it is a .js file whose nearest parent package.json contains \"type\": \"module\" which declares all .js files in that package scope as ES modules.\r\nInstead rename /Users/kmul/code/temp/_templates/fake/with-prompt/prompt.js to end in .cjs, change the requiring code to use dynamic import() which is available in all CommonJS modules, or change \"type\": \"module\" to \"type\": \"commonjs\" in /Users/kmul/code/temp/package.json to treat all .js files as CommonJS (using .mjs for all ES modules instead)\r\n```\r\n\r\nMy question is, what do I have to do to get Hygen to work with `type:module`?"
+        },
+        {
+          "number": 405,
+          "title": "External packages installed locally what if there is a new version?",
+          "html_url": "https://github.com/jondot/hygen/issues/405",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-08-19T13:33:26Z",
+          "body": "Hi all, \r\nI don't know if this is the right place to ask it but ill do in anyway :D \r\n\r\nIn the documentation of hygen about packages I saw when ever you add a package its added to your local system. which makes it more reliable in what you get instead of referencing. But what if there is an update? Is there a way that you could tell the user to upgrade and how should they do that?\r\nDocs I have been reading: https://www.hygen.io/docs/packages/\r\n\r\nGrtz, \r\nSven"
+        },
+        {
+          "number": 404,
+          "title": "[Bug] `inject` fails silently when `after` or `before` match nothing",
+          "html_url": "https://github.com/jondot/hygen/issues/404",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-08-16T06:41:57Z",
+          "body": "When `after` or `before` fail to match, the current behaviors are both surprising and different from each other:\r\n+ `after` injects at the start of the file\r\n+ `before` seems to do nothing\r\n\r\nBoth cases are logged as `inject` giving the impression that all is well. These behaviors are problematic because in the `before`-case important code may go missing, and in the `after`-case the resulting file may be broken.\r\n\r\nBoth should actually leave the file alone and log as `skipped` so the developer is immediately informed instead of trying to run this potentially broken state in the assumption that the generator worked as expected."
+        },
+        {
+          "number": 403,
+          "title": "Can I use `hygen` to get the string output only?",
+          "html_url": "https://github.com/jondot/hygen/issues/403",
+          "comments": 0,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2022-08-03T09:03:20Z",
+          "body": "I want to get the string output only for each template within my program.\r\n\r\nI tried the following code, and see that the log statements I added didn't run.\r\n\r\n```js\r\nconst { runner } = require('hygen')\r\nconst Logger = require('hygen/dist/logger').default\r\nconst path = require('path')\r\nconst defaultTemplates = path.join(__dirname, 'templates')\r\n\r\nrunner(process.argv.slice(2), {\r\n  templates: defaultTemplates,\r\n  cwd: process.cwd(),\r\n  logger: new Logger(console.log.bind(console)),\r\n  createPrompter: () => require('enquirer'),\r\n  exec: (action, body) => {\r\n    console.log(action);\r\n    console.log(body);\r\n    \r\n    const opts = body && body.length > 0 ? { input: body } : {}\r\n\r\n\r\n    //return require('execa').shell(action, opts)\r\n  },\r\n  debug: !!process.env.DEBUG\r\n})\r\n```\r\n\r\n\r\nI tried the following code, and see the result is not the string content that I expected.\r\n\r\n```js\r\nconst { runner } = require('hygen')\r\nconst Logger = require('hygen/dist/logger').default\r\nconst path = require('path')\r\nconst defaultTemplates = path.join(__dirname, 'templates')\r\n\r\nlet p = runner(process.argv.slice(2), {\r\n  templates: defaultTemplates,\r\n  cwd: process.cwd(),\r\n  logger: new Logger(console.log.bind(console)),\r\n  createPrompter: () => require('enquirer'),\r\n  debug: !!process.env.DEBUG\r\n})\r\n\r\np.then(console.log);\r\n```\r\n\r\nSo my question is, can I use `hygen` to get the string output only (for each template)?\r\n"
+        },
+        {
+          "number": 402,
+          "title": "Replace/fork enquirer?",
+          "html_url": "https://github.com/jondot/hygen/issues/402",
+          "comments": 4,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2023-02-16T18:51:32Z",
+          "body": "Enquirer seems to be dead. The last substantial commits were in January 2020, and there are open PRs from several years ago (including this one, which I really need: https://github.com/enquirer/enquirer/pull/272). It might be a good idea to create a fork for hygen so updates/improvements can be made."
+        },
+        {
+          "number": 401,
+          "title": "Generate generator based on a git diff",
+          "html_url": "https://github.com/jondot/hygen/issues/401",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-07-04T13:28:19Z",
+          "body": "Hey all,\r\n\r\nThis is a feature request / discussion for what I think would be a killer next step for hygen workflow.\r\n\r\nIt's quite cumbersome to prepare all the templates for a new generator, if you could modify your project run something like `hygen from-git-diff` get the basics to start with it would make life a lot simpler.\r\n\r\nHas anyone been exploring this? Should this be developed as core part of hygen or an independent tool?"
+        },
+        {
+          "number": 400,
+          "title": "[Solved] JSON payload to generator",
+          "html_url": "https://github.com/jondot/hygen/issues/400",
+          "comments": 1,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-07-02T18:33:27Z",
+          "body": "I used to be able to execute this code (ver 4.x I think).., where the input to the generator was a JSON entity.., but have not been able to in more recent code.  Could be something I'm missing.   \r\n```\r\nasync function run() {\r\n   await execa('hygen', ['typeGen', 'new', `--args=${JSON.stringify(types[0])}`]).stdout?.pipe(process.stdout);\r\n}\r\n```"
+        },
+        {
+          "number": 399,
+          "title": "how to get the value of prompts entered for one set of templates into another templates for further use?",
+          "html_url": "https://github.com/jondot/hygen/issues/399",
+          "comments": 0,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2022-06-23T14:54:48Z",
+          "body": "Suppose we have 2 templates and one of them is for creating the main structure of the project including all folders and files and requires a name field .\r\nNow our 2nd template is especially for creating files in one folder of the above created project and also injects some template code into the previously created folder's file (for which name is reqd as well in the to field ).\r\nIs there a possible solution for this scenario?\r\nAlso does regex work in injection template \r\neg:   to: app/*.js (which helps to push to js file inside appp folder assuming only 1js file is present )\r\nCurrently this gives error and exact name of js file is reqd."
+        },
+        {
+          "number": 396,
+          "title": "generating multiple files from one template",
+          "html_url": "https://github.com/jondot/hygen/issues/396",
+          "comments": 1,
+          "reactions_total": 11,
+          "reactions_plus_one": 11,
+          "updated_at": "2022-05-20T14:58:24Z",
+          "body": "hey, not so much an issue but I couldn't tell if this was possible or not, I want to essentially provide an array to a template and either loop the entire template file including the frontmatter into being generated for each item in the array or potentially use hygen shell command and loop the shell for each in the array and generate like that\r\n\r\nlike if my input from the list prompter was\r\n```\r\n['john', 'house', 'car']\r\n```\r\n\r\ni would expect to see files made at these locations without having to run the generator multiple times and without having copied amounts or templates, ideally have it based on a looper because it could be dynamic\r\n```\r\napp/john/handler.js\r\napp/house/handler.js\r\napp/car/handler.js\r\n```\r\n\r\n"
+        },
+        {
+          "number": 393,
+          "title": "Suggestion: Enable the Discussions feature",
+          "html_url": "https://github.com/jondot/hygen/issues/393",
+          "comments": 0,
+          "reactions_total": 5,
+          "reactions_plus_one": 5,
+          "updated_at": "2022-04-19T23:16:44Z",
+          "body": "I have observed that many open source projects are leveraging GitHub's _Discussions_ feature to engage with the community. It works very well and keeps issues separate from discussions. This can be easily enabled from the Settings tab.\r\n\r\n![CleanShot 2022-04-19 at 19 13 14](https://user-images.githubusercontent.com/1220198/164116330-6702c6fb-85f1-438e-baed-ce1e12b4e5e4.png)\r\n"
+        },
+        {
+          "number": 391,
+          "title": "Use @changesets/cli to facilitate better changlog capturing.",
+          "html_url": "https://github.com/jondot/hygen/issues/391",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-04-16T21:29:07Z",
+          "body": "It comes with an actionbot to give you the control to make release.\r\n\r\nhighly recomended \ud83d\udc4d\ud83c\udffb "
+        },
+        {
+          "number": 387,
+          "title": "Hygen convert charters '>' to HTML encoding",
+          "html_url": "https://github.com/jondot/hygen/issues/387",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-03-29T11:08:25Z",
+          "body": "Hi! I am trying to make php template and hygen replace '>' charter to '&gt;' and '\"' to '&#39;' in variable text. Can I avoid it in someway? "
+        },
+        {
+          "number": 384,
+          "title": "Include file into the template?",
+          "html_url": "https://github.com/jondot/hygen/issues/384",
+          "comments": 2,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-03-10T02:57:45Z",
+          "body": "So I'm trying to build Android Application generator, and we have to include JAR file to the template. How do we achieve this using hygen?"
+        },
+        {
+          "number": 380,
+          "title": "Allow to change the default `_templates` directory on `hygen init`",
+          "html_url": "https://github.com/jondot/hygen/issues/380",
+          "comments": 2,
+          "reactions_total": 2,
+          "reactions_plus_one": 2,
+          "updated_at": "2023-10-09T12:19:08Z",
+          "body": "I want to be able to change the default template directory name `_templates` by whatever I want.\r\nI like to use dotted directory (Eg: .templates) for things not directly related to the core of my project. So, I will be great if could set the parameter `--tmpls-dir` when initializing the hygen inot my project.\r\n\r\nSo, intializing the hygen with a custom templates dir will be done as follows:\r\n\r\n```sh\r\nhygen init self --tmpls-dir .templates\r\n``` \r\nThe command below will:\r\n1. Initialize all templates inside `.templates`directory instead of the default `_templates` dir.\r\n2. Create a .hygen.js file settings the new templates dir as default for templated discovery with contents:\r\n```js\r\nmodule.exports = {\r\n  templates: `${__dirname}/.templates`\r\n}\r\n```\r\n\r\nLet me know if it make sens, so that I can contribute. \r\n\r\nI'm new to the project, that's why any guidance on the parts of the code to change, will be helpful.\r\nIt looks like it is the `setup` ops that is doing the init.\r\n\r\nThanks "
+        },
+        {
+          "number": 378,
+          "title": "build fails due to new yargs-parser dependency update",
+          "html_url": "https://github.com/jondot/hygen/issues/378",
+          "comments": 5,
+          "reactions_total": 4,
+          "reactions_plus_one": 4,
+          "updated_at": "2022-03-04T10:40:11Z",
+          "body": "When you run `yarn build` it will throw the following error:\r\n\r\n```bash\r\nyarn run v1.22.17\r\n$ yarn build:lib && yarn build:changelog\r\n$ tsc\r\nsrc/params.ts:16:14 - error TS2322: Type 'string | number' is not assignable to type 'string'.\r\n  Type 'number' is not assignable to type 'string'.\r\n\r\n16     return { generator, action, templates }\r\n                ~~~~~~~~~\r\n\r\n  src/types.ts:48:3\r\n    48   generator: string\r\n         ~~~~~~~~~\r\n    The expected type comes from property 'generator' which is declared here on type 'ParamsResult'\r\n\r\nsrc/params.ts:16:25 - error TS2322: Type 'string | number' is not assignable to type 'string'.\r\n  Type 'number' is not assignable to type 'string'.\r\n\r\n16     return { generator, action, templates }\r\n                           ~~~~~~\r\n\r\n  src/types.ts:49:3\r\n    49   action: string\r\n         ~~~~~~\r\n    The expected type comes from property 'action' which is declared here on type 'ParamsResult'\r\n\r\nsrc/params.ts:18:42 - error TS2339: Property 'split' does not exist on type 'string | number'.\r\n  Property 'split' does not exist on type 'number'.\r\n\r\n18   const [mainAction, subaction] = action.split(':')\r\n                                            ~~~~~\r\n\r\nsrc/params.ts:20:45 - error TS2345: Argument of type 'string | number' is not assignable to parameter of type 'string'.\r\n  Type 'number' is not assignable to type 'string'.\r\n\r\n20   const actionfolder = path.join(templates, generator, mainAction)\r\n                                               ~~~~~~~~~\r\n\r\nsrc/params.ts:43:3 - error TS2322: Type '{ templates: string; actionfolder: string; generator: string | number; action: string | number; subaction: any; } & { [argName: string]: any; '--'?: (string | number)[]; } & { name: string | number; }' is not assignable to type 'ParamsResult'.\r\n  Type '{ templates: string; actionfolder: string; generator: string | number; action: string | number; subaction: any; } & { [argName: string]: any; '--'?: (string | number)[]; } & { name: string | number; }' is not assignable to type '{ templates: string; generator: string; action: string; subaction?: string; actionfolder?: string; name?: string; dry?: boolean; }'.\r\n    Types of property 'generator' are incompatible.\r\n      Type 'string | number' is not assignable to type 'string'.\r\n        Type 'number' is not assignable to type 'string'.\r\n\r\n43   return args\r\n     ~~~~~~~~~~~\r\n\r\n\r\nFound 5 errors in the same file, starting at: src/params.ts:16\r\n```\r\n\r\nThis is caused by the new version of `yargs-parser` -> \"^21.0.0\"\r\n\r\nThis [file](https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/types/yargs-parser/index.d.ts#L7) should be changed  in order to comply with the new types.\r\n"
+        },
+        {
+          "number": 376,
+          "title": "Milestone 6.2 issue pack",
+          "html_url": "https://github.com/jondot/hygen/issues/376",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-03-01T19:44:14Z",
+          "body": "## Features\r\n* [x] new `init repo` feature allows cloning complete repos both a command and as a new `setup` action (uses `degit` under the hood). E.g. `hygen init repo rakyll/launchpad --to new-folder` and start coding from that.\r\n\r\n## Updates\r\n* [x] Refactoring ESM/TS\r\n* [x] Modernize libraries\r\n* [x] Upgrade node for standalone\r\n* [x] migrate from travis to Github Actions\r\n* [x] fix metaverse test suite (ran twice)\r\n"
+        },
+        {
+          "number": 373,
+          "title": "newline / multi line shell commands in yaml",
+          "html_url": "https://github.com/jondot/hygen/issues/373",
+          "comments": 0,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2022-02-26T09:20:25Z",
+          "body": "is this possible?\r\n\r\nthis works (without newline):\r\n```\r\n---\r\nto: <%= name %>/package.json\r\nsh: cd <%= cwd %>/<%= name %> && npm i --save webpack webpack-cli html-webpack-plugin svelte svelte-loader &&\tnpm i --save-dev webpack-dev-server\r\n---\r\n{\r\n  \"private\": true,\r\n  \"scripts\": {\r\n    \"start\": \"npm run dev\",\r\n    \"dev\": \"webpack serve --host 0.0.0.0\",\r\n    \"dist\": \"webpack\"\r\n  }\r\n}\r\n\r\n```\r\n\r\n---\r\n\r\nYAML should be able to newline with `>` or `|`, but i get an error when i try:\r\n\r\n```\r\nsh: |\r\n\tcd <%= cwd %>/<%= name %>\r\n\tnpm i --save webpack webpack-cli html-webpack-plugin svelte svelte-loader\r\n\tnpm i --save-dev webpack-dev-server\r\n```\r\n(`>` also results in the same issue)\r\nerror:\r\n```\r\nYAMLException: can not read a block mapping entry; a multiline key may not be an implicit key at line 4, column 1:\r\n```\r\n\r\n---\r\n\r\nI've also tried this:\r\n```\r\nsh: cd <%= cwd %>/<%= name %>\r\nsh: npm i --save webpack webpack-cli html-webpack-plugin svelte svelte-loader\r\nsh: npm i --save-dev webpack-dev-server\r\n```\r\nerror:\r\n```\r\nYAMLException: duplicated mapping key at line 3, column 1:\r\n```"
+        },
+        {
+          "number": 369,
+          "title": "Enable Github Sponsors",
+          "html_url": "https://github.com/jondot/hygen/issues/369",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T10:11:32Z",
+          "body": "https://github.com/sponsors\r\n\r\nI know a company interested in funding this project.\r\nHoping also for more code owners and more frequent updates."
+        },
+        {
+          "number": 351,
+          "title": "Docs website headings do not change color on theme change",
+          "html_url": "https://github.com/jondot/hygen/issues/351",
+          "comments": 2,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2022-02-21T08:23:03Z",
+          "body": "**Issue description**\r\nThe headings present in the documentation are always black, both in light and dark themes. This makes them inaccessible to read.\r\n\r\n**Steps to reproduce**\r\n1. Go to http://www.hygen.io/\r\n2. Change to dark theme\r\n3. Try reading the headings again\r\n\r\n**Screenshots**\r\n<img width=\"905\" alt=\"Screenshot 2021-12-14 at 2 16 23 AM\" src=\"https://user-images.githubusercontent.com/30630904/145886195-8108d023-e0d1-44f9-ab15-8e7638082c30.png\">\r\n"
+        },
+        {
+          "number": 348,
+          "title": "Hygen has different output with --dry enabled.",
+          "html_url": "https://github.com/jondot/hygen/issues/348",
+          "comments": 0,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T08:23:17Z",
+          "body": "```\r\n# With dry\r\ntatu@DESKTOP-87LVEEG:~/dev/projects/hygenthing$ npx hygen component ng --dry\r\n\u2714 Name of component? (ex: MyCoolComponent) \u00b7\r\n\u2714 Module for this component: \u00b7 Admin\r\n(dry mode)\r\nLoaded templates: _templates\r\n       added: assets/templates/admin/components/.html\r\n       added: assets/scripts/admin/components/.ts\r\n       shell: echo 'import \"./components/\"' >> assets/scripts/admin/load-components.js\r\n\r\n# Without dry\r\ntatu@DESKTOP-87LVEEG:~/dev/projects/hygenthing$ npx hygen component ng\r\n\u2714 Name of component? (ex: MyCoolComponent) \u00b7 asd\r\n\u2714 Module for this component: \u00b7 Admin\r\n\r\nLoaded templates: _templates\r\n       added: assets/templates/admin/components/asd.html\r\n       added: assets/scripts/admin/components/asd.ts\r\n       // Now shell script isn't being run...\r\n```\r\n\r\nVersions: \r\nNode v14.18.0\r\nHygen v6.1.0\r\n\r\n"
+        },
+        {
+          "number": 347,
+          "title": "Cascading template directories",
+          "html_url": "https://github.com/jondot/hygen/issues/347",
+          "comments": 1,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T08:25:37Z",
+          "body": "I would love to see, that my global template directory (which is managed as independent repository) would be useable together with a local template directory.\r\n\r\n**Example**\r\nI set the env variable `HYGEN_TMPLS=\"/usr/me/global-templates/\"`\r\nThe structure inside this global template directory looks like this:\r\n```\r\n/usr/me/global-templates/my-gen/new/\r\n/usr/me/global-templates/another-gen/new/\r\n```\r\n\r\nNow I'm on my local project with this structure:\r\n```\r\n/usr/me/my-project/_templates/my-gen/new/\r\n/usr/me/my-project/_templates/something-different/new/\r\n```\r\n\r\n**What I would expect** by running my generators:\r\n```\r\nhygen my-gen new // use local project because local is more important than global\r\nhygen something-different new // use local because not available globally\r\nhygen another-gen new // use global because not available local\r\n```\r\nFollowing this, the cascading would prefer local templates, then global templates.\r\n\r\n**Current situation**\r\nRegarding this line: https://github.com/jondot/hygen/blob/master/src/config-resolver.ts#L17\r\nIf a HYGEN_TMPLS variable is set, use this directory and ignore local templates\r\n\r\nIs it possible and desired to implement this kind of cascading template resolving?"
+        },
+        {
+          "number": 330,
+          "title": "Use hygen to generate entire projects",
+          "html_url": "https://github.com/jondot/hygen/issues/330",
+          "comments": 5,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-03-02T08:16:01Z",
+          "body": "Hello,\r\n\r\nI'm wondering what are the best practices or is it even possible to generate entire projects? \r\nWe tend to create a lot of node.js projects so I want to share some basic templates with my team.\r\n\r\nCurrently I use self-written package to generate projects from ejs templates, like this `npx @org/generator -n new-app`.\r\n\r\nI can't figure out how to do the same with hygen except keeping up-to-date templates folder on each local machine. Is there any way to point to remote templates folder?\r\n\r\nThanks in advance for any insights "
+        },
+        {
+          "number": 327,
+          "title": "CWD but an actual CWD, not project root",
+          "html_url": "https://github.com/jondot/hygen/issues/327",
+          "comments": 2,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2022-07-11T11:18:47Z",
+          "body": "cwd refers to the project root\r\n\r\nI would like to have a current path from the terminal\r\n\r\nSo that if I open terminal in some sub-dir of my project I would be able to create an element inside this particular directory"
+        },
+        {
+          "number": 322,
+          "title": "Add n files based on array (`hygen multi`)",
+          "html_url": "https://github.com/jondot/hygen/issues/322",
+          "comments": 1,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T08:34:22Z",
+          "body": "I've created a generator with a prompt. One argument of the returned arguments is an array of objects, like \r\n```\r\n[\r\n  { subRoute: '/', method: 'GET', controller: 'listEvents' },\r\n  { subRoute: '/', method: 'POST', controller: 'newEventEntry' }\r\n]\r\n```\r\n\r\nNow among other things, I'd now want to create one file for each object in said array, using the controller as filename. So the result should be something like this: \r\n```\r\n/controller/\r\n   /listEvents.js\r\n   /newEventEntry.js\r\n```\r\n\r\nThe files itself will probably use the same template, as they all have the same content to begin with. \r\n\r\nIs something like this possible with hygen ? \r\nThanks for any suggestions ! \r\n"
+        },
+        {
+          "number": 316,
+          "title": "Display \"shell\" output before command runs (+add spinner for actions?)",
+          "html_url": "https://github.com/jondot/hygen/issues/316",
+          "comments": 3,
+          "reactions_total": 5,
+          "reactions_plus_one": 5,
+          "updated_at": "2024-04-18T15:14:06Z",
+          "body": "If a shell command takes a long time to run (e.g. with an `npm install`), it's hard to know that something long-running is happening. Hygen's `shell: <command>` output appears **after** the command is run.\r\n\r\nFor instance, check out this gif where `npm install` is running:\r\n\r\n![May-06-2021 12-30-13](https://user-images.githubusercontent.com/630449/117347997-eeba0e00-ae66-11eb-9844-a3cbab03c006.gif)\r\n\r\nIt feels a bit like something is broken because it shouldn't take very long for the `add` to happen.\r\n\r\nWould it be possible to show the `shell` output **before** the command runs? As a user, if I saw:\r\n\r\n```\r\nshell: cd src/handlers/foo-bar/lambda && npm install\r\n```\r\n\r\nI would know what was taking so long to run \ud83d\ude04 "
+        },
+        {
+          "number": 313,
+          "title": "How to use hygen generator when prompts can hang",
+          "html_url": "https://github.com/jondot/hygen/issues/313",
+          "comments": 5,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T08:39:39Z",
+          "body": "I have three generators:\r\n\r\n1. `handler` - this generator basically just delegates between the other two generators based on a prompt\r\n2. `batch-handler` - handles batches\r\n3. `sequential-handler` - handles one-at-a-time message processing\r\n\r\nWhen you run `hygen handler new`, it prompts asking which kind of handler you want (batch or sequential):\r\n\r\n![Screen Shot 2021-04-29 at 3 46 48 PM](https://user-images.githubusercontent.com/630449/116622581-2aeaed00-a902-11eb-852c-c3dd4fd89294.png)\r\n\r\nBased on your answer, it triggers the proper generator using this `sh` command:\r\n\r\n```\r\n---\r\nsh: hygen \"<% if (type === 'one-at-a-time') { %><%= 'sequential-handler' %><% } else if (type === 'batches') { %><%= 'batch-handler' %> <% } %>\" new\r\n---\r\n```\r\n\r\nThen, those handlers should prompt again, but it appears to just \"hang\":\r\n\r\n![Screen Shot 2021-04-29 at 3 48 07 PM](https://user-images.githubusercontent.com/630449/116622678-5077f680-a902-11eb-90b6-63a520021584.png)\r\n\r\nI'm assuming this is because `stdin` isn't being passed through to the `sh` command.\r\n\r\nIf I run the sub-generator separately, it does prompt properly:\r\n\r\n![Screen Shot 2021-04-29 at 3 50 18 PM](https://user-images.githubusercontent.com/630449/116622878-9c2aa000-a902-11eb-9ff7-01f64616181a.png)\r\n\r\nI have an example of this issue in a sample repo: https://github.com/blimmer/hygen-issue"
+        },
+        {
+          "number": 303,
+          "title": "Parameter 'from' is always set relative to directory with the generator",
+          "html_url": "https://github.com/jondot/hygen/issues/303",
+          "comments": 1,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T08:44:44Z",
+          "body": "The parameter 'from' is always set relative to the directory with the generator. \r\nFor example, I can define helper 'root', which returns project directory and use it like this:\r\n```\r\n---\r\nfrom: \"<%= h.root() %>/some-directory/some-file.json\"\r\nto: \"<%= h.root() %>/some-other-directory/some-other-file.json\"\r\n---\r\n```\r\n\r\nI expect, that paths will be like this:\r\n```\r\nfrom: /path/to/project/some-directory/some-file.json\r\nto: /path/to/project/some-other-directory/some-other-file.json\r\n```\r\n\r\nBut actually they are this:\r\n```\r\nfrom: /path/to/templates/path/to/project/some-directory/some-file.json\r\nto: /path/to/project/some-other-directory/some-other-file.json\r\n```\r\n\r\nIs there any way to define absolute path? "
+        },
+        {
+          "number": 302,
+          "title": "Inject changing line endings from CRLF to LF in vscode",
+          "html_url": "https://github.com/jondot/hygen/issues/302",
+          "comments": 1,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2022-02-21T08:45:27Z",
+          "body": "I have two inject files in my generator, one to import and one to add to an export to a single file.\r\n\r\n`inject-import.ejs.t`\r\n```\r\n---\r\ninject: true\r\nto: src/components/index.js\r\nbefore: export {\r\nskip_if: components/<%= name %>\r\nappend: true\r\n---\r\nimport <%= name %> from \"./<%= name %>\";\r\n```\r\n\r\n`inject-export.ejs.t`\r\n```\r\n---\r\ninject: true\r\nto: src/components/index.js\r\nafter: export {\r\nskip_if: components/<%= name %>\r\nappend: true\r\n---\r\n  <%= name %>,\r\n```\r\n\r\nWhich creates a modifies this file:\r\n\r\n```\r\nimport Foo from \"./Foo\";    <-- Inject's the import here\r\nimport Input from \"./Input\";\r\nimport Modal from \"./modal\";\r\nimport Table from \"./admin/table\";\r\nimport Button from \"./admin/button\";\r\nimport Grid from \"./admin/nested/grid\";\r\n\r\nexport {\r\n  Foo,    <-- Inject's the export here\r\n  Input,\r\n  Modal,\r\n  Table,\r\n  Button,\r\n  Grid,\r\n};\r\n```\r\n\r\nThe issue is when I run my `hygen component new Foo` command to create a new Foo component and inject the imports into the file above, the injection changes the line endings from CRLF to LF.\r\n\r\nIs there anyway to stop this?\r\n\r\nI'm on Windows 10 using vscode v1.55.2 and Hygen v6.0.4."
+        },
+        {
+          "number": 301,
+          "title": "improve error message showing which line the error occurs",
+          "html_url": "https://github.com/jondot/hygen/issues/301",
+          "comments": 2,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T08:47:18Z",
+          "body": "I'm trying to generate a hygen template but, when run the commands return the following error:\r\n\r\n```\r\nLoaded templates: _templates\r\nSyntaxError: Unexpected token ')' while compiling ejs\r\n\r\nIf the above error is not helpful, you may want to try EJS-Lint:\r\nhttps://github.com/RyanZim/EJS-Lint\r\nOr, if you meant to create an async function, pass `async: true` as an option.\r\nerror Command failed with exit code 1.\r\ninfo Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.\r\n```\r\n\r\nIs there a way to know which line the error occurs? This will help so much to debug"
+        },
+        {
+          "number": 298,
+          "title": "Run result of generator through jsonrepair [add a post process command for text ops]",
+          "html_url": "https://github.com/jondot/hygen/issues/298",
+          "comments": 4,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2022-02-21T08:52:48Z",
+          "body": "Hey! I'm generating some `package.json` and the end result is pretty dirty.\r\n\r\nI'm able to run `prettier` as a command with the `sh` option of the front-matter.\r\nI would also like to run `jsonrepair`, which would allow not to write logic just for the commas in json.\r\n\r\n`jsonrepair` doesn't have a CLI and I can't seem to find an alternative.\r\n\r\nSo I'm thinking it would be nice to be able to do something like:\r\n\r\n```js\r\nconst jsonrepair = require('jsonrepair')\r\n\r\njsonrepair(generatorOutput)\r\n```\r\n\r\nThis would also allow to clean up pretty much anything with `prettier`.\r\n\r\n---\r\n\r\nAs an alternative, I tried creating an helper, but there is no way to preserve `ejs` syntax, passing it in a function.\r\n\r\nPossibly related to #296 "
+        },
+        {
+          "number": 287,
+          "title": "combine multiple inflections into a single call?",
+          "html_url": "https://github.com/jondot/hygen/issues/287",
+          "comments": 3,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2022-02-21T08:54:56Z",
+          "body": "Is there a way to combine performing multiple h helper/inflection methods into a single call?\r\n\r\nmy files are looking like this:\r\nto: src/<%= h.inflection.dasherize(h.inflection.pluralize(h.changeCase.lower(name))) %>/<%= h.changeCase.pascal(name) %>ListPage.tsx\r\n\r\nwhich is looking a bit too crazy"
+        },
+        {
+          "number": 277,
+          "title": "Before & After not respecting dynamic names",
+          "html_url": "https://github.com/jondot/hygen/issues/277",
+          "comments": 1,
+          "reactions_total": 2,
+          "reactions_plus_one": 1,
+          "updated_at": "2022-02-21T08:59:35Z",
+          "body": "Assigning **before** injections so that you can dynamically place content in specific areas no longer works.\r\nUsed to be fine in hygen v5 - but on the latest projects with v6, it no longer works.\r\n\r\nExample:\r\n```\r\n---\r\ninject: true\r\nto: src/assets/scss/styles.scss\r\nbefore: additional <%= folder %>\r\n---\r\n@import '<%= folder %>/<%= h.changeCase.kebab(name) %>';\r\n```\r\n\r\nThis would add the file to my styles.scss sheet, keeping it organised based on the type of folder chosen. \r\nFor example, a scss file added to ./components/_new-file.scss would appear in ./styles.scss just above the corresponding \"//... additional <%= folder %> comment:\r\n\r\n```\r\n/* Variables\r\n================================================== */\r\n@import 'variables/colours';\r\n@import 'variables/grid-variables';\r\n@import 'variables/spacing';\r\n@import 'variables/effects';\r\n// ...additional variables\r\n\r\n/* Components\r\n============================= */\r\n@import 'components/navigation';\r\n@import 'components/footer';\r\n@import 'components/header';\r\n@import 'components/new-file';\r\n// ...additional components\r\n```"
+        },
+        {
+          "number": 275,
+          "title": "hygen init self fails if _templates directory is present",
+          "html_url": "https://github.com/jondot/hygen/issues/275",
+          "comments": 7,
+          "reactions_total": 3,
+          "reactions_plus_one": 3,
+          "updated_at": "2022-09-07T09:24:51Z",
+          "body": "## Problem\r\n\r\nHygen does not let you initialize if the `_templates` directory exists & is empty.\r\n\r\n## Steps to reproduce\r\n\r\n1. Create an empty `_templates` directory\r\n2. Run `hpx hygen self init`\r\n\r\nHygen reports the following:\r\n\r\n```\r\nLoaded templates: _templates\r\nError: I can't find action 'self' for generator 'init'.\r\n\r\n      You can try:\r\n      1. 'hygen init self' to initialize your project, and\r\n      2. 'hygen generator new --name init' to build the generator you wanted.\r\n\r\n      Check out the quickstart for more: http://www.hygen.io/quick-start\r\n      \r\nHygen v6.0.4\r\n```\r\n\r\nThe reported error message is also a bit misleading.\r\n\r\n## Probable solution\r\n\r\nhygen can verify that the directory is empty and proceed with initialization."
+        },
+        {
+          "number": 269,
+          "title": "readme doesn't really show any examples of flags",
+          "html_url": "https://github.com/jondot/hygen/issues/269",
+          "comments": 1,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T09:02:06Z",
+          "body": "sort of it's mentioned in the \"new in 4.0\" at the top, but that's not really sufficient and easy to miss because it's not in the section.\r\n\r\nhttps://github.com/jondot/hygen/blob/master/README.md#folder-structure-is-command-structure\r\n\r\n> $ hygen worker new jobrunner\r\n> Template parameters are given with --flag VALUE, as many as you'd like. In this example we've set a parameter named name to the value jobrunner.\r\n\r\nthis is poor, because the example only shows special value `name`, if it instead mentioned name was special and  showed an additional option like say `--project` for a workspace config."
+        },
+        {
+          "number": 261,
+          "title": "required: false / prompt option",
+          "html_url": "https://github.com/jondot/hygen/issues/261",
+          "comments": 1,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T09:05:00Z",
+          "body": "I have a ejs like this `<%= locals['packageName'] || library %>` and I'd like to in this case just pass in `--library`, any way to not require `packageName`?"
+        },
+        {
+          "number": 260,
+          "title": "Copyright notice links to expired domain",
+          "html_url": "https://github.com/jondot/hygen/issues/260",
+          "comments": 1,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T09:04:32Z",
+          "body": "The copyright notice at the bottom of the README links to gplus domain, which is expired and now displays a parking page full of ads."
+        },
+        {
+          "number": 258,
+          "title": "How to generate dynamic form using json in hygen?",
+          "html_url": "https://github.com/jondot/hygen/issues/258",
+          "comments": 1,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2022-02-21T09:06:18Z",
+          "body": "How to generate dynamic form using json in hygen?\r\nIs there a way to generate custom form with react using json schema in hygen?\r\n\r\nThanks in advance for any suggestion and work around"
+        },
+        {
+          "number": 220,
+          "title": "Conditional Rendering: value is not defined",
+          "html_url": "https://github.com/jondot/hygen/issues/220",
+          "comments": 5,
+          "reactions_total": 1,
+          "reactions_plus_one": 1,
+          "updated_at": "2024-02-09T15:39:11Z",
+          "body": "Hey! I tried an example from the documentation \r\n`to: \"<%= message ? 'where/to/render' : null %>\"` \r\n\r\nand received `message is not defined`\r\n\r\nI can use a workaround type, for example `typeof directory == \"undefined\"` in my case, but this does not allow me to fully use the helpers in the .hygen.js, for example\r\n```\r\n// template\r\nto: <%= h.getPath(directory, Name) %>\r\n```"
+        },
+        {
+          "number": 212,
+          "title": "More maintainers",
+          "html_url": "https://github.com/jondot/hygen/issues/212",
+          "comments": 2,
+          "reactions_total": 18,
+          "reactions_plus_one": 18,
+          "updated_at": "2021-02-02T01:03:09Z",
+          "body": "Hey @jondot, I love this codegen tool and the work you've started here.\r\n\r\nWhat do you think about adding a few more maintainers to the project?\r\n\r\nIf you think it's a good idea, what things do you want to have in place to ensure the project continues on in a direction that makes sense?\r\n\r\nA few things that come to mind are:\r\n- [ ] Roadmap\r\n- [ ] A set of issue labels that make it easier for people to understand what can be worked on\r\n- [ ] A strategy for handling the cross-platform testability (https://github.com/jondot/hygen/pull/195)\r\n"
+        },
+        {
+          "number": 209,
+          "title": "inject multi line to js object if not exist",
+          "html_url": "https://github.com/jondot/hygen/issues/209",
+          "comments": 2,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2020-07-05T18:01:09Z",
+          "body": "hi i want to append some keys to my translate file (it's a js object).\r\nthat keys exist in specific array(inside .hygen.js file) how can i inject them?\r\ni know how to inject them but the problem is it is not possible to check for each key if exist or not\r\nhere is the content of my .hygen.js file i am trying to build code generator for crud apps for vue js\r\n\r\n```\r\nconst tables={\r\n  user:{\r\n    columns :[`id`,`first_name`, `last_name`, `sex`, `birthday`, `nationalCode`, `username`, `email`, `job`, `national`],\r\n\r\n  }\r\n};\r\nconst tableExist=(t)=>{\r\n  return tables[t]!==undefined;\r\n}\r\nconst tableExistWithException=(t)=>{\r\n  if(!tableExist(t)){\r\n    throw new Error(\"table is not exist\");\r\n  }\r\n  return true;\r\n}\r\n\r\nmodule.exports = {\r\n  helpers: {\r\n    tables,\r\n    tableExist,\r\n    tableExistWithException,\r\n  }\r\n}\r\n\r\n```\r\nand this is my translate file\r\n\r\n```\r\nconst fa= {\r\n\r\n\r\n  badge: '\u0646\u0634\u0627\u0646',\r\n  token:'\u062a\u0648\u06a9\u0646',\r\n  mb1: '\u0646\u0634\u0627\u0646',\r\n  mobile: '\u0645\u0648\u0628\u0627\u06cc\u0644',\r\n  province_id: '\u0627\u0633\u062a\u0627\u0646',\r\n  city_id: '\u0634\u0647\u0631',\r\n  address: '\u0622\u062f\u0631\u0633',\r\n  zipcode: '\u06a9\u062f \u067e\u0633\u062a\u06cc',\r\n  delivery_name: '\u062a\u062d\u0648\u06cc\u0644 \u06af\u06cc\u0631\u0646\u062f\u0647',\r\n  actions: '\u06af\u0632\u06cc\u0646\u0647 \u0647\u0627',\r\n  alerts: {\r\n    deleteAlert: '\u0622\u06cc\u0627 \u0627\u0632 \u062d\u0630\u0641 \u0627\u06cc\u0646 \u0631\u06a9\u0648\u0631\u062f \u0627\u0637\u0645\u06cc\u0646\u0627\u0646 \u062f\u0627\u0631\u06cc\u062f \u061f'\r\n  },\r\n  \r\n  pageNotFound: '\u0635\u0641\u062d\u0647 \u0645\u0648\u0631\u062f \u0646\u0638\u0631 \u067e\u06cc\u062f\u0627 \u0646\u0634\u062f'\r\n}\r\nexport default fa\r\n```"
+        },
+        {
+          "number": 208,
+          "title": "Support lifecycle hook",
+          "html_url": "https://github.com/jondot/hygen/issues/208",
+          "comments": 4,
+          "reactions_total": 7,
+          "reactions_plus_one": 7,
+          "updated_at": "2020-07-14T21:59:26Z",
+          "body": "I would like to suggest that provide that lifecycle hook of the generator, like `afterAll`, `beforeAll`, `beforeEach` and `afterEach`.  Now, actually, we have `afterEach` when we pass `sh` in template files.\r\n\r\nHowever, in the case, we might be run the script after all code generated. I hope that we can set it at `.hygen.js`, like \r\n\r\n```js\r\nmodule.exports = {\r\n    afterAll: (context) => {\r\n        ...\r\n    }\r\n}\r\n```\r\nNow, we can do it a workaround as `prescript && hygen <name> <action> && postscript`. But still hope that we could have the hook. That might be also helpful on  #175.\r\n\r\nThanks!"
+        },
+        {
+          "number": 207,
+          "title": "Support to generate empty directory",
+          "html_url": "https://github.com/jondot/hygen/issues/207",
+          "comments": 2,
+          "reactions_total": 5,
+          "reactions_plus_one": 5,
+          "updated_at": "2020-07-03T12:11:34Z",
+          "body": "I would like to generate empty directory without any files. How can it be worked in current hygen?\r\nOne possible workaround is generated a `.gitkeep` as the placeholder."
+        },
+        {
+          "number": 169,
+          "title": "help text for changeCase and inflection",
+          "html_url": "https://github.com/jondot/hygen/issues/169",
+          "comments": 2,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2019-11-14T08:02:08Z",
+          "body": "I have found my self always going to [changeCase](https://github.com/blakeembrey/change-case) and [inflection](https://github.com/dreamerslab/node.inflection) github readme to findout what command is available and what its output.\r\n\r\nIt would be helpfull to have that help text with example when doing hygen help output.\r\n\r\nIf this is something that can be considered, I will be happy to take a shot at it and do a PR if you have and guiding tips on best way to do it."
+        },
+        {
+          "number": 162,
+          "title": "JSON injection",
+          "html_url": "https://github.com/jondot/hygen/issues/162",
+          "comments": 9,
+          "reactions_total": 4,
+          "reactions_plus_one": 4,
+          "updated_at": "2022-08-22T12:23:42Z",
+          "body": "Injecting into a json file can be quite tedious with regex alone.\r\n\r\nWould be nice to be able to give a dot path instead of regex.\r\n\r\n```ejs\r\n---\r\ninject: true\r\nto: some/path.json\r\njson_insert_path: '.foo.bar'\r\n---\r\n{\r\n\t\"some\": \"value\"\r\n}\r\n\r\n```\r\n\r\nThe resulting json would be\r\n```json\r\n{\r\n\t\"foo\": { \r\n\t\t\"bar\" : {\r\n\t\t\t\"some\": \"value\"\r\n\t\t}\r\n\t}\r\n}\r\n```\r\n\r\nAnd if you wanted to just insert at the root you could use `.` as the path"
+        },
+        {
+          "number": 158,
+          "title": "monorepo multi-team/multi-project folder structure",
+          "html_url": "https://github.com/jondot/hygen/issues/158",
+          "comments": 17,
+          "reactions_total": 2,
+          "reactions_plus_one": 2,
+          "updated_at": "2024-03-17T06:57:23Z",
+          "body": "The hygen FAQ says that it was built \"to solve\u00a0developer effectiveness in a multi-team, multi-module monorepo\", however I'm curious about how to use it for that?\u00a0\r\n\r\nFrom reading through the docs, and your medium post I didn't get a sense of how one could have templates co-located within the different projects, but still be able to call hygen from the top level.\r\n\r\nWould something similar to this structure work?\r\n\r\n```\r\npackage.json\r\napps/\r\n\u00a0 \u00a0 project-1/\r\n\u00a0 \u00a0 \u00a0 \u00a0 _templates/\r\n\u00a0 \u00a0 \u00a0 \u00a0 .hygen.js\r\n\u00a0 \u00a0 project-2/\r\n\u00a0 \u00a0 \u00a0 \u00a0 _templates/\r\n\u00a0 \u00a0 \u00a0 \u00a0 .hygen.js\r\n\u00a0 \u00a0 project-3/\r\n\u00a0 \u00a0 \u00a0 \u00a0 _templates/\r\n\u00a0 \u00a0 \u00a0 \u00a0 .hygen.js\r\n```\r\n\r\nOr does hygen need to run within the same directory as the `.hygen.js` file?\r\n\r\nThank you again for some a declarative approach to code gen tooling.\r\n\r\n"
+        },
+        {
+          "number": 148,
+          "title": "after/before should be resepected if at_line is null",
+          "html_url": "https://github.com/jondot/hygen/issues/148",
+          "comments": 2,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2019-09-20T06:48:08Z",
+          "body": "In the example below after should take precedence if at_line is null (if user doesn't pass line_no)\r\n\r\nif any of the attribute action is null it should be ignored.\r\n\r\n```\r\nat_line: <%= line_no || null %>\r\nafter: 2 sup\r\n```"
+        },
+        {
+          "number": 124,
+          "title": "Pass positional cli arguments to params module function",
+          "html_url": "https://github.com/jondot/hygen/issues/124",
+          "comments": 0,
+          "reactions_total": 2,
+          "reactions_plus_one": 2,
+          "updated_at": "2019-06-10T07:14:50Z",
+          "body": "I started to build a few templates where I use a positional parameter (the name of the model) which needs to be accessed and changed (e.g. pluralized, camelCased, ..) in each template. It would be great if one could modify the positional arguments via the module function. For example like this:\r\n\r\n```javascript\r\n// my-generator/my-action/index.js\r\nmodule.exports = {\r\n  params: ({ args, positionalArgs }) => {\r\n    // positionalArgs is just an array of the positional arguments passed, e.g. [\"my-mailer\"]\r\n    return { moreConvenientName: args.foobamboozle, positionalArgs }\r\n  }\r\n}\r\n```\r\n\r\nPlease let me know if there's another way to do this, or if you'd accept a PR for this. \r\n\r\nThanks, Shane"
+        },
+        {
+          "number": 117,
+          "title": "Inject: negate skip_if",
+          "html_url": "https://github.com/jondot/hygen/issues/117",
+          "comments": 2,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2019-06-03T13:55:25Z",
+          "body": "Hi,\r\n\r\nI would like to import a file only if the import is used in the file. Something like:\r\n\r\n```\r\n---\r\ninject: true\r\nto: app/models/<%= h.inflection.underscore(name) %>.js\r\nprepend: true\r\nskip_if: /^((?!( myLib|\\(myLib)).)*$/gm\r\neof_last: false\r\n---\r\nimport myLib from '../my_lib';\r\n```\r\n\r\nHow can i create a regex for this?\r\n\r\nThanks"
+        },
+        {
+          "number": 115,
+          "title": "Inject : create file if it doesn't exist",
+          "html_url": "https://github.com/jondot/hygen/issues/115",
+          "comments": 2,
+          "reactions_total": 2,
+          "reactions_plus_one": 2,
+          "updated_at": "2021-10-27T13:43:48Z",
+          "body": "Hi!\r\n\r\nThanks for the amazing Project!\r\n\r\n**Problem statement :**\r\nIs there any way we can create a file if it doesn't exist while injection. Went through the docs and issues but couldn't find anything related there.\r\n\r\n**Detailed Description :** \r\n\r\n- I am planning to rely solely on hygen-add to load hygen generators from outside ( npm, github etc ) and not to push **_templates** folder with my project code. In order to streamline I was thinking to creating a action which will add **_templates/** folder to the .gitignore file\r\n- it works if the .gitignore file exists but in case of fresh projects I was hoping if the **inject templates could create file if it doesn't exist**\r\n"
+        },
+        {
+          "number": 111,
+          "title": "How to load local variables from JSON?",
+          "html_url": "https://github.com/jondot/hygen/issues/111",
+          "comments": 7,
+          "reactions_total": 7,
+          "reactions_plus_one": 7,
+          "updated_at": "2023-05-30T09:48:50Z",
+          "body": "Thanks for the great library.\r\n\r\nI can read variable values from CLI argument or prompt parameter. But I have lots of variables, so I have to keep in a separate JSON file. \r\n\r\nIs there any way to load/read that JSON file and pass as local variables to the templates?"
+        },
+        {
+          "number": 110,
+          "title": "Delete generated files",
+          "html_url": "https://github.com/jondot/hygen/issues/110",
+          "comments": 3,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2023-02-17T02:17:04Z",
+          "body": "Is there any way to delete generated files using hygen? Is there any way to run a command which will clean generated files along with appended lines inside the files"
+        },
+        {
+          "number": 109,
+          "title": "Manually set variables inside prompt",
+          "html_url": "https://github.com/jondot/hygen/issues/109",
+          "comments": 0,
+          "reactions_total": 2,
+          "reactions_plus_one": 2,
+          "updated_at": "2019-03-23T09:04:15Z",
+          "body": "Like what @rhberro was requesting here -> https://github.com/jondot/hygen/issues/80\r\n\r\nIn my case I'm trying to write some templates that use prompts to then query some info from a sql database. I save the results of those prompts and then on subsequent runs i want to check i have the value and only prompt if i dont. However there doesn't seem to be a way to pass a value to the template other than to use the prompter. Adding values to `args` does nothing and if I use `params` the prompts are not executed.\r\n\r\nThe example does allude to something here:\r\n```\r\nmodule.exports = {\r\n  prompt: ({ prompter, args }) => {\r\n    if (args.age > 18) {\r\n      return Promise.resolve({ allow: true })\r\n    }\r\n    return prompter.prompt({\r\n      type: 'input',\r\n      name: 'age',\r\n      message: 'whats your age?'\r\n    })\r\n  }\r\n}\r\n```\r\n\r\nWhere it return {allow:true} which (i'm assuming) is a variable that can be read by the template. However this doesn't seem to be adaptable to what I need.\r\n\r\nSome code for context:\r\n\r\n```\r\nlet configPath;\r\n        let name = __dirname;\r\n        let nextName = null;\r\n        let config = null;\r\n\r\n        while (true) {            \r\n            configPath = path.resolve(name, '.syngen.config.json');\r\n            if (fs.existsSync(configPath)) {\r\n                config = require(configPath);\r\n                break;\r\n            }\r\n            nextName = path.resolve(name, '..');\r\n            if (nextName === name) {\r\n                break;\r\n            }\r\n            name = nextName;\r\n        }\r\n\r\n        if (!config) {\r\n            config = {};\r\n        }\r\n\r\n        let prompts = [];\r\n\r\n        if (args.server) {\r\n            config.server = args.server;\r\n        }\r\n        else if (!config.server) {            \r\n            prompts.push({\r\n                type: 'input',\r\n                name: 'server',\r\n                message: 'what is the sql server address?'\r\n            });\r\n        }\r\n        if (args.username) {\r\n            config.username = args.username\r\n        }\r\n        else if (!config.username) {\r\n            prompts.push({\r\n                type: 'input',\r\n                name: 'username',\r\n                message: 'what is the sql username?'\r\n            });            \r\n        }\r\n        if (args.password) {\r\n            config.password = args.password\r\n        }\r\n        else if (!config.password) {\r\n            prompts.push({\r\n                type: 'input',\r\n                name: 'password',\r\n                message: 'what is the sql password?'\r\n            });            \r\n        }\r\n        if (args.database) {\r\n            config.database = args.database;\r\n        }\r\n        else if (!config.database) {\r\n            prompts.push({\r\n                type: 'input',\r\n                name: 'database',\r\n                message: 'what is the name of the database?'\r\n            });\r\n        }\r\n\r\n        return prompts.reduce((promiseChain, currentTask) => {\r\n            return promiseChain.then(chainResults =>\r\n                prompter.prompt(currentTask).then(currentResult =>\r\n                    [ ...chainResults, currentResult ]\r\n                )\r\n            );\r\n        }, Promise.resolve([])).then(async arrayOfResults => {\r\n            arrayOfResults.forEach(r => {\r\n                Object.keys(r).forEach(k => {\r\n                    config[k]= r[k];\r\n                });\r\n            })\r\n\r\n            if (args.refresh || !config.tables) {\r\n                config.tables = {};\r\n\r\n                // what happens here isn't important to my issue\r\n\r\n                pool.close();                \r\n\r\n                //console.log(config.tables);\r\n            }            \r\n```"
+        },
+        {
+          "number": 108,
+          "title": "Nested variable in conditional rendering raises error",
+          "html_url": "https://github.com/jondot/hygen/issues/108",
+          "comments": 5,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2021-02-27T04:43:29Z",
+          "body": "I'm trying to prevent a template generation for a certain condition:\r\n\r\n```ejs\r\n---\r\nto: \"<%= locals.image ? 'apps/operations/<%= h.inflection.pluralize(name) %>/image.rb' : null %>\"\r\n---\r\n```\r\nThere's a nested template literal in the file location. Running the generator raises the following error: `Error: Could not find matching close tag for \"<%=\".` It looks like an invalid ejs syntax. The documentation does not cover nested variable in a conditional rendering. How to solve this problem? "
+        },
+        {
+          "number": 106,
+          "title": "Feature-Request: Allow inject to replace",
+          "html_url": "https://github.com/jondot/hygen/issues/106",
+          "comments": 5,
+          "reactions_total": 7,
+          "reactions_plus_one": 7,
+          "updated_at": "2022-08-16T06:23:52Z",
+          "body": "I thought about something similar to #84, but I think it's a bit different.\r\n\r\nIn my case there's a part in my .js files, that should be regeneratered.\r\nI have a simplified example:\r\n\r\n```js\r\nconst Foobar = () => {\r\n  /* lot's of code */\r\n};\r\n\r\nFoobar.propTypes = {\r\n  meta: PropTypes.object.isRequired,\r\n  payload: PropTypes.object.isRequired,\r\n}\r\n\r\n/* some more code */\r\n```\r\n\r\nAnd I want to be able to \"update\" the lines with meta and payload with a hygen generator.\r\nNot really sure how we could detect the end of the propTypes part yet, but maybe let's discuss the replacing part first :-)"
+        },
+        {
+          "number": 103,
+          "title": "[feature request]",
+          "html_url": "https://github.com/jondot/hygen/issues/103",
+          "comments": 2,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2019-03-04T14:36:52Z",
+          "body": "All of our templates use the prompts which is great, but it would be great if at the top level we could start prompts to pick the action and sub type too so that one command could start the whole process.  I don't mind creating the PR for this as long as others think it is useful too.  \r\n\r\nI'm thinking of the command being `hygen --prompt` to start this workflow."
+        },
+        {
+          "number": 99,
+          "title": "Add async helpers",
+          "html_url": "https://github.com/jondot/hygen/issues/99",
+          "comments": 5,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2021-05-27T17:03:05Z",
+          "body": "Context: https://github.com/jondot/hygen/issues/95\r\n"
+        },
+        {
+          "number": 96,
+          "title": "[feature] Append a line during inject",
+          "html_url": "https://github.com/jondot/hygen/issues/96",
+          "comments": 1,
+          "reactions_total": 8,
+          "reactions_plus_one": 8,
+          "updated_at": "2021-05-30T11:54:00Z",
+          "body": "Hi @jondot \r\nIn my case, I have the config file like that\r\ndependencies = A,B\r\nAnd I want to inject inline C module so the result will look like:\r\n```\r\ndependencies = A,B,C\r\n```\r\nAnd not like \r\n```\r\ndependencies = A,B\r\n,C\r\n\r\nor \r\ndependencies \r\n{\r\nA,\r\nB,\r\nC\r\n}\r\n```\r\nThat would be great if we have a way to do that. Thank so much for the awesome plugin!\r\n"
+        },
+        {
+          "number": 94,
+          "title": "Where to extend ",
+          "html_url": "https://github.com/jondot/hygen/issues/94",
+          "comments": 5,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2019-02-06T20:25:25Z",
+          "body": "I would like to write a small helper to make adding packages as part of a template easier.  There seem to be a couple of contenders, but i'd like to be going with the flow. Ideally something like this\r\n\r\nNew magic front-matter?  This is what I really want.\r\n```\r\n---\r\n# requires changes in `src/ops/index.js` and adding `src/ops/packages.js\r\npackages: react-helmet react-router-dom\r\n---\r\n```\r\n\r\nAdd additional hooksfiles\r\n```\r\n# requires changes in 'src/prompt.js` and `_templates/fancy/start/packages.js`\r\n`if(hooksModule.packages) {...` \r\n```\r\n\r\nUse `.hygen.js` or `_templates/fancy/start/index.js`\r\n\r\nI'm happy to do the coding, i have an itch I want to scratch.  I'm just looking for a pointer in how to approach this. \r\n\r\nThanks"
+        },
+        {
+          "number": 92,
+          "title": "Add ESM support to JS files",
+          "html_url": "https://github.com/jondot/hygen/issues/92",
+          "comments": 12,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2023-05-26T11:50:42Z",
+          "body": "So that we no longer has to write cancerous `module.exports`!!"
+        },
+        {
+          "number": 84,
+          "title": "[feature] Replace a line during inject",
+          "html_url": "https://github.com/jondot/hygen/issues/84",
+          "comments": 6,
+          "reactions_total": 2,
+          "reactions_plus_one": 2,
+          "updated_at": "2022-02-03T11:13:37Z",
+          "body": "Amazing piece of software you've got here. Has saved my team countless hours.\r\n\r\nI'd like the ability to be able to run an arbitrary function on the matching line and return a modified version of that line."
+        },
+        {
+          "number": 81,
+          "title": "[feature request] enable generating snippets",
+          "html_url": "https://github.com/jondot/hygen/issues/81",
+          "comments": 2,
+          "reactions_total": 0,
+          "reactions_plus_one": 0,
+          "updated_at": "2021-12-01T22:24:45Z",
+          "body": "I'd like to have a list of _snippets much like _templates, so I can generate snippets from command line replacing some params\r\n\r\nthe idea is to output the snippet on terminal to be copy and pasted, or just copy the snippet to clipboard"
+        }
+      ]
+    },
+    "EV-SNIPPETS": {
+      "logger": {
+        "path": "src/logger.ts",
+        "line": 4,
+        "text": "const { yellow, red, green, magenta, template }: any = chalk"
+      },
+      "metaverse": {
+        "path": "src/__tests__/metaverse-utils.ts",
+        "line": 20,
+        "text": "const normalize = (s) => s.replace(/\\\\/g, '/').replace(/.*hygen\\/src/, '')"
+      },
+      "inject_fixme": {
+        "path": "src/__tests__/render.spec.ts",
+        "line": 155,
+        "text": "// FIXME this test doesn't seem to be actually testing injection unless i'm missing something"
+      },
+      "injector_spec": "src/__tests__/injector.spec.ts",
+      "chalk": {
+        "version": "4.1.2",
+        "templates_path": "node_modules/chalk/source/templates.js",
+        "exists": true
+      },
+      "installed": [
+        {
+          "name": "@types/jest",
+          "version": "27.4.0",
+          "path": "@types/jest"
+        },
+        {
+          "name": "@types/jest",
+          "version": "26.0.22",
+          "path": "zeroconf-typescript-eslint/node_modules/@types/jest"
+        },
+        {
+          "name": "ansi-regex",
+          "version": "5.0.0",
+          "path": "ansi-regex"
+        },
+        {
+          "name": "ansi-regex",
+          "version": "5.0.1",
+          "path": "eslint/node_modules/ansi-regex"
+        },
+        {
+          "name": "ansi-regex",
+          "version": "2.1.1",
+          "path": "gauge/node_modules/ansi-regex"
+        },
+        {
+          "name": "ansi-regex",
+          "version": "5.0.1",
+          "path": "pretty-format/node_modules/ansi-regex"
+        },
+        {
+          "name": "ansi-regex",
+          "version": "3.0.0",
+          "path": "wide-align/node_modules/ansi-regex"
+        },
+        {
+          "name": "brace-expansion",
+          "version": "1.1.8",
+          "path": "brace-expansion"
+        },
+        {
+          "name": "brace-expansion",
+          "version": "2.1.7",
+          "path": "filelist/node_modules/brace-expansion"
+        },
+        {
+          "name": "cross-spawn",
+          "version": "7.0.3",
+          "path": "cross-spawn"
+        },
+        {
+          "name": "cross-spawn",
+          "version": "6.0.5",
+          "path": "sane/node_modules/cross-spawn"
+        },
+        {
+          "name": "degit",
+          "version": "2.8.6",
+          "path": "degit"
+        },
+        {
+          "name": "ejs",
+          "version": "3.1.10",
+          "path": "ejs"
+        },
+        {
+          "name": "execa",
+          "version": "5.0.0",
+          "path": "execa"
+        },
+        {
+          "name": "execa",
+          "version": "1.0.0",
+          "path": "sane/node_modules/execa"
+        },
+        {
+          "name": "front-matter",
+          "version": "4.0.2",
+          "path": "front-matter"
+        },
+        {
+          "name": "gh-pages",
+          "version": "3.1.0",
+          "path": "gh-pages"
+        },
+        {
+          "name": "ignore-walk",
+          "version": "4.0.1",
+          "path": "ignore-walk"
+        },
+        {
+          "name": "jest",
+          "version": "27.5.1",
+          "path": "jest"
+        },
+        {
+          "name": "js-yaml",
+          "version": "4.1.0",
+          "path": "@eslint/eslintrc/node_modules/js-yaml"
+        },
+        {
+          "name": "js-yaml",
+          "version": "4.1.0",
+          "path": "eslint/node_modules/js-yaml"
+        },
+        {
+          "name": "js-yaml",
+          "version": "3.14.0",
+          "path": "js-yaml"
+        },
+        {
+          "name": "minimatch",
+          "version": "5.1.9",
+          "path": "filelist/node_modules/minimatch"
+        },
+        {
+          "name": "minimatch",
+          "version": "3.0.4",
+          "path": "minimatch"
+        },
+        {
+          "name": "ora",
+          "version": "5.4.1",
+          "path": "ora"
+        },
+        {
+          "name": "pkg",
+          "version": "5.5.2",
+          "path": "pkg"
+        },
+        {
+          "name": "sprintf-js",
+          "version": "1.0.3",
+          "path": "sprintf-js"
+        },
+        {
+          "name": "ts-jest",
+          "version": "27.1.3",
+          "path": "ts-jest"
+        },
+        {
+          "name": "ts-jest",
+          "version": "26.5.5",
+          "path": "zeroconf-typescript-eslint/node_modules/ts-jest"
+        },
+        {
+          "name": "ts-node",
+          "version": "10.5.0",
+          "path": "ts-node"
+        },
+        {
+          "name": "typescript",
+          "version": "4.5.5",
+          "path": "typescript"
+        }
+      ]
+    },
+    "EV-PR": {
+      "number": 1,
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "title": "Revive hygen: CI on Node 20/22, security bumps, and --version",
+      "html_url": "https://github.com/Fu93/hygen/pull/1",
+      "head_ref": "cursor/revive-hygen-326e",
+      "head_sha": "1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a",
+      "base_ref": "master"
+    }
+  },
+  "content_hashes": {
+    "EV-PROVENANCE": "67174fa1daffbadd45c86af6611f231f0fcfbbe69b4de6ca715fadbb1785ca56",
+    "EV-PACKAGE": "c93270421a993c35c644f0e61b8bf6e338abefb1abb8722004d06cf86732cca0",
+    "EV-OUTDATED": "544210799fb8718c9d57935d9b0d554c95e4eb968a28d6ef73e119ab4e5b6b06",
+    "EV-AUDIT-FULL": "dd9e09354778691ae0951ff42aa441fcadb0a72179e93327232437ea39c65c03",
+    "EV-AUDIT-PROD": "9d4d577bebbf301842baf672345569c0ff851fb969e01c1f4a2e980ebecbd860",
+    "EV-CI": "8521027ddff2447aa53c0ce5e921100a2f8497119fa383ae7c73708cd4acd438",
+    "EV-WORKFLOW": "3fc7f42bf4d592b99aecc23b32a2ea5f6d1f85c846fd7ac5c5f95bf249eb1ec6",
+    "EV-ISSUES": "af0538083c2eb1de86e216738990e507aa6a4d821e233faa56d0ce1056f61498",
+    "EV-SNIPPETS": "0cc9edf1631e18c4e78066bd7ba177c541fb995088a0bc11e206123d96bb0973",
+    "EV-PR": "731fd604bb04cfc1b5328f0a98a81153ec652a52bd40eff7a25e6264a1e0c8f1"
+  }
+}

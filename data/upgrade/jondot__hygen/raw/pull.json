@@ -1,0 +1,11 @@
+{
+  "number": 1,
+  "state": "open",
+  "draft": true,
+  "merged": false,
+  "title": "Revive hygen: CI on Node 20/22, security bumps, and --version",
+  "html_url": "https://github.com/Fu93/hygen/pull/1",
+  "head_ref": "cursor/revive-hygen-326e",
+  "head_sha": "1ba6fd00d569a1c690c6b6716e9dbfbf4614fe6a",
+  "base_ref": "master"
+}

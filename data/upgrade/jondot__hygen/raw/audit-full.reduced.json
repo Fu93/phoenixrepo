@@ -1,0 +1,85 @@
+{
+  "advisory_rows": 1518,
+  "summary": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 81,
+      "moderate": 564,
+      "high": 731,
+      "critical": 142
+    },
+    "dependencies": 1598,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 1598
+  },
+  "high_critical_by_root": {
+    "conventional-changelog-cli": 48,
+    "dir-compare": 9,
+    "execa": 1,
+    "front-matter": 3,
+    "gh-pages": 7,
+    "jest": 209,
+    "ora": 1,
+    "pkg": 10,
+    "stylomatic": 550,
+    "ts-jest": 4,
+    "zeroconf-typescript-eslint": 31
+  },
+  "direct_advisories": [
+    {
+      "id": 1097162,
+      "ghsa": "GHSA-8mmm-9v2q-x3f9",
+      "module": "gh-pages",
+      "severity": "critical",
+      "vulnerable": "<5.0.0",
+      "patched": ">=5.0.0",
+      "title": "tschaub gh-pages vulnerable to prototype pollution",
+      "path": "gh-pages"
+    },
+    {
+      "id": 1096454,
+      "ghsa": "GHSA-22r3-9w55-cj54",
+      "module": "pkg",
+      "severity": "moderate",
+      "vulnerable": "<=5.8.1",
+      "patched": "<0.0.0",
+      "title": "Pkg Local Privilege Escalation",
+      "path": "pkg"
+    }
+  ],
+  "js_yaml_4x": [
+    {
+      "ghsa": "GHSA-2883-xcg3-v3hh",
+      "vulnerable": ">=4.0.0 <4.3.2",
+      "patched": ">=4.3.2",
+      "example_path": "stylomatic>eslint>@eslint/eslintrc>js-yaml"
+    },
+    {
+      "ghsa": "GHSA-52cp-r559-cp3m",
+      "vulnerable": ">=4.0.0 <4.3.0",
+      "patched": ">=4.3.0",
+      "example_path": "stylomatic>eslint>@eslint/eslintrc>js-yaml"
+    },
+    {
+      "ghsa": "GHSA-5p4m-2wfm-xmqj",
+      "vulnerable": ">=4.0.0 <4.3.1",
+      "patched": ">=4.3.1",
+      "example_path": "stylomatic>eslint>@eslint/eslintrc>js-yaml"
+    },
+    {
+      "ghsa": "GHSA-h67p-54hq-rp68",
+      "vulnerable": ">=4.0.0 <=4.1.1",
+      "patched": ">=4.2.0",
+      "example_path": "stylomatic>eslint>@eslint/eslintrc>js-yaml"
+    },
+    {
+      "ghsa": "GHSA-mh29-5h37-fv8m",
+      "vulnerable": ">=4.0.0 <4.1.1",
+      "patched": ">=4.1.1",
+      "example_path": "stylomatic>eslint>@eslint/eslintrc>js-yaml"
+    }
+  ],
+  "source_sha256": "f8fcea7956df979af48c9c50c57ff4d97550c7154eb758a12ef040fb9bfeff12",
+  "source_bytes": 16130360
+}
