@@ -33,6 +33,16 @@ from run.context import RunContext
 from state.machine import PhoenixState, StateMachine
 
 
+def _judge_failure_kind(exc: Exception) -> str:
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    if status == 401 or "unauthorized" in text or getattr(exc, "error_type", "") == "MeterlessUnauthorized":
+        return "unauthorized"
+    if isinstance(exc, TimeoutError) or "timed out" in text or "timeout" in text:
+        return "timeout"
+    return "error"
+
+
 class InvestigationOrchestrator:
     def __init__(
         self,
@@ -81,6 +91,9 @@ class InvestigationOrchestrator:
         self.started = time.monotonic()
         self.queries: list[dict[str, str]] = []
         self.critiques: list[dict[str, Any]] = []
+        self.judge_events: list[dict[str, Any]] = []
+        self.judge_failure = ""
+        self.judge_exhausted = False
 
     def run(self) -> dict[str, Any]:
         self.trace.event(
@@ -149,6 +162,9 @@ class InvestigationOrchestrator:
             self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
 
         verdict_text = judgment["explanation"] if judgment.get("accepted") else explanation(row, decision, policy_reason)
+        judge_note = self._judge_verdict_note()
+        if judge_note:
+            verdict_text = verdict_text.rstrip() + " " + judge_note
         decision_claim = self._add_decision_claim(verdict_text, list(known))
         verification = self.graph.verify_claim(decision_claim.id)
         self.trace.event(
@@ -284,6 +300,7 @@ class InvestigationOrchestrator:
 
     def _archaeologist(self, row: dict, profile_evidence_id: str, known: set[str]) -> list[dict]:
         accepted: list[dict] | None = None
+        evidence_backed: list[dict] | None = None
         critique = Critique(False)
         for attempt in (1, 2):
             payload = self.chunks.run(
@@ -296,17 +313,22 @@ class InvestigationOrchestrator:
                     target="validator",
                 ),
             )
-            critique = critique_archaeologist(payload, known_evidence_ids=known, row=row)
+            guard = critique_archaeologist(payload, known_evidence_ids=known, row=row)
             critique = self._apply_llm_judge(
-                critique,
+                guard,
                 role="archaeologist",
                 subject={"role": "archaeologist", "row": row, "claims": payload.get("claims")},
                 attempt=attempt,
             )
+            if not guard.rejected:
+                evidence_backed = payload["claims"]
             if not critique.rejected:
                 accepted = payload["claims"]
                 break
             self._record_critique(critique, attempt - 1)
+        if accepted is None and evidence_backed is not None:
+            self._note_judge_exhausted("archaeologist")
+            accepted = evidence_backed
         if accepted is None:
             raise InvestigationError("ValidatorBlocked", critique.reason or "Archaeologist claims were rejected.", 422)
         for claim in accepted:
@@ -332,6 +354,7 @@ class InvestigationOrchestrator:
             "memories": memories,
         }
         accepted_payload = None
+        evidence_backed = None
         critique = Critique(False)
         for attempt in (1, 2):
             payload = self.chunks.run(
@@ -344,9 +367,9 @@ class InvestigationOrchestrator:
                     target="validator",
                 ),
             )
-            critique = critique_judge(payload, known_evidence_ids=known, row=row, signals=signals)
+            guard = critique_judge(payload, known_evidence_ids=known, row=row, signals=signals)
             critique = self._apply_llm_judge(
-                critique,
+                guard,
                 role="market_judge",
                 subject={
                     "role": "market_judge",
@@ -358,10 +381,14 @@ class InvestigationOrchestrator:
                 },
                 attempt=attempt,
             )
+            if not guard.rejected:
+                evidence_backed = payload
             if not critique.rejected:
                 accepted_payload = payload
                 break
             self._record_critique(critique, attempt - 1)
+        if accepted_payload is None and evidence_backed is not None:
+            self._note_judge_exhausted("market_judge")
         if accepted_payload is None:
             self.trace.event(
                 agent_name="validator",
@@ -475,30 +502,92 @@ class InvestigationOrchestrator:
     def _apply_llm_judge(self, critique: Critique, *, role: str, subject: dict, attempt: int) -> Critique:
         if self.llm.sample_standin:
             return critique
-        outcome = call_llm_judge(self.llm, subject=subject)
+        started = time.perf_counter()
+        try:
+            outcome = call_llm_judge(self.llm, subject=subject)
+        except Exception as exc:
+            kind = _judge_failure_kind(exc)
+            if not self.judge_failure:
+                self.judge_failure = kind
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            message = str(exc)
+            self._log_judge(
+                role=role,
+                attempt=attempt,
+                status=kind,
+                requested_model=str(getattr(self.llm, "requested_model", "") or ""),
+                served_model=getattr(self.llm, "served_model", None),
+                latency_ms=latency_ms,
+                output={
+                    "raw_decision": "unavailable",
+                    "failure": kind,
+                    "reason": message[:300],
+                    "advisory": True,
+                },
+            )
+            return critique
         combined, note = combine(critique, outcome)
-        self.trace.event(
-            agent_name="validator",
-            action="LLM_JUDGE",
-            input_summary={
-                "role": role,
-                "requested_model": outcome.requested_model,
-                "served_model": outcome.served_model,
-                "latency_ms": outcome.latency_ms,
-            },
-            output_summary={
+        status = "ok" if outcome.parsed and outcome.decision == "accept" else outcome.decision
+        self._log_judge(
+            role=role,
+            attempt=attempt,
+            status=status,
+            requested_model=outcome.requested_model,
+            served_model=outcome.served_model,
+            latency_ms=outcome.latency_ms,
+            output={
                 "raw_decision": outcome.decision if outcome.parsed else "unparsed",
                 "reason": outcome.reason[:300],
                 "claim_ids": outcome.claim_ids,
                 "parsed": outcome.parsed,
                 "guard_override": bool(note),
+                "advisory": True,
                 "raw_text": outcome.raw[:180],
             },
-            target_agent=role,
-            retry_count=attempt - 1,
-            status="ok" if outcome.parsed and outcome.decision == "accept" else outcome.decision,
         )
         return combined
+
+    def _log_judge(self, *, role: str, attempt: int, status: str, requested_model: str, served_model, latency_ms: int, output: dict) -> None:
+        self.judge_events.append({"role": role, "status": status, "failure": output.get("failure", "")})
+        self.trace.event(
+            agent_name="validator",
+            action="LLM_JUDGE",
+            input_summary={
+                "role": role,
+                "requested_model": requested_model,
+                "served_model": served_model,
+                "latency_ms": latency_ms,
+                "advisory": True,
+            },
+            output_summary=output,
+            target_agent=role,
+            retry_count=attempt - 1,
+            status=status,
+        )
+
+    def _note_judge_exhausted(self, role: str) -> None:
+        self.judge_exhausted = True
+        self.trace.event(
+            agent_name="validator",
+            action="LLM_JUDGE_EXHAUSTED",
+            input_summary={"role": role, "advisory": True},
+            output_summary="The advisory judge kept rejecting after the retry. The deterministic policy verdict is still produced.",
+            target_agent=role,
+            status="advisory",
+        )
+
+    def _judge_verdict_note(self) -> str:
+        if self.judge_failure:
+            return (
+                f"The LLM judge did not complete ({self.judge_failure}); "
+                "the deterministic policy verdict was kept."
+            )
+        if self.judge_exhausted:
+            return (
+                "The LLM judge rejected the claim after retries; "
+                "it is advisory and the deterministic policy verdict was kept."
+            )
+        return ""
 
     def _record_critique(self, critique: Critique, retry_count: int) -> None:
         self.critiques.append(
@@ -795,6 +884,12 @@ class InvestigationOrchestrator:
                     "label": self.llm.label(),
                     "explanation_accepted": model_accepted,
                     "primary_provider": "meterless",
+                    "judge": {
+                        "advisory": True,
+                        "exhausted": self.judge_exhausted,
+                        "failure": self.judge_failure,
+                        "events": self.judge_events,
+                    },
                 },
                 "hmem": {
                     "engine": "H-MEM",

@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-10-22T14:21:49.997680+00:00",
+  "collected_at": "2026-10-22T14:49:13.058924+00:00",
   "generator": "scripts/curate_real_repos.py",
   "token_used": false,
   "token_written": false,
@@ -44,21 +44,23 @@
     "has_tests": "true when the git tree (or, if that call fails, the root listing) contains a path segment test, tests, spec, specs, or __tests__, or a filename ending in _test.go, _test.py, _spec.rb, .spec.js, .spec.ts, .test.js, or .test.ts. false when the tree or listing succeeded and none matched. Empty when both calls failed. A truncated tree is noted in provenance and only the returned paths are used.",
     "has_ci": "true when the git tree contains a file under .github/workflows/, or (only if the tree call failed or was truncated) GET /contents/.github/workflows returns a non-empty listing, or the Actions runs API returns at least one workflow run. false when no workflow file was found and the runs list is empty. Empty if the deciding calls failed. A .github directory that is not workflows does not count.",
     "ci_status": "Lowercased conclusion of the latest Actions workflow run (per_page=1). Empty when there is no run, the conclusion is null, or the call failed. Badge images in the README are not copied into this column.",
-    "similar_repo_count": "GitHub search total_count for the recorded similar_query. Empty when the repo has no topic and no language, or the search call failed. The query is topic:<first topic> when topics exist, otherwise language:<language> <repo name> in:name.",
+    "similar_repo_count": "GitHub search total_count for a close-substitute query: up to three distinctive words from the description, same language, searched in name and description. If the description has no usable words, language:<language> <repo name> in:name. Empty when that query cannot be built or the search call failed. This is not a topic-size count and it is not a verdict.",
     "unique_capability": "The GitHub description copied verbatim. Empty when description is null or blank. This is not an independent uniqueness judgement.",
     "successor_url": "The first http(s) URL within 400 characters after the phrases 'in favor of', 'replaced by', 'successor', or 'moved to' in the README, skipping badge hosts. Empty when the README has no such phrase or the README call failed. The homepage is not used: it is usually the project's own site.",
     "category": "The first GitHub topic, otherwise primary_language, otherwise empty.",
     "data_origin": "github_rest_api plus the collected_at date. Not synthetic_labelled."
   },
   "collection_notes": [
-    "On 22 Oct 2026 a search for archived repositories tagged github-actions returned candidates whose Actions runs API listed zero workflow runs. No ci_status was filled in to manufacture a red-CI example.",
-    "successor_url is only a URL that the README places next to an explicit replacement phrase. A project homepage is not treated as a successor."
+    "successor_url is only a URL that the README places next to an explicit replacement phrase. A project homepage is not treated as a successor.",
+    "similar_repo_count is a close name or description search total, not a topic-size count. The policy scores it with stated uncertainty and does not cut at 40.",
+    "An empty ci_status is unknown. It is not recorded as a failure.",
+    "archived=true is a fact about the owner's freeze. It is not a revival vote."
   ],
   "repos": [
     {
       "full_name": "golang/dep",
-      "similar_query": "topic:dependency-manager",
-      "similar_total_count": "539",
+      "similar_query": "language:Go dependency management tool in:name,description",
+      "similar_total_count": "42",
       "search_status": "200",
       "contents_status": "from-tree",
       "tree_status": "200",
@@ -67,6 +69,9 @@
       "workflows_status": "from-tree",
       "readme_status": "200",
       "successor_snippet": "in favor of Go modules, which have had official support since Go 1.11. For more details, see https://golang.org/ref/mod.",
+      "ci_run_name": "",
+      "ci_run_event": "",
+      "ci_run_url": "",
       "topics_status": "repository.topics",
       "topics": [
         "dependency-manager",
@@ -78,102 +83,9 @@
       "pushed_at": "2020-09-05T13:47:25Z"
     },
     {
-      "full_name": "ariya/phantomjs",
-      "similar_query": "topic:automation",
-      "similar_total_count": "107670",
-      "search_status": "200",
-      "contents_status": "from-tree",
-      "tree_status": "200",
-      "tree_truncated": "false",
-      "actions_status": "200",
-      "workflows_status": "from-tree",
-      "readme_status": "200",
-      "successor_snippet": "",
-      "topics_status": "repository.topics",
-      "topics": [
-        "automation",
-        "headless",
-        "headless-browser",
-        "phantomjs"
-      ],
-      "homepage": "http://phantomjs.org",
-      "pushed_at": "2022-11-26T19:43:12Z"
-    },
-    {
-      "full_name": "oklog/oklog",
-      "similar_query": "topic:distributed",
-      "similar_total_count": "2501",
-      "search_status": "200",
-      "contents_status": "from-tree",
-      "tree_status": "200",
-      "tree_truncated": "false",
-      "actions_status": "200",
-      "workflows_status": "from-tree",
-      "readme_status": "200",
-      "successor_snippet": "",
-      "topics_status": "repository.topics",
-      "topics": [
-        "distributed",
-        "distributed-systems",
-        "log",
-        "logging",
-        "metallica"
-      ],
-      "homepage": "",
-      "pushed_at": "2018-09-07T21:45:27Z"
-    },
-    {
-      "full_name": "uber-archive/pyflame",
-      "similar_query": "topic:debian",
-      "similar_total_count": "8737",
-      "search_status": "200",
-      "contents_status": "from-tree",
-      "tree_status": "200",
-      "tree_truncated": "false",
-      "actions_status": "200",
-      "workflows_status": "from-tree",
-      "readme_status": "200",
-      "successor_snippet": "",
-      "topics_status": "repository.topics",
-      "topics": [
-        "debian",
-        "docker",
-        "fedora",
-        "flame-charts",
-        "profiler",
-        "ptrace",
-        "python",
-        "uwsgi"
-      ],
-      "homepage": "",
-      "pushed_at": "2019-12-03T07:08:22Z"
-    },
-    {
-      "full_name": "alibaba/UltraViewPager",
-      "similar_query": "topic:android",
-      "similar_total_count": "165899",
-      "search_status": "200",
-      "contents_status": "from-tree",
-      "tree_status": "200",
-      "tree_truncated": "false",
-      "actions_status": "200",
-      "workflows_status": "from-tree",
-      "readme_status": "200",
-      "successor_snippet": "",
-      "topics_status": "repository.topics",
-      "topics": [
-        "android",
-        "multi-page-switching",
-        "tangram",
-        "viewpager"
-      ],
-      "homepage": "",
-      "pushed_at": "2021-07-14T04:48:51Z"
-    },
-    {
       "full_name": "jxnblk/rgx",
-      "similar_query": "language:JavaScript rgx in:name",
-      "similar_total_count": "41",
+      "similar_query": "language:JavaScript React grid system in:name,description",
+      "similar_total_count": "247",
       "search_status": "200",
       "contents_status": "from-tree",
       "tree_status": "200",
@@ -182,6 +94,9 @@
       "workflows_status": "from-tree",
       "readme_status": "200",
       "successor_snippet": "",
+      "ci_run_name": "",
+      "ci_run_event": "",
+      "ci_run_url": "",
       "topics_status": "repository.topics",
       "topics": [],
       "homepage": "http://jxnblk.com/rgx",
@@ -189,8 +104,8 @@
     },
     {
       "full_name": "discreteoptimization/setcover",
-      "similar_query": "language:Python setcover in:name",
-      "similar_total_count": "51",
+      "similar_query": "language:Python Open source solvers in:name,description",
+      "similar_total_count": "367",
       "search_status": "200",
       "contents_status": "from-tree",
       "tree_status": "200",
@@ -199,15 +114,18 @@
       "workflows_status": "from-tree",
       "readme_status": "200",
       "successor_snippet": "",
+      "ci_run_name": "",
+      "ci_run_event": "",
+      "ci_run_url": "",
       "topics_status": "repository.topics",
       "topics": [],
       "homepage": "",
       "pushed_at": "2020-12-31T18:57:24Z"
     },
     {
-      "full_name": "vigetlabs/blendid",
-      "similar_query": "topic:asset-pipeline",
-      "similar_total_count": "269",
+      "full_name": "jondot/hygen",
+      "similar_query": "language:JavaScript simple fast scalable in:name,description",
+      "similar_total_count": "74",
       "search_status": "200",
       "contents_status": "from-tree",
       "tree_status": "200",
@@ -216,144 +134,81 @@
       "workflows_status": "from-tree",
       "readme_status": "200",
       "successor_snippet": "",
+      "ci_run_name": "CI",
+      "ci_run_event": "schedule",
+      "ci_run_url": "https://github.com/jondot/hygen/actions/runs/37141993934",
       "topics_status": "repository.topics",
       "topics": [
-        "asset-pipeline",
-        "browsersync",
-        "gulp",
-        "gulp-starter",
-        "svg-sprites",
-        "webpack"
+        "cli",
+        "generator",
+        "nodejs",
+        "tools"
+      ],
+      "homepage": "http://www.hygen.io",
+      "pushed_at": "2024-07-09T11:40:47Z"
+    },
+    {
+      "full_name": "42wim/matterbridge",
+      "similar_query": "language:Go bridge between mattermost in:name,description",
+      "similar_total_count": "5",
+      "search_status": "200",
+      "contents_status": "from-tree",
+      "tree_status": "200",
+      "tree_truncated": "false",
+      "actions_status": "200",
+      "workflows_status": "from-tree",
+      "readme_status": "200",
+      "successor_snippet": "",
+      "ci_run_name": "CodeQL",
+      "ci_run_event": "schedule",
+      "ci_run_url": "https://github.com/42wim/matterbridge/actions/runs/39323383247",
+      "topics_status": "repository.topics",
+      "topics": [
+        "bridge",
+        "counter-strike",
+        "discord",
+        "facebook-messenger",
+        "gitter",
+        "irc",
+        "matrix",
+        "mattermost",
+        "microsoft-teams",
+        "minecraft-chat",
+        "mumble",
+        "nextcloud",
+        "rocketchat",
+        "slack",
+        "telegram",
+        "twitch",
+        "vk",
+        "whatsapp",
+        "xmpp",
+        "zulip"
       ],
       "homepage": "",
-      "pushed_at": "2020-04-14T03:49:31Z"
+      "pushed_at": "2024-12-12T00:20:34Z"
     }
   ],
   "calls": [
     {
       "url": "https://api.github.com/repos/golang/dep",
       "status": "200",
-      "remaining": "40"
+      "remaining": "44"
     },
     {
       "url": "https://api.github.com/repos/golang/dep/git/trees/master",
       "status": "200",
-      "remaining": "39"
+      "remaining": "55"
     },
     {
       "url": "https://api.github.com/repos/golang/dep/actions/runs",
       "status": "200",
-      "remaining": "45"
+      "remaining": "38"
     },
     {
       "url": "https://api.github.com/repos/golang/dep/readme",
       "status": "200",
-      "remaining": "38"
-    },
-    {
-      "url": "https://api.github.com/search/repositories",
-      "status": "200",
-      "remaining": "9"
-    },
-    {
-      "url": "https://api.github.com/repos/ariya/phantomjs",
-      "status": "200",
-      "remaining": "46"
-    },
-    {
-      "url": "https://api.github.com/repos/ariya/phantomjs/git/trees/master",
-      "status": "200",
-      "remaining": "38"
-    },
-    {
-      "url": "https://api.github.com/repos/ariya/phantomjs/actions/runs",
-      "status": "200",
-      "remaining": "45"
-    },
-    {
-      "url": "https://api.github.com/repos/ariya/phantomjs/readme",
-      "status": "200",
       "remaining": "37"
-    },
-    {
-      "url": "https://api.github.com/search/repositories",
-      "status": "200",
-      "remaining": "7"
-    },
-    {
-      "url": "https://api.github.com/repos/oklog/oklog",
-      "status": "200",
-      "remaining": "36"
-    },
-    {
-      "url": "https://api.github.com/repos/oklog/oklog/git/trees/master",
-      "status": "200",
-      "remaining": "37"
-    },
-    {
-      "url": "https://api.github.com/repos/oklog/oklog/actions/runs",
-      "status": "200",
-      "remaining": "46"
-    },
-    {
-      "url": "https://api.github.com/repos/oklog/oklog/readme",
-      "status": "200",
-      "remaining": "35"
-    },
-    {
-      "url": "https://api.github.com/search/repositories",
-      "status": "200",
-      "remaining": "3"
-    },
-    {
-      "url": "https://api.github.com/repos/uber-archive/pyflame",
-      "status": "200",
-      "remaining": "34"
-    },
-    {
-      "url": "https://api.github.com/repos/uber-archive/pyflame/git/trees/master",
-      "status": "200",
-      "remaining": "44"
-    },
-    {
-      "url": "https://api.github.com/repos/uber-archive/pyflame/actions/runs",
-      "status": "200",
-      "remaining": "33"
-    },
-    {
-      "url": "https://api.github.com/repos/uber-archive/pyflame/readme",
-      "status": "200",
-      "remaining": "51"
-    },
-    {
-      "url": "https://api.github.com/search/repositories",
-      "status": "403",
-      "remaining": "0"
-    },
-    {
-      "url": "https://api.github.com/search/repositories",
-      "status": "200",
-      "remaining": "6"
-    },
-    {
-      "url": "https://api.github.com/repos/alibaba/UltraViewPager",
-      "status": "200",
-      "remaining": "55"
-    },
-    {
-      "url": "https://api.github.com/repos/alibaba/UltraViewPager/git/trees/master",
-      "status": "200",
-      "remaining": "59"
-    },
-    {
-      "url": "https://api.github.com/repos/alibaba/UltraViewPager/actions/runs",
-      "status": "200",
-      "remaining": "50"
-    },
-    {
-      "url": "https://api.github.com/repos/alibaba/UltraViewPager/readme",
-      "status": "200",
-      "remaining": "49"
     },
     {
       "url": "https://api.github.com/search/repositories",
@@ -363,22 +218,22 @@
     {
       "url": "https://api.github.com/repos/jxnblk/rgx",
       "status": "200",
-      "remaining": "59"
+      "remaining": "48"
     },
     {
       "url": "https://api.github.com/repos/jxnblk/rgx/git/trees/master",
       "status": "200",
-      "remaining": "48"
+      "remaining": "47"
     },
     {
       "url": "https://api.github.com/repos/jxnblk/rgx/actions/runs",
       "status": "200",
-      "remaining": "59"
+      "remaining": "47"
     },
     {
       "url": "https://api.github.com/repos/jxnblk/rgx/readme",
       "status": "200",
-      "remaining": "53"
+      "remaining": "46"
     },
     {
       "url": "https://api.github.com/search/repositories",
@@ -388,47 +243,72 @@
     {
       "url": "https://api.github.com/repos/discreteoptimization/setcover",
       "status": "200",
-      "remaining": "58"
+      "remaining": "47"
     },
     {
       "url": "https://api.github.com/repos/discreteoptimization/setcover/git/trees/master",
       "status": "200",
-      "remaining": "53"
+      "remaining": "46"
     },
     {
       "url": "https://api.github.com/repos/discreteoptimization/setcover/actions/runs",
       "status": "200",
-      "remaining": "52"
+      "remaining": "43"
     },
     {
       "url": "https://api.github.com/repos/discreteoptimization/setcover/readme",
       "status": "200",
-      "remaining": "57"
+      "remaining": "51"
     },
     {
       "url": "https://api.github.com/search/repositories",
       "status": "200",
+      "remaining": "6"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen",
+      "status": "200",
+      "remaining": "52"
+    },
+    {
+      "url": "https://api.github.com/repos/jondot/hygen/git/trees/master",
+      "status": "200",
       "remaining": "9"
     },
     {
-      "url": "https://api.github.com/repos/vigetlabs/blendid",
+      "url": "https://api.github.com/repos/jondot/hygen/actions/runs",
       "status": "200",
-      "remaining": "56"
+      "remaining": "53"
     },
     {
-      "url": "https://api.github.com/repos/vigetlabs/blendid/git/trees/master",
+      "url": "https://api.github.com/repos/jondot/hygen/readme",
+      "status": "200",
+      "remaining": "43"
+    },
+    {
+      "url": "https://api.github.com/search/repositories",
+      "status": "200",
+      "remaining": "6"
+    },
+    {
+      "url": "https://api.github.com/repos/42wim/matterbridge",
+      "status": "200",
+      "remaining": "52"
+    },
+    {
+      "url": "https://api.github.com/repos/42wim/matterbridge/git/trees/master",
+      "status": "200",
+      "remaining": "52"
+    },
+    {
+      "url": "https://api.github.com/repos/42wim/matterbridge/actions/runs",
+      "status": "200",
+      "remaining": "54"
+    },
+    {
+      "url": "https://api.github.com/repos/42wim/matterbridge/readme",
       "status": "200",
       "remaining": "51"
-    },
-    {
-      "url": "https://api.github.com/repos/vigetlabs/blendid/actions/runs",
-      "status": "200",
-      "remaining": "55"
-    },
-    {
-      "url": "https://api.github.com/repos/vigetlabs/blendid/readme",
-      "status": "200",
-      "remaining": "48"
     },
     {
       "url": "https://api.github.com/search/repositories",

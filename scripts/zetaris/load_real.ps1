@@ -1,5 +1,11 @@
 # Load data/real into a local Zetaris and point phoenix.repo_evidence at it.
-# UNVERIFIED against a running driver. This script only prints HTTP status codes.
+# UNVERIFIED against a running Zetaris. Prints a status token only, never the body or the key.
+# A HTTP 200 whose JSON body contains an error object is a failure, unless the
+# error text says the schemastore container, view, database, or table already
+# exists. Re-running is then idempotent for those objects. If phoenix.repo_evidence
+# already exists from scripts/zetaris/04_phoenix_views.sql, "exists" leaves that
+# older view in place. Dropping it was not verified, so this script does not guess
+# a DROP statement.
 #
 # Requires ZETARIS_API_KEY in the environment. It is sent as a bearer token and
 # is never printed. Optional: ZETARIS_REST_URL (default http://localhost:8888/api/v1.0),
@@ -46,53 +52,69 @@ $profileColumns = @(
     "unique_capability", "successor_url", "category", "html_url", "data_origin"
 ) -join ", "
 
+function New-Statement([string]$Kind, [string]$Sql) {
+    return [pscustomobject]@{ Kind = $Kind; Sql = $Sql }
+}
+
 if ($Alternative -eq "Filestore") {
     $statements = @(
-        'CREATE LIGHTNING DATABASE PHOENIX_REAL DESCRIBE BY "PhoenixRepo committed GitHub snapshot"',
-        @"
+        (New-Statement "database" 'CREATE LIGHTNING DATABASE PHOENIX_REAL DESCRIBE BY "PhoenixRepo committed GitHub snapshot"'),
+        (New-Statement "table" @"
 CREATE LIGHTNING FILESTORE TABLE repo_evidence_file FROM PHOENIX_REAL FORMAT CSV OPTIONS (
   path "$evidence",
   header "true",
   delimiter ","
 )
-"@,
-        @"
+"@),
+        (New-Statement "table" @"
 CREATE LIGHTNING FILESTORE TABLE revival_signals_file FROM PHOENIX_REAL FORMAT CSV OPTIONS (
   path "$signals",
   header "true",
   delimiter ","
 )
-"@,
-        "CREATE SCHEMASTORE CONTAINER phoenix",
-        "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real.repo_evidence_file",
-        "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real.revival_signals_file"
+"@),
+        (New-Statement "container" "CREATE SCHEMASTORE CONTAINER phoenix"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real.repo_evidence_file"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real.revival_signals_file")
     )
 }
 else {
     $statements = @(
-        @"
+        (New-Statement "table" @"
 CREATE TABLE phoenix_real_repo_evidence USING com.databricks.spark.csv OPTIONS (
   path "$evidence",
   header "true",
   inferSchema "false"
 )
-"@,
-        @"
+"@),
+        (New-Statement "table" @"
 CREATE TABLE phoenix_real_revival_signals USING com.databricks.spark.csv OPTIONS (
   path "$signals",
   header "true",
   inferSchema "false"
 )
-"@,
-        "CREATE SCHEMASTORE CONTAINER phoenix",
-        "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real_repo_evidence",
-        "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real_revival_signals"
+"@),
+        (New-Statement "container" "CREATE SCHEMASTORE CONTAINER phoenix"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real_repo_evidence"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real_revival_signals")
     )
 }
 
+function Get-ZetarisErrorText([string]$content) {
+    if ([string]::IsNullOrWhiteSpace($content)) { return "" }
+    try { $parsed = $content | ConvertFrom-Json } catch { return "" }
+    if ($null -eq $parsed.error) { return "" }
+    if ($parsed.error.message) { return [string]$parsed.error.message }
+    return [string]$parsed.error
+}
+
+function Test-AlreadyExists([string]$text) {
+    return $text -match "(?i)already exists|already exist|duplicate"
+}
+
 $failed = $false
-foreach ($sql in $statements) {
-    $flat = (($sql -replace "\s+", " ").Trim())
+foreach ($statement in $statements) {
+    $flat = (($statement.Sql -replace "\s+", " ").Trim())
     $body = @{
         queryId = [guid]::NewGuid().ToString()
         sql     = $flat
@@ -104,10 +126,12 @@ foreach ($sql in $statements) {
         "X-Org-ID"     = $org
         "X-Request-ID" = [guid]::NewGuid().ToString()
     }
+    $code = 0
+    $content = ""
     try {
         $response = Invoke-WebRequest -Uri "$base/sql-editor/sqls/run" -Method Post -Headers $headers -Body $body -ContentType "application/json; charset=utf-8" -UseBasicParsing
-        Write-Output ([int]$response.StatusCode)
-        if ([int]$response.StatusCode -ge 300) { $failed = $true }
+        $code = [int]$response.StatusCode
+        $content = [string]$response.Content
     }
     catch {
         $resp = $_.Exception.Response
@@ -116,9 +140,26 @@ foreach ($sql in $statements) {
             exit 1
         }
         $code = [int]$resp.StatusCode
-        Write-Output $code
-        $failed = $true
+        try {
+            $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
+            $content = $reader.ReadToEnd()
+        }
+        catch { $content = "" }
     }
+    $errorText = Get-ZetarisErrorText $content
+    $exists = ($statement.Kind -in @("database", "table", "container", "view")) -and (Test-AlreadyExists $errorText)
+    if ($exists) {
+        Write-Output "exists"
+        continue
+    }
+    if ($errorText -or $code -ge 300 -or $code -eq 0) {
+        if ($errorText -and $code -ge 200 -and $code -lt 300) { Write-Output "200 error-body" }
+        elseif ($code -eq 0) { Write-Output "unreachable" }
+        else { Write-Output $code }
+        $failed = $true
+        continue
+    }
+    Write-Output $code
 }
 if ($failed) { exit 1 }
 exit 0

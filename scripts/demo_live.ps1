@@ -8,8 +8,11 @@
 # Then:
 #   powershell -ExecutionPolicy Bypass -File scripts\demo_live.ps1
 #
-# Defaults probe Nightshift at http://127.0.0.1:8088/v1/models, Zetaris at
-# http://localhost:8888/api/v1.0, and POST /run at http://127.0.0.1:8000/run.
+# The Nightshift probe is GET {METERLESS_BASE_URL}/models with Authorization
+# Bearer METERLESS_RUNTIME_TOKEN and meterless-app, the same headers the product
+# sends for discovery. It does not call /healthz. POST /run is skipped unless
+# that probe is HTTP 200, Zetaris SELECT 1 is HTTP 200, and GET /health reports
+# sample_mode false.
 
 $ErrorActionPreference = "Stop"
 Set-ExecutionPolicy -Scope Process Bypass -Force
@@ -32,14 +35,41 @@ else {
 }
 
 $models = "unreachable"
-try {
-    $response = Invoke-WebRequest -Uri "http://127.0.0.1:8088/v1/models" -Method Get -UseBasicParsing
-    $models = [string]([int]$response.StatusCode)
+$meterlessToken = [Environment]::GetEnvironmentVariable("METERLESS_RUNTIME_TOKEN")
+$meterlessApp = [Environment]::GetEnvironmentVariable("METERLESS_APP")
+if ([string]::IsNullOrWhiteSpace($meterlessApp)) { $meterlessApp = "phoenixrepo" }
+$meterlessBase = [Environment]::GetEnvironmentVariable("METERLESS_BASE_URL")
+if ([string]::IsNullOrWhiteSpace($meterlessBase)) { $meterlessBase = "http://127.0.0.1:8088/v1" }
+if ([string]::IsNullOrWhiteSpace($meterlessToken)) {
+    $models = "missing_token"
 }
-catch {
-    if ($_.Exception.Response) { $models = [string]([int]$_.Exception.Response.StatusCode) }
+else {
+    $modelHeaders = @{
+        Authorization    = "Bearer $meterlessToken"
+        "meterless-app"  = $meterlessApp
+    }
+    try {
+        $response = Invoke-WebRequest -Uri ($meterlessBase.TrimEnd("/") + "/models") -Method Get -Headers $modelHeaders -UseBasicParsing
+        $models = [string]([int]$response.StatusCode)
+    }
+    catch {
+        if ($_.Exception.Response) { $models = [string]([int]$_.Exception.Response.StatusCode) }
+    }
 }
 Add-Check $checks "nightshift_models" $models
+
+$sampleMode = "unchecked"
+try {
+    $health = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -Method Get -UseBasicParsing
+    $healthBody = $health.Content | ConvertFrom-Json
+    if ($healthBody.sample_mode -eq $false) { $sampleMode = "false" }
+    else { $sampleMode = "true" }
+}
+catch {
+    if ($_.Exception.Response) { $sampleMode = [string]([int]$_.Exception.Response.StatusCode) }
+    else { $sampleMode = "unreachable" }
+}
+Add-Check $checks "api_sample_mode_false" $sampleMode
 
 $zetaris = "unreachable"
 $key = [Environment]::GetEnvironmentVariable("ZETARIS_API_KEY")
@@ -73,12 +103,13 @@ else {
 Add-Check $checks "zetaris_select_1" $zetaris
 
 $runs = New-Object System.Collections.Generic.List[object]
-$ready = ($models -eq "200" -and $zetaris -eq "200")
+$ready = ($models -eq "200" -and $zetaris -eq "200" -and $sampleMode -eq "false")
 if (-not $ready) {
     Add-Check $checks "post_run" "skipped"
 }
 else {
-    $repos = @("golang/dep", "jxnblk/rgx", "discreteoptimization/setcover")
+    # Offline policy on the committed snapshot: NO_GO, RESURRECTION_FAILED, RESURRECTED.
+    $repos = @("golang/dep", "jondot/hygen", "42wim/matterbridge")
     foreach ($repo in $repos) {
         $payload = @{ repository = $repo; mode = "live"; max_repair_iterations = 0 } | ConvertTo-Json -Compress
         $item = [ordered]@{ repository = $repo; http_status = "unreachable"; decision = ""; state = ""; reason = ""; log_file = "" }

@@ -31,15 +31,16 @@ sys.path.insert(0, str(ROOT))
 from app.sql_catalog import PROFILE_COLUMNS, SIGNAL_COLUMNS  # noqa: E402
 
 USER_AGENT = "phoenixrepo-curation"
+# Chosen so the snapshot can show each verdict for a stated reason.
+# golang/dep: README names Go modules. jxnblk/rgx: no SPDX id.
+# discreteoptimization/setcover: no test path. jondot/hygen: scheduled CI on master failed.
+# 42wim/matterbridge: permissive, stale, not archived, latest Actions run succeeded, no successor URL.
 DEFAULT_REPOS = (
     "golang/dep",
-    "ariya/phantomjs",
-    "oklog/oklog",
-    "uber-archive/pyflame",
-    "alibaba/UltraViewPager",
     "jxnblk/rgx",
     "discreteoptimization/setcover",
-    "vigetlabs/blendid",
+    "jondot/hygen",
+    "42wim/matterbridge",
 )
 
 API_COLUMNS = (
@@ -74,7 +75,7 @@ COLUMN_RULES = {
     "has_tests": "true when the git tree (or, if that call fails, the root listing) contains a path segment test, tests, spec, specs, or __tests__, or a filename ending in _test.go, _test.py, _spec.rb, .spec.js, .spec.ts, .test.js, or .test.ts. false when the tree or listing succeeded and none matched. Empty when both calls failed. A truncated tree is noted in provenance and only the returned paths are used.",
     "has_ci": "true when the git tree contains a file under .github/workflows/, or (only if the tree call failed or was truncated) GET /contents/.github/workflows returns a non-empty listing, or the Actions runs API returns at least one workflow run. false when no workflow file was found and the runs list is empty. Empty if the deciding calls failed. A .github directory that is not workflows does not count.",
     "ci_status": "Lowercased conclusion of the latest Actions workflow run (per_page=1). Empty when there is no run, the conclusion is null, or the call failed. Badge images in the README are not copied into this column.",
-    "similar_repo_count": "GitHub search total_count for the recorded similar_query. Empty when the repo has no topic and no language, or the search call failed. The query is topic:<first topic> when topics exist, otherwise language:<language> <repo name> in:name.",
+    "similar_repo_count": "GitHub search total_count for a close-substitute query: up to three distinctive words from the description, same language, searched in name and description. If the description has no usable words, language:<language> <repo name> in:name. Empty when that query cannot be built or the search call failed. This is not a topic-size count and it is not a verdict.",
     "unique_capability": "The GitHub description copied verbatim. Empty when description is null or blank. This is not an independent uniqueness judgement.",
     "successor_url": "The first http(s) URL within 400 characters after the phrases 'in favor of', 'replaced by', 'successor', or 'moved to' in the README, skipping badge hosts. Empty when the README has no such phrase or the README call failed. The homepage is not used: it is usually the project's own site.",
     "category": "The first GitHub topic, otherwise primary_language, otherwise empty.",
@@ -155,21 +156,57 @@ def tree_paths(payload: object) -> tuple[list[str] | None, bool]:
 def latest_conclusion(payload: object) -> tuple[str | None, bool | None]:
     """Return (conclusion or '', has_run). None has_run means the payload was unusable."""
 
+    conclusion, has_run, _facts = latest_run(payload)
+    return conclusion, has_run
+
+
+def latest_run(payload: object) -> tuple[str | None, bool | None, dict[str, str]]:
+    """Return conclusion, whether a run exists, and name/event/html_url when present."""
+
     if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
-        return None, None
+        return None, None, {}
     runs = payload["workflow_runs"]
     if not runs:
-        return "", False
+        return "", False, {}
     first = runs[0] if isinstance(runs[0], dict) else {}
-    return _text(first.get("conclusion")).lower(), True
+    facts = {
+        "name": _text(first.get("name")),
+        "event": _text(first.get("event")),
+        "html_url": _text(first.get("html_url")),
+    }
+    return _text(first.get("conclusion")).lower(), True, facts
+
+
+_QUERY_STOP = {
+    "a", "an", "the", "and", "or", "for", "with", "from", "that", "this", "into", "your",
+    "using", "based", "official", "its", "are", "was", "not",
+}
+
+
+def close_substitute_query(name: str, description: str, language: str) -> str:
+    """A name/description search. Topic totals are not used."""
+
+    words: list[str] = []
+    for raw in re.findall(r"[A-Za-z][A-Za-z0-9_+-]{2,}", description or ""):
+        if raw.lower() in _QUERY_STOP:
+            continue
+        words.append(raw)
+        if len(words) == 3:
+            break
+    if language and words:
+        return f"language:{language} {' '.join(words)} in:name,description"
+    if language and name:
+        return f"language:{language} {name} in:name"
+    if name:
+        return f"{name} in:name"
+    return ""
 
 
 def similar_query(name: str, language: str, topics: list[str]) -> str:
-    if topics:
-        return f"topic:{topics[0]}"
-    if language:
-        return f"language:{language} {name} in:name"
-    return ""
+    """Kept for older callers. Topics are ignored on purpose."""
+
+    del topics
+    return close_substitute_query(name, "", language)
 
 
 _SUCCESSOR = re.compile(
@@ -225,7 +262,7 @@ def build_profile(
     paths = tree if tree is not None else contents
     if paths is not None:
         has_tests = any(path_shows_tests(path) for path in paths)
-    conclusion, has_run = latest_conclusion(actions) if actions is not None else (None, None)
+    conclusion, has_run, run_facts = latest_run(actions) if actions is not None else (None, None, {})
     if has_run is True or workflows_present is True:
         has_ci = True
     elif has_run is False and workflows_present is False:
@@ -261,6 +298,9 @@ def build_profile(
     }
     row["_tree_truncated"] = "true" if tree_truncated else "false"
     row["_successor_snippet"] = successor_snippet
+    row["_ci_run_name"] = run_facts.get("name", "")
+    row["_ci_run_event"] = run_facts.get("event", "")
+    row["_ci_run_url"] = run_facts.get("html_url", "")
     return row
 
 
@@ -282,26 +322,54 @@ def build_signals(row: dict[str, str]) -> list[dict[str, str]]:
         add("tests_present", "A test directory or test filename was present in the Git tree or root listing.", True)
     elif row["has_tests"] == "false":
         add("tests_absent", "The Git tree or root listing succeeded and contained no test directory or test filename.", False)
+    run_name = row.get("_ci_run_name", "")
+    run_event = row.get("_ci_run_event", "")
+    run_url = row.get("_ci_run_url", "")
+    cited = f" Workflow {run_name or 'unnamed'} event {run_event or 'unrecorded'}."
+    if run_url:
+        cited += f" Run {run_url}."
     if row["ci_status"] == "success":
-        add("ci_success", f"Latest Actions workflow conclusion was {row['ci_status']}.", True)
+        add("ci_success", f"Latest Actions workflow conclusion was success.{cited}", True)
     elif row["ci_status"] in {"failure", "cancelled", "timed_out", "startup_failure"}:
-        add("ci_failure", f"Latest Actions workflow conclusion was {row['ci_status']}.", False)
-    elif row["has_ci"] == "false":
+        add("ci_failure", f"Latest Actions workflow conclusion was {row['ci_status']}.{cited}", False)
+    else:
         add(
-            "ci_not_recorded",
-            "The workflows listing was 404 or empty and the Actions runs list was empty.",
+            "ci_unknown",
+            "No successful or failing Actions conclusion was recorded. Missing CI is unknown, not a failure, and it does not by itself block revival.",
             False,
         )
     if not row["licence_spdx"]:
         add("licence_missing", "The repository payload had no SPDX licence id.", False)
     if row["archived"] == "true":
-        add("archived", "GitHub reports archived=true.", True)
+        add(
+            "archived",
+            "GitHub reports archived=true. This records that the owner froze the repository. "
+            "Archive status is not a revival vote: the policy does not treat it as a pass or a block.",
+            False,
+        )
     if row["successor_url"]:
         add("successor_recorded", f"README names a successor URL: {row['successor_url']}.", False)
-    if row["similar_repo_count"].isdigit() and int(row["similar_repo_count"]) >= 40:
+    if row["similar_repo_count"].isdigit():
+        count = int(row["similar_repo_count"])
+        if count <= 5:
+            band = "low"
+        elif count <= 30:
+            band = "moderate"
+        else:
+            band = "high"
         add(
-            "commodity_category",
-            f"Search total_count was {row['similar_repo_count']}, at or above the policy bar of 40.",
+            "alternatives_factor",
+            (
+                f"Close-substitute search total_count was {count} ({band}). "
+                "Uncertainty: this is a name or description search total, not a census of substitutes, "
+                "and it does not by itself decide the verdict."
+            ),
+            band == "low",
+        )
+    elif not row["similar_repo_count"]:
+        add(
+            "alternatives_factor",
+            "Close-substitute search total was not recorded. The missing count is unknown, not evidence that alternatives do or do not exist.",
             False,
         )
     if not signals:
@@ -355,7 +423,7 @@ def _topics_from_repo(repo: dict) -> tuple[list[str], str]:
     return [], "missing"
 
 
-def collect_repo(client: GitHubClient, full_name: str, collected_at: datetime) -> tuple[dict[str, str], dict]:
+def collect_repo(client: GitHubClient, full_name: str, collected_at: datetime) -> tuple[dict[str, str], dict, list[dict[str, str]]]:
     owner, name = full_name.split("/", 1)
     base = f"https://api.github.com/repos/{owner}/{name}"
     repo, status = client.get_json(base)
@@ -395,7 +463,7 @@ def collect_repo(client: GitHubClient, full_name: str, collected_at: datetime) -
     ):
         readme = base64.b64decode(readme_payload["content"]).decode("utf-8", "replace")
     topics, topics_status = _topics_from_repo(repo)
-    query = similar_query(name, _text(repo.get("language")), topics)
+    query = close_substitute_query(name, _text(repo.get("description")), _text(repo.get("language")))
     similar = ""
     search_status = ""
     if query:
@@ -416,6 +484,7 @@ def collect_repo(client: GitHubClient, full_name: str, collected_at: datetime) -
         similar_count=similar,
         collected_at=collected_at,
     )
+    row_signals = build_signals(row)
     note = {
         "full_name": full_name,
         "similar_query": query,
@@ -428,12 +497,15 @@ def collect_repo(client: GitHubClient, full_name: str, collected_at: datetime) -
         "workflows_status": str(workflows_status),
         "readme_status": str(readme_status),
         "successor_snippet": row.pop("_successor_snippet"),
+        "ci_run_name": row.pop("_ci_run_name"),
+        "ci_run_event": row.pop("_ci_run_event"),
+        "ci_run_url": row.pop("_ci_run_url"),
         "topics_status": str(topics_status),
         "topics": topics,
         "homepage": _text(repo.get("homepage")),
         "pushed_at": _text(repo.get("pushed_at")),
     }
-    return row, note
+    return row, note, row_signals
 
 
 def write_csv(path: Path, columns: tuple[str, ...], rows: list[dict[str, str]]) -> None:
@@ -450,9 +522,9 @@ def curate(repos: tuple[str, ...], output: Path, client: GitHubClient, collected
     signals = []
     notes = []
     for full_name in repos:
-        row, note = collect_repo(client, full_name, collected_at)
+        row, note, row_signals = collect_repo(client, full_name, collected_at)
         profiles.append(row)
-        signals.extend(build_signals(row))
+        signals.extend(row_signals)
         notes.append(note)
     write_csv(output / "repo_evidence.csv", PROFILE_COLUMNS, profiles)
     write_csv(output / "revival_signals.csv", SIGNAL_COLUMNS, signals)
@@ -474,8 +546,10 @@ def curate(repos: tuple[str, ...], output: Path, client: GitHubClient, collected
         "curated_columns": list(CURATED_COLUMNS),
         "column_rules": COLUMN_RULES,
         "collection_notes": [
-            "On 22 Oct 2026 a search for archived repositories tagged github-actions returned candidates whose Actions runs API listed zero workflow runs. No ci_status was filled in to manufacture a red-CI example.",
             "successor_url is only a URL that the README places next to an explicit replacement phrase. A project homepage is not treated as a successor.",
+            "similar_repo_count is a close name or description search total, not a topic-size count. The policy scores it with stated uncertainty and does not cut at 40.",
+            "An empty ci_status is unknown. It is not recorded as a failure.",
+            "archived=true is a fact about the owner's freeze. It is not a revival vote.",
         ],
         "repos": notes,
         "calls": client.calls,

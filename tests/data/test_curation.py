@@ -6,6 +6,7 @@ from pathlib import Path
 from scripts.curate_real_repos import (
     build_profile,
     build_signals,
+    close_substitute_query,
     days_between,
     latest_conclusion,
     path_shows_tests,
@@ -14,6 +15,7 @@ from scripts.curate_real_repos import (
     workflows_in_paths,
     write_csv,
 )
+from app.agents.policy import decide, normalize_profile, normalize_signal
 from app.sql_catalog import PROFILE_COLUMNS, SIGNAL_COLUMNS
 
 COLLECTED = datetime(2026, 10, 22, tzinfo=timezone.utc)
@@ -96,6 +98,14 @@ def test_readme_successor_ignores_homepage_and_badges():
     assert successor_from_readme("Homepage: https://golang.github.io/dep/") == ("", "")
 
 
+def test_close_substitute_query_is_not_a_topic_total():
+    query = close_substitute_query("dep", "Go dependency management tool", "Go")
+    assert query.startswith("language:Go ")
+    assert "topic:" not in query
+    assert "in:name,description" in query
+    assert close_substitute_query("dep", "", "Go") == "language:Go dep in:name"
+
+
 def test_test_paths_and_workflow_files():
     assert path_shows_tests("pkg/widget_test.go")
     assert path_shows_tests("tests/test_widget.py")
@@ -136,8 +146,10 @@ def test_search_failure_leaves_similar_count_empty_and_signals_do_not_invent_ci(
     assert days_between("2020-01-01T00:00:00Z", COLLECTED) == row["days_since_push"]
     signals = {item["signal"]: item for item in build_signals(row)}
     assert "ci_failure" not in signals
-    assert signals["ci_not_recorded"]["supports_revival"] == "false"
+    assert "ci_unknown" in signals
+    assert "not a failure" in signals["ci_unknown"]["detail"]
     assert "homepage" not in signals["successor_recorded"]["detail"]
+    assert "policy bar of 40" not in signals["alternatives_factor"]["detail"]
     assert latest_conclusion({"workflow_runs": []}) == ("", False)
     assert latest_conclusion("nope") == (None, None)
 
@@ -159,20 +171,58 @@ def test_committed_snapshot_matches_the_view_schema_and_provenance():
     with (root / "revival_signals.csv").open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         assert tuple(reader.fieldnames or ()) == SIGNAL_COLUMNS
-    assert "golang/dep" in rows
-    assert rows["jxnblk/rgx"]["licence_spdx"] == ""
-    assert rows["discreteoptimization/setcover"]["archived"] == "false"
+    assert set(rows) == {
+        "golang/dep",
+        "jxnblk/rgx",
+        "discreteoptimization/setcover",
+        "jondot/hygen",
+        "42wim/matterbridge",
+    }
     notes = {item["full_name"]: item for item in provenance["repos"]}
+    signals_by_repo: dict[str, list[dict[str, str]]] = {}
+    with (root / "revival_signals.csv").open(newline="", encoding="utf-8") as handle:
+        for signal in csv.DictReader(handle):
+            signals_by_repo.setdefault(signal["repo_id"], []).append(signal)
+    verdicts = {}
     for repo_id, row in rows.items():
         homepage = notes[repo_id]["homepage"]
         if homepage:
             assert row["successor_url"] != homepage
         assert row["data_origin"].startswith("github_rest_api:")
+        assert "topic:" not in notes[repo_id]["similar_query"]
         if row["ci_status"] not in {"", "success", "failure", "cancelled", "timed_out", "startup_failure"}:
             raise AssertionError(f"unexpected ci_status {row['ci_status']}")
-    dep = rows["golang/dep"]
-    assert dep["licence_spdx"] == "BSD-3-Clause"
-    assert dep["successor_url"] == "https://golang.org/ref/mod"
+        decision, reason = decide(
+            normalize_profile(row),
+            [normalize_signal(item) for item in signals_by_repo[repo_id]],
+        )
+        verdicts[repo_id] = (decision, reason)
+    assert set(decision for decision, _reason in verdicts.values()) == {"NO_GO", "RESURRECTION_FAILED", "RESURRECTED"}
+    dep_decision, dep_reason = verdicts["golang/dep"]
+    assert dep_decision == "NO_GO"
+    assert dep_reason.startswith("a successor URL is recorded")
+    assert rows["golang/dep"]["licence_spdx"] == "BSD-3-Clause"
+    assert rows["golang/dep"]["successor_url"] == "https://golang.org/ref/mod"
+    rgx_decision, rgx_reason = verdicts["jxnblk/rgx"]
+    assert rgx_decision == "NO_GO"
+    assert rgx_reason.startswith("licence missing is not in the permissive set")
+    assert rows["jxnblk/rgx"]["licence_spdx"] == ""
+    setcover_decision, setcover_reason = verdicts["discreteoptimization/setcover"]
+    assert setcover_decision == "RESURRECTION_FAILED"
+    assert setcover_reason.startswith("has_tests is false")
+    assert rows["discreteoptimization/setcover"]["archived"] == "false"
+    hygen_decision, hygen_reason = verdicts["jondot/hygen"]
+    assert hygen_decision == "RESURRECTION_FAILED"
+    assert hygen_reason.startswith("ci_status is failure")
+    assert notes["jondot/hygen"]["ci_run_event"] == "schedule"
+    assert notes["jondot/hygen"]["ci_run_url"] == "https://github.com/jondot/hygen/actions/runs/37141993934"
+    bridge_decision, bridge_reason = verdicts["42wim/matterbridge"]
+    assert bridge_decision == "RESURRECTED"
+    assert "successful CI conclusion" in bridge_reason
+    assert rows["42wim/matterbridge"]["archived"] == "false"
+    assert rows["42wim/matterbridge"]["licence_spdx"] == "Apache-2.0"
+    assert notes["42wim/matterbridge"]["ci_run_name"] == "CodeQL"
+    assert notes["42wim/matterbridge"]["ci_run_url"] == "https://github.com/42wim/matterbridge/actions/runs/39323383247"
     assert "golang/dep" in {item["full_name"] for item in provenance["repos"]}
     assert any(call["url"].endswith("/repos/golang/dep") for call in provenance["calls"])
 

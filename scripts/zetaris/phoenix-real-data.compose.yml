@@ -1,0 +1,21 @@
+# Opt-in mount for the committed snapshot. This file is not named
+# docker-compose.override.yml, so Docker Compose will not merge it on its own.
+#
+# Run this from the Zetaris platform directory, inside WSL. PHOENIX_REAL_DATA
+# must be set there to the absolute path of this repo's data/real directory.
+# There is no default.
+#
+#   export PHOENIX_REAL_DATA=/absolute/path/to/phoenixrepo/data/real
+#   docker compose ps
+#   docker compose -f docker-compose.yml -f /absolute/path/to/phoenixrepo/scripts/zetaris/phoenix-real-data.compose.yml ps
+#
+# `docker compose ps` prints the service names that are actually running.
+# The key below is a placeholder. Change it to one of those names before
+# you start or recreate the stack with this file. The container path
+# /opt/phoenixrepo/data/real is what scripts/zetaris/load_real.ps1 uses
+# unless you pass -ContainerPath. Neither the service name nor that mount
+# path was confirmed against a running install from this environment.
+services:
+  REPLACE_WITH_SERVICE_FROM_docker_compose_ps:
+    volumes:
+      - ${PHOENIX_REAL_DATA:?PHOENIX_REAL_DATA must be set inside WSL}:/opt/phoenixrepo/data/real:ro

@@ -8,7 +8,7 @@
       "role": "Load-bearing evidence source. The agents' only facts are rows from phoenix.repo_evidence and phoenix.revival_signals, fetched with the REST SQL contract.",
       "setup": "scripts/zetaris/*.sql",
       "sample": "data/sample/*.csv is a labelled synthetic cache of those view shapes. Sample mode still goes through the Zetaris adapter and also serves data/real when that snapshot is present. There is no GitHub fallback.",
-      "real_snapshot": "data/real is a committed GitHub REST snapshot. scripts/zetaris/load_real.ps1 and scripts/zetaris/docker-compose.override.yml are the local load path. They were not executed against the user's Docker Zetaris."
+      "real_snapshot": "data/real is a committed GitHub REST snapshot collected 2026-10-22T14:49:13Z for golang/dep, jxnblk/rgx, discreteoptimization/setcover, jondot/hygen, and 42wim/matterbridge. The offline policy yields NO_GO, RESURRECTION_FAILED, and RESURRECTED on those rows. scripts/zetaris/load_real.ps1 and the opt-in scripts/zetaris/phoenix-real-data.compose.yml are the local load path. They were not executed against the user's Docker Zetaris."
     },
     "meterless_engine": {
       "engines": ["H-MEM", "Markovian"],
@@ -47,5 +47,5 @@
     ]
   },
   "sample_mode": "SAMPLE_MODE=true runs the investigation logic on the labelled cache, and on data/real when present, with a deterministic stand-in for the LLM. It does not call the live LLM judge and it does not read output_examples/.",
-  "live_judge": "Live mode asks Nightshift to accept or reject archaeologist and market-judge output. The deterministic evidence guard wins when an evidence id is missing. The trace action LLM_JUDGE stores raw_decision, requested_model, served_model, and latency_ms. This call was not executed against Nightshift in CI."
+  "live_judge": "Live mode asks Nightshift to accept or reject archaeologist and market-judge output. The judge is advisory. A reject can force one retry. When retries are exhausted, or the judge times out, returns 401, or errors, the deterministic policy verdict is still produced. The trace action LLM_JUDGE records the decision or the failure, and metadata.llm.judge copies it into the verdict. The judge does not end the run with 422, 502, or 401. A missing evidence id still overrides an LLM accept. This call was not executed against Nightshift in CI."
 }
