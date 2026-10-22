@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from app.engines.hmem.ledger import TrustLedgerService
+from app.engines.hmem.store import MemoryStoreService
 from app.investigation import InvestigationOrchestrator
 from app.trace_log import FIELDS
 from config.settings import Settings
@@ -41,6 +43,59 @@ def test_three_catalog_decisions(tmp_path):
         assert "RETRY" in actions
         record = json.loads(Path(result["log_file"]).read_text(encoding="utf-8").splitlines()[0])
         assert set(FIELDS).issubset(record)
+
+
+def test_prior_verdict_survives_twelve_repeat_runs(tmp_path):
+    runs = [_run("sample/field-notes", 0, tmp_path) for _ in range(12)]
+    for index in range(1, len(runs)):
+        priors = runs[index]["metadata"]["hmem"]["prior_verdicts"]
+        assert priors
+        assert priors[0]["run_id"] == runs[index - 1]["run_id"]
+        assert priors[0]["decision"] == "RESURRECTION_FAILED"
+    store = json.loads((tmp_path / "hmem.json").read_text(encoding="utf-8"))
+    evidence = [
+        record
+        for record in store["records"]
+        if record["extra"].get("kind") == "evidence" and "sample/field-notes" in record["entities"]
+    ]
+    verdicts = [
+        record
+        for record in store["records"]
+        if record["extra"].get("kind") == "verdict" and "sample/field-notes" in record["entities"]
+    ]
+    assert len(evidence) == 3
+    assert len({record["extra"]["claim_id"] for record in evidence}) == 3
+    assert len(verdicts) == 12
+    assert sum(1 for record in verdicts if not record["superseded_by"]) == 1
+
+
+def test_preexisting_duplicate_evidence_collapses_on_the_next_run(tmp_path):
+    path = tmp_path / "hmem.json"
+    store = MemoryStoreService(
+        ledger=TrustLedgerService(path.with_suffix(".ledger.jsonl"), clock=lambda: 0),
+        path=path,
+        clock=lambda: 0,
+    )
+    for _index in range(8):
+        store.add(
+            "repository sample/field-notes category research The recorded licence is Apache-2.0.",
+            source="zetaris:phoenix.repo_evidence",
+            origin="document",
+            label="evidence claim",
+            tags=["evidence", "research"],
+            entities=["sample/field-notes"],
+            extra={"kind": "evidence", "claim_id": "CLM-LICENCE"},
+            goal_run_id=f"old-{_index}",
+        )
+    _run("sample/field-notes", 0, tmp_path)
+    records = json.loads(path.read_text(encoding="utf-8"))["records"]
+    current = [
+        record
+        for record in records
+        if record["extra"].get("claim_id") == "CLM-LICENCE" and not record["superseded_by"]
+    ]
+    assert len(current) == 1
+    assert sum(1 for record in records if record["extra"].get("claim_id") == "CLM-LICENCE") == 8
 
 
 def test_hmem_recalls_a_prior_verdict_on_the_next_run(tmp_path):

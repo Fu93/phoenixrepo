@@ -11,10 +11,10 @@
     },
     "meterless_engine": {
       "engines": ["H-MEM", "Markovian"],
-      "hmem": "MemoryStoreService, MemoryRetrievalService, and TrustLedgerService. In-run evidence memories are recalled into the judge step. Verdicts are promoted to long-term memory and cited on a later run.",
+      "hmem": "MemoryStoreService, MemoryRetrievalService, and TrustLedgerService. In-run evidence memories are recalled into the judge step. Verdicts are promoted to long-term memory and retrieved by type before the top-k cut, so later runs still cite the prior verdict after repeated evidence writes. Repeated evidence for the same claim is refreshed, not stacked.",
       "markovian": "Chunk manager with a bounded carryover between agent steps.",
       "spec": "https://github.com/Meterless/Meterless/tree/main/engines/hmem",
-      "tests": "tests/engines/test_hmem_conformance.py and tests/engines/test_markovian.py"
+      "tests": "tests/engines/test_hmem_conformance.py and tests/engines/test_markovian.py are project tests modelled on the published spec. The official TypeScript conformance suite was not run."
     },
     "meterless_runtime": {
       "role": "Primary, selectable LLM provider. OpenAI-compatible Nightshift contract from the Power prompt on meterless.ai/engines.html (fetched 22 Oct 2026).",

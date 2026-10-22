@@ -125,6 +125,69 @@ def test_retrieval_formula_and_threshold(tmp_path):
     assert kept.id in result.trace.scores
 
 
+def test_verdict_kind_is_selected_before_top_k(tmp_path):
+    store, retrieval, _ledger = _services(tmp_path)
+    for index in range(15):
+        store.add(
+            f"repository sample/field-notes category research licence evidence claim {index}",
+            source="zetaris",
+            origin="document",
+            label="evidence",
+            tags=["evidence", "research"],
+            entities=["sample/field-notes"],
+            confidence=0.99,
+            extra={"kind": "evidence", "claim_id": f"CLM-{index}"},
+        )
+    verdict = store.add(
+        "repository sample/field-notes verdict RESURRECTION_FAILED",
+        source="verdict",
+        origin="plan_completion",
+        label="verdict",
+        layer="long_term",
+        tags=["verdict"],
+        entities=["sample/field-notes"],
+        confidence=0.95,
+        extra={"kind": "verdict", "decision": "RESURRECTION_FAILED"},
+    )
+    result = retrieval.query(
+        "repository sample/field-notes verdict",
+        entities=["sample/field-notes"],
+        tags=["verdict"],
+        kind="verdict",
+        require_entities=True,
+        include_superseded=False,
+        top_n=1,
+        threshold=0.0,
+    )
+    assert [item.memory.id for item in result.memories] == [verdict.id]
+
+
+def test_repeated_evidence_refreshes_one_memory(tmp_path):
+    store, _retrieval, ledger = _services(tmp_path)
+    first = store.add(
+        "repository sample/field-notes category research The recorded licence is Apache-2.0.",
+        source="zetaris",
+        origin="document",
+        label="evidence",
+        tags=["evidence"],
+        entities=["sample/field-notes"],
+        extra={"kind": "evidence", "claim_id": "CLM-LICENCE"},
+        goal_run_id="run-1",
+    )
+    found = store.find_evidence("sample/field-notes", "CLM-LICENCE")
+    assert found is not None and found.id == first.id
+    store.refresh(
+        first.id,
+        content="repository sample/field-notes category research The recorded licence is Apache-2.0.",
+        confidence=0.9,
+        goal_run_id="run-2",
+        refs=["EV-1"],
+    )
+    assert len([record for record in store.all_records() if record.extra.get("kind") == "evidence"]) == 1
+    assert store.get(first.id).goal_run_id == "run-2"
+    assert any(entry.action == "update" for entry in ledger.entries)
+
+
 def test_superseded_memory_is_penalized_not_deleted(tmp_path):
     store, retrieval, ledger = _services(tmp_path)
     old = store.add(

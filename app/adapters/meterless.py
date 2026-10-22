@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 
 from app.errors import InvestigationError
+from config.settings import usable_secret
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8088/v1"
 AUTO_DETECT_HOSTS = ("127.0.0.1", "localhost", "::1")
@@ -137,7 +138,7 @@ class MeterlessRuntime:
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.base_url = normalize_meterless_base_url(base_url)
-        self._token = token or ""
+        self._token = (token or "").strip()
         self.model = model or "meterless/auto"
         self.app_id = app_id or "phoenixrepo"
         self.timeout_seconds = timeout_seconds
@@ -147,7 +148,8 @@ class MeterlessRuntime:
         return self.provider_id
 
     def configured(self) -> bool:
-        return bool(self._token) and self._token != REJECTED_TOKEN
+        token = usable_secret(self._token)
+        return bool(token) and token != REJECTED_TOKEN
 
     def enabled(self) -> bool:
         return self.configured()
@@ -180,15 +182,15 @@ class MeterlessRuntime:
         return headers
 
     def _require_token(self) -> None:
-        if not self._token:
-            raise MeterlessError(
-                "METERLESS_RUNTIME_TOKEN is missing. Paste the Nightshift Console token.",
-                status_code=401,
-                error_type="MeterlessUnauthorized",
-            )
         if self._token == REJECTED_TOKEN:
             raise MeterlessError(
                 "The placeholder token rt-local is rejected. Paste the real Nightshift runtime token.",
+                status_code=401,
+                error_type="MeterlessUnauthorized",
+            )
+        if usable_secret(self._token) is None:
+            raise MeterlessError(
+                "METERLESS_RUNTIME_TOKEN is missing. Paste the Nightshift Console token.",
                 status_code=401,
                 error_type="MeterlessUnauthorized",
             )

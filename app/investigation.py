@@ -478,18 +478,34 @@ class InvestigationOrchestrator:
 
     def _remember_claims(self, claims: list[dict], row: dict) -> None:
         for claim in claims:
+            content = f"repository {row['repo_id']} category {row['category']} {claim['statement']}"
+            confidence = float(claim.get("confidence", 0.9))
+            refs = list(claim["evidence_ids"])
+            existing = self.memory.find_evidence_records(row["repo_id"], claim["id"])
+            if existing:
+                keeper = existing[0]
+                self.memory.refresh(
+                    keeper.id,
+                    content=content,
+                    confidence=confidence,
+                    goal_run_id=self.run_id,
+                    refs=refs,
+                )
+                for extra in existing[1:]:
+                    self.memory.supersede(extra.id, keeper.id)
+                continue
             self.memory.add(
-                f"repository {row['repo_id']} category {row['category']} {claim['statement']}",
+                content,
                 source="zetaris:phoenix.repo_evidence",
                 origin="document",
                 label="evidence claim",
                 layer="working",
                 tags=["evidence", row["category"]],
                 entities=[row["repo_id"]],
-                refs=list(claim["evidence_ids"]),
+                refs=refs,
                 goal_run_id=self.run_id,
                 extra={"kind": "evidence", "claim_id": claim["id"]},
-                confidence=float(claim.get("confidence", 0.9)),
+                confidence=confidence,
             )
 
     def _recall_evidence(self, row: dict) -> QueryResult:
@@ -497,6 +513,9 @@ class InvestigationOrchestrator:
             text=f"repository {row['repo_id']} category {row['category']} licence evidence",
             entities=[row["repo_id"]],
             tags=["evidence"],
+            kind="evidence",
+            require_entities=True,
+            include_superseded=False,
             top_n=20,
             threshold=0.35,
         )
@@ -525,8 +544,11 @@ class InvestigationOrchestrator:
             text=f"repository {repo_id} verdict",
             entities=[repo_id],
             tags=["verdict"],
+            kind="verdict",
+            require_entities=True,
+            include_superseded=False,
             top_n=5,
-            threshold=0.2,
+            threshold=0.0,
         )
         priors = [
             item

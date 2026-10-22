@@ -193,6 +193,46 @@ class MemoryStoreService:
             if record.extra.get("kind") == "verdict" and repo_id in record.entities
         ]
 
+    def find_evidence_records(self, repo_id: str, claim_id: str) -> list[MemoryRecord]:
+        """Current evidence memories for one claim. Older stores may contain duplicates."""
+
+        return [
+            record
+            for record in self.records.values()
+            if not record.superseded_by
+            and record.extra.get("kind") == "evidence"
+            and record.extra.get("claim_id") == claim_id
+            and repo_id in record.entities
+        ]
+
+    def find_evidence(self, repo_id: str, claim_id: str) -> MemoryRecord | None:
+        matches = self.find_evidence_records(repo_id, claim_id)
+        return matches[0] if matches else None
+
+    def refresh(
+        self,
+        memory_id: str,
+        *,
+        content: str,
+        confidence: float,
+        goal_run_id: str | None,
+        refs: list[str],
+    ) -> MemoryRecord:
+        record = self._require(memory_id)
+        record.content = content.strip()
+        record.embedding = self.embedder.embed(record.content)
+        record.confidence = max(0.0, min(1.0, confidence))
+        record.last_accessed = int(self.clock())
+        record.goal_run_id = goal_run_id
+        record.provenance.refs = list(refs)
+        self.ledger.append(
+            memory_id,
+            "update",
+            new_state={"confidence": record.confidence, "goal_run_id": goal_run_id},
+        )
+        self._save()
+        return record
+
     def _apply_forgetting(self) -> None:
         now = int(self.clock())
         for record in self.records.values():

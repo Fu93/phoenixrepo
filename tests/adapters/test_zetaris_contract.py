@@ -5,7 +5,39 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from app.adapters.zetaris import ZetarisClient, assert_single_statement, rows_from_payload
+from app.agents.policy import normalize_profile
 from app.errors import ZetarisError
+
+# Shape returned by POST /api/v1.0/sql-editor/sqls/run on the local Docker install:
+# headers plus data arrays, every cell a string. Names are matched case-insensitively.
+_LIVE_COLUMNS = [
+    "repo_id",
+    "licence_spdx",
+    "days_since_push",
+    "similar_repo_count",
+    "unique_capability",
+    "successor_url",
+    "has_tests",
+    "has_license_file",
+    "ci_status",
+    "category",
+    "description",
+    "data_origin",
+]
+_LIVE_ROW = [
+    "sample/phoenix-ledger",
+    "MIT",
+    "226",
+    "2",
+    "offline double-entry ledger with a signed audit trail",
+    "",
+    "True",
+    "True",
+    "success",
+    "accounting",
+    "Offline double-entry ledger",
+    "synthetic_labelled",
+]
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -93,6 +125,21 @@ def test_unauthorized_does_not_echo_the_key(server):
 
 
 def test_rows_from_object_data():
-    columns, rows = rows_from_payload({"data": [{"repo_id": "sample/generic-qr"}]})
+    columns, rows = rows_from_payload({"data": [{"Repo_ID": "sample/generic-qr"}]})
     assert columns == ["repo_id"]
     assert rows[0]["repo_id"] == "sample/generic-qr"
+
+
+def test_live_sql_editor_shape_parses_string_cells():
+    lowercase = {"headers": list(_LIVE_COLUMNS), "data": [list(_LIVE_ROW)]}
+    mixed = {"headers": [name.upper() for name in _LIVE_COLUMNS], "data": [list(_LIVE_ROW)]}
+    for payload in (lowercase, mixed):
+        columns, rows = rows_from_payload(payload)
+        assert columns == _LIVE_COLUMNS
+        assert all(isinstance(value, str) for value in rows[0].values())
+        profile = normalize_profile(rows[0])
+        assert profile["repo_id"] == "sample/phoenix-ledger"
+        assert profile["days_since_push"] == 226
+        assert profile["similar_repo_count"] == 2
+        assert profile["has_tests"] is True
+        assert profile["licence_spdx"] == "MIT"

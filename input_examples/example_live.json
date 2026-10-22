@@ -1,0 +1,5 @@
+{
+  "repository": "OWNER/REPO",
+  "mode": "live",
+  "max_repair_iterations": 1
+}

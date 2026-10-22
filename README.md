@@ -25,7 +25,7 @@ The orchestrator, the evidence graph, and the state machine are infrastructure f
 | Role | What it does | Can block or force a retry |
 | --- | --- | --- |
 | Archaeologist | Asks Zetaris for `phoenix.repo_evidence` and `phoenix.revival_signals` and drafts claims. | No. The validator can reject its claims. |
-| Market judge | Writes the explanation of the evidence-policy verdict. | No. A explanation that disagrees with the rows is rejected and retried once. The rows keep the verdict. |
+| Market judge | Writes the explanation of the evidence-policy verdict. | No. An explanation that disagrees with the rows is rejected and retried once. The rows keep the verdict. |
 | Architect | Drafts a revival contract after a value pass. Skipped on `NO_GO`. | No. |
 | Builder | Proposes the next step. It is not allowed to mark verification as `PASS`. | No. A `PASS` or a step with no evidence id is rejected. |
 | Validator | Checks evidence ids, quoted row values, and the builder rule. | Yes. It blocks unsupported claims and forces one retry. It is the only role that may accept a revival. |
@@ -75,7 +75,7 @@ H-MEM (Meterless engine, implemented from the open-source spec, not imported as 
 - `MemoryStoreService` stores evidence claims in the working tier and promotes the verdict to long-term.
 - `MemoryRetrievalService` ranks with the documented hybrid formula and the judge step cites what it recalls.
 - `TrustLedgerService` appends create, read, promote, feedback, and conflict actions. It has no delete of ledger lines.
-- A later run of the same `repo_id` cites the earlier verdict as `CLM-PRIOR-*` with source `hmem`. Prior memory does not override the current Zetaris rows.
+- A later run of the same `repo_id` cites the earlier verdict as `CLM-PRIOR-*` with source `hmem`. Verdict lookup selects `kind=verdict` before the top-k cut, so evidence memories from repeat runs cannot crowd it out. Repeated evidence for the same claim is refreshed instead of stored again. Prior memory does not override the current Zetaris rows.
 - The embedder is a deterministic hash, the same idea as the H-MEM reference mock. It is not a neural embedding model.
 
 Markovian (second engine, used for the investigation loop): `ChunkManager` keeps a carryover of at most 1200 characters and stops after 8 chunks. Step timeout defaults to 120 seconds. The whole run defaults to 600 seconds.
@@ -88,12 +88,15 @@ Sample mode needs no accounts. From PowerShell in this repo:
 
 ```powershell
 py -3 -m venv .venv
+Set-ExecutionPolicy -Scope Process Bypass
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env
 py -3 -m pytest -q
 py -3 run.py
 ```
+
+`Activate.ps1` may be blocked by the execution policy. `Set-ExecutionPolicy -Scope Process Bypass` applies only to that PowerShell window. The copied `.env.example` leaves `ZETARIS_API_KEY`, `METERLESS_RUNTIME_TOKEN`, and `NVIDIA_API_KEY` blank. Placeholder text such as `your-zetaris-api-key` is treated as unset, so `pytest` stays offline.
 
 In a second terminal, with the venv inactive and the server left running:
 
@@ -105,13 +108,15 @@ curl.exe -X POST http://127.0.0.1:8000/run -H "Content-Type: application/json" -
 
 ### Zetaris
 
-Install Zetaris from the Run locally page and confirm `./verify.sh` in WSL. Create an API key in the UI yourself. Put it in `.env`:
+Install Zetaris from the Run locally page and confirm `./verify.sh` in WSL. Create an API key in the UI yourself. The app reads `ZETARIS_API_KEY` from the process environment and from `.env`. A Windows user environment variable is enough: leave the `.env` line blank and a non-empty process value wins. Placeholder text is ignored.
 
 ```
 ZETARIS_REST_URL=http://localhost:8888/api/v1.0
 ZETARIS_ORG_ID=1
-ZETARIS_API_KEY=your-zetaris-api-key
+ZETARIS_API_KEY=
 ```
+
+A confirmed local `POST http://localhost:8888/api/v1.0/sql-editor/sqls/run` returns HTTP 200 JSON shaped `{"headers": ["column", ...], "data": [["226", "True", ...]]}`. Column names in that body are lowercase. The adapter matches them case-insensitively and keeps every cell as a string, then converts `"226"` and `"True"` when it builds the profile.
 
 Then register the semantic layer. Run **one statement at a time** from `scripts/zetaris/` in the SQL Editor at `http://localhost:3000`. The files are:
 
@@ -154,10 +159,14 @@ py -3 smoke_test.py
 
 Then:
 
+Replace `OWNER/REPO` in `input_examples/example_live.json`, then:
+
 ```powershell
 py -3 run.py
-curl.exe -X POST http://127.0.0.1:8000/run -H "Content-Type: application/json" -d "{\"repository\":\"OWNER/REPO\",\"mode\":\"live\",\"max_repair_iterations\":1}"
+curl.exe -X POST http://127.0.0.1:8000/run -H "Content-Type: application/json" --data-binary "@input_examples/example_live.json"
 ```
+
+`--data-binary @file` is the form that works in Windows PowerShell 5.1 and pwsh 7. `curl.exe` is real curl, not `Invoke-WebRequest`.
 
 ### Secondary NVIDIA-direct fallback
 
@@ -205,7 +214,7 @@ Each output file is the JSON body of one real sample run, including that run's i
 ## Sponsor usage
 
 - **Zetaris.** The only evidence source. Live calls use `POST {ZETARIS_REST_URL}/sql-editor/sqls/run` with a bearer API key, `X-Org-ID`, a fresh `X-Request-ID`, and a body of `queryId`, one `sql` statement, `source: SqlEditor`, and `limit`. Credentials are not logged.
-- **Meterless H-MEM.** Persistent memory of evidence claims and verdicts, with retrieval traces and an append-only ledger. Conformance tests cover the store, the ranking formula, promotion, decay of non-long-term memory, and supersede-without-delete.
+- **Meterless H-MEM.** Persistent memory of evidence claims and verdicts, with retrieval traces and an append-only ledger. `tests/engines/test_hmem_conformance.py` holds project tests modelled on the published H-MEM spec: the store, the ranking formula, promotion, decay of non-long-term memory, and supersede-without-delete. The official TypeScript conformance suite at github.com/Meterless/Meterless was not run.
 - **Meterless Markovian.** The multi-step investigation is a chunk loop with a bounded carryover.
 - **Meterless Runtime.** Primary model provider, implemented from the Power prompt "Add Meterless as a provider" on meterless.ai/engines.html (fetched 22 Oct 2026, Runtime contract as published there). Discovery is `GET /v1/models`. Chat is `POST /v1/chat/completions` with `meterless-app: phoenixrepo` and `meterless-scope: user`. The placeholder token `rt-local` is rejected. `/healthz` is not proof.
 - **NVIDIA.** Optional direct fallback. The award path is a Nemotron lane reached through Nightshift, which this Linux build environment cannot run. That live path is unverified here.

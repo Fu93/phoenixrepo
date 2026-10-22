@@ -79,7 +79,12 @@ class MemoryRetrievalService:
         strategy: str = "comprehensive",
         entities: list[str] | None = None,
         tags: list[str] | None = None,
+        kind: str | None = None,
+        require_entities: bool = False,
+        include_superseded: bool = True,
     ) -> QueryResult:
+        """Rank memories. ``kind``, required entities, and superseded status are applied before top-k."""
+
         if strategy not in {"minimal", "personal", "comprehensive"}:
             raise ValueError(f"Unknown retrieval strategy: {strategy}")
         query_embedding = self.store.embedder.embed(text)
@@ -88,8 +93,14 @@ class MemoryRetrievalService:
         query_entities = list(entities or [])
         query_tags = list(tags or [])
         now = int(self.store.clock())
+        candidates = self._candidates(
+            kind=kind,
+            entities=query_entities,
+            require_entities=require_entities,
+            include_superseded=include_superseded,
+        )
         ranked: list[RetrievedMemory] = []
-        for record in self.store.all_records():
+        for record in candidates:
             signals = self._signals(
                 record,
                 query_embedding=query_embedding,
@@ -113,11 +124,31 @@ class MemoryRetrievalService:
             memories=chosen,
             context=format_reinjection(chosen),
             trace=QueryTrace(
-                retrieval_reason=f"hybrid {strategy} over {len(self.store.all_records())} memories",
+                retrieval_reason=f"hybrid {strategy} over {len(candidates)} memories",
                 strategy=strategy,  # type: ignore[arg-type]
                 scores={item.memory.id: item.relevance for item in chosen},
             ),
         )
+
+    def _candidates(
+        self,
+        *,
+        kind: str | None,
+        entities: list[str],
+        require_entities: bool,
+        include_superseded: bool,
+    ) -> list[MemoryRecord]:
+        required = set(entities)
+        chosen: list[MemoryRecord] = []
+        for record in self.store.all_records():
+            if kind is not None and record.extra.get("kind") != kind:
+                continue
+            if require_entities and required and not required.issubset(record.entities):
+                continue
+            if not include_superseded and record.superseded_by:
+                continue
+            chosen.append(record)
+        return chosen
 
     def _signals(
         self,

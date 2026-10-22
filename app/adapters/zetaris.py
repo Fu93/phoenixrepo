@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 
 from app.errors import ZetarisError
+from config.settings import usable_secret
 
 _TRAILING = re.compile(r";\s*$")
 
@@ -61,8 +62,10 @@ def rows_from_payload(payload: Any) -> tuple[list[str], list[dict[str, Any]]]:
         columns = _header_names(headers) if isinstance(headers, list) else []
         return columns, []
     if isinstance(data[0], dict):
-        columns = _header_names(headers) if isinstance(headers, list) else list(data[0].keys())
-        return columns, [dict(row) for row in data]
+        columns = _header_names(headers) if isinstance(headers, list) else [
+            str(key).strip().lower() for key in data[0].keys()
+        ]
+        return columns, [_lower_keys(row) for row in data]
     if isinstance(data[0], (list, tuple)):
         columns = _header_names(headers) if isinstance(headers, list) else [
             f"col_{index}" for index in range(len(data[0]))
@@ -72,15 +75,21 @@ def rows_from_payload(payload: Any) -> tuple[list[str], list[dict[str, Any]]]:
 
 
 def _header_names(headers: list[Any]) -> list[str]:
+    """Column names are matched case-insensitively. Live SQL Editor returns them lowercase."""
+
     names: list[str] = []
     for item in headers:
         if isinstance(item, str):
-            names.append(item)
+            names.append(item.strip().lower())
         elif isinstance(item, dict) and "name" in item:
-            names.append(str(item["name"]))
+            names.append(str(item["name"]).strip().lower())
         else:
-            names.append(str(item))
+            names.append(str(item).strip().lower())
     return names
+
+
+def _lower_keys(row: dict[str, Any]) -> dict[str, Any]:
+    return {str(key).strip().lower(): value for key, value in row.items()}
 
 
 class ZetarisClient:
@@ -94,11 +103,12 @@ class ZetarisClient:
         timeout_seconds: float = 30,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        if not api_key:
+        key = usable_secret(api_key)
+        if not key:
             raise ZetarisError("ZETARIS_API_KEY is missing.", status_code=400)
         self.rest_url = rest_url.rstrip("/")
         self.org_id = str(org_id)
-        self._api_key = api_key
+        self._api_key = key
         self.timeout_seconds = timeout_seconds
         self._transport = transport
 

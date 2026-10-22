@@ -1,4 +1,33 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Documented stand-ins. A copied .env.example must not look configured.
+_PLACEHOLDER_SECRETS = {
+    "changeme",
+    "placeholder",
+    "your-key-here",
+    "your-nvidia-key",
+    "your-nightshift-runtime-token",
+    "your-xai-key-here",
+    "your-zetaris-api-key",
+}
+
+
+def usable_secret(value: str | None) -> str | None:
+    """Return a secret the process can send, or None for blank and placeholder text.
+
+    ``rt-local`` is left intact so the Meterless adapter can reject it by name.
+    """
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    lowered = text.lower()
+    if lowered in _PLACEHOLDER_SECRETS or lowered.startswith("your-"):
+        return None
+    return text
 
 
 class Settings(BaseSettings):
@@ -30,6 +59,13 @@ class Settings(BaseSettings):
     hmem_store_path: str = "data/hmem/runtime-store.json"
     agent_step_timeout_seconds: float = 120
     run_timeout_seconds: float = 600
+
+    @field_validator("zetaris_api_key", "meterless_runtime_token", "nvidia_api_key", mode="before")
+    @classmethod
+    def _drop_placeholder_secrets(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        return usable_secret(str(value))
 
     def secret_values(self) -> list[str]:
         values = [
