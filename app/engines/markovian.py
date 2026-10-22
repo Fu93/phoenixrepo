@@ -43,6 +43,7 @@ class ChunkManager:
                 status_code=500,
             )
         started = self.clock()
+        self.step_deadline = started + self.config.chunk_timeout_seconds
         incoming = self.carryover
         result, summary = fn(incoming)
         elapsed = self.clock() - started

@@ -1,4 +1,6 @@
 from dataclasses import dataclass, field
+import inspect
+import threading
 import time
 from typing import Callable
 
@@ -18,6 +20,8 @@ def retry_reason(exc: BaseException) -> str | None:
         return "429"
     if "timed out" in text or "timeout" in text:
         return "timeout"
+    if status == 502 or "http 502" in text:
+        return "502"
     return None
 
 
@@ -40,6 +44,7 @@ class BoundLLM:
     lanes: tuple[str, ...] = ()
     sleeper: Callable[[float], None] = time.sleep
     fallback_log: list[dict] = field(default_factory=list)
+    failed_lanes: set[str] = field(default_factory=set)
     lane: str = ""
 
     def __post_init__(self) -> None:
@@ -48,33 +53,89 @@ class BoundLLM:
         if not self.lanes:
             self.lanes = (self.model,)
 
-    def complete(self, messages: list[dict[str, str]]) -> str:
+    def complete(self, messages: list[dict[str, str]], deadline: float | None = None) -> str:
         if self.sample_standin or self.provider != "meterless":
             return self._once(messages, self.model)
         last: BaseException | None = None
         for lane in self.lanes:
-            delays = (0, *_RETRY_DELAYS)
-            for attempt, delay in enumerate(delays):
-                if delay:
-                    self.sleeper(delay)
-                try:
-                    return self._once(messages, lane)
-                except Exception as exc:
-                    last = exc
-                    reason = "unauthorized" if is_unauthorized(exc) else (retry_reason(exc) or "error")
-                    self._remember(lane, reason)
-                    if is_unauthorized(exc):
-                        raise
-                    if retry_reason(exc) is None or attempt == len(delays) - 1:
-                        break
+            if lane in self.failed_lanes:
+                self._remember(lane, "skipped-failed-lane")
+                last = MeterlessError(
+                    f"Nightshift lane {lane} already failed in this run.",
+                    status_code=502,
+                )
+                continue
+            kind, outcome = self._lane(messages, lane, deadline)
+            if kind == "ok":
+                return str(outcome)
+            last = outcome if isinstance(outcome, BaseException) else MeterlessError(str(outcome), status_code=502)
+            if kind == "stop":
+                raise last
         if last is None:
             raise MeterlessError("Meterless lanes were empty.", status_code=502)
         raise last
 
-    def _once(self, messages: list[dict[str, str]], model: str) -> str:
+    def _lane(self, messages: list[dict[str, str]], lane: str, deadline: float | None) -> tuple[str, object]:
+        delays = (0, *_RETRY_DELAYS)
+        last: BaseException | None = None
+        for attempt, delay in enumerate(delays):
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or (delay and delay >= remaining):
+                    self.failed_lanes.add(lane)
+                    self._remember(lane, "budget")
+                    return "next", MeterlessError("Nightshift step budget exhausted.", status_code=504)
+            if delay:
+                self.sleeper(delay)
+            timeout = None
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self.failed_lanes.add(lane)
+                    self._remember(lane, "budget")
+                    return "next", MeterlessError("Nightshift step budget exhausted.", status_code=504)
+                timeout = min(self._client_timeout(), remaining)
+            try:
+                if deadline is None:
+                    return "ok", self._once(messages, lane)
+                return "ok", self._once_bounded(messages, lane, timeout or 0.0)
+            except Exception as exc:
+                last = exc
+                reason = "unauthorized" if is_unauthorized(exc) else (retry_reason(exc) or "error")
+                self._remember(lane, reason)
+                if is_unauthorized(exc):
+                    return "stop", exc
+                if retry_reason(exc) is None or attempt == len(delays) - 1:
+                    self.failed_lanes.add(lane)
+                    return "next", exc
+        self.failed_lanes.add(lane)
+        return "next", last or MeterlessError("Nightshift lane failed.", status_code=502)
+
+    def _client_timeout(self) -> float:
+        value = getattr(self.inner, "timeout_seconds", None)
+        if isinstance(value, (int, float)) and value > 0:
+            return float(value)
+        return 180.0
+
+    def _accepts(self, name: str) -> bool:
+        try:
+            signature = inspect.signature(self.inner.complete)  # type: ignore[attr-defined]
+        except (TypeError, ValueError):
+            return False
+        if name in signature.parameters:
+            return True
+        return any(item.kind == inspect.Parameter.VAR_KEYWORD for item in signature.parameters.values())
+
+    def _invoke(self, messages: list[dict[str, str]], model: str, timeout: float | None) -> str:
+        kwargs: dict = {"model": model}
+        if timeout is not None and self._accepts("timeout"):
+            kwargs["timeout"] = timeout
+        return self.inner.complete(messages, **kwargs)  # type: ignore[attr-defined]
+
+    def _once(self, messages: list[dict[str, str]], model: str, timeout: float | None = None) -> str:
         self.lane = model
         self.requested_model = model
-        text = self.inner.complete(messages, model=model)  # type: ignore[attr-defined]
+        text = self._invoke(messages, model, timeout)
         self.requested_model = getattr(self.inner, "last_requested_model", model) or model
         served = getattr(self.inner, "last_served_model", None)
         if served:
@@ -82,6 +143,26 @@ class BoundLLM:
         elif self.sample_standin:
             self.served_model = model
         return text
+
+    def _once_bounded(self, messages: list[dict[str, str]], model: str, timeout: float) -> str:
+        """Wait at most `timeout` seconds. A late attempt is abandoned, not joined again."""
+
+        box: dict = {}
+
+        def run() -> None:
+            try:
+                box["text"] = self._once(messages, model, timeout=timeout)
+            except Exception as exc:
+                box["error"] = exc
+
+        worker = threading.Thread(target=run, name="nightshift-attempt", daemon=True)
+        worker.start()
+        worker.join(timeout)
+        if worker.is_alive():
+            raise MeterlessError(f"Meterless chat timed out after {timeout}s.")
+        if "error" in box:
+            raise box["error"]
+        return str(box.get("text") or "")
 
     def _remember(self, lane: str, reason: str) -> None:
         self.fallback_log.append(

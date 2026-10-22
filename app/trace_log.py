@@ -89,6 +89,7 @@ class HackathonTrace:
         confidence: float | None = None,
         retry_count: int = 0,
         status: str = "ok",
+        llm: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -103,6 +104,10 @@ class HackathonTrace:
             "status": status,
             "event": action,
         }
+        if llm is not None:
+            # Top-level so a truncated input_summary cannot drop them, and so the hash covers them.
+            record["requested_model"] = str(llm.get("requested_model") or "")
+            record["served_model"] = llm.get("served_model")
         record = sanitize_metadata(record)
         record["prev_hash"] = self._prev_hash
         missing = [field for field in FIELDS if field not in record]

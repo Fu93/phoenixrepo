@@ -31,6 +31,22 @@ def _hash(value: object) -> str:
     return text[:12]
 
 
+def served_model(event: dict) -> str:
+    """Prefer the hashed top-level field. Older lines kept it only inside input_summary."""
+
+    if event.get("served_model"):
+        return str(event["served_model"])
+    summary = event.get("input_summary") or ""
+    if isinstance(summary, str) and summary.startswith("{"):
+        try:
+            payload = json.loads(summary)
+        except json.JSONDecodeError:
+            return ""
+        if isinstance(payload, dict) and payload.get("served_model"):
+            return str(payload["served_model"])
+    return ""
+
+
 def render_markdown(events: list[dict], *, title: str) -> str:
     lines = [
         f"# {title}",
@@ -38,24 +54,25 @@ def render_markdown(events: list[dict], *, title: str) -> str:
         "Decisions include CANDIDATE (policy passed, no qualifying stage-1 success), RESURRECTED, RESURRECTION_FAILED, and NO_GO.",
         "line_hash chains each row to the previous one. RUN_SEAL is the run hash. The chain shows the file was not edited later. It does not show the text is true.",
         "",
-        "| # | timestamp | agent | action | status | line_hash | input | output |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| # | timestamp | agent | action | status | served_model | line_hash | input | output |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for index, event in enumerate(events, start=1):
         lines.append(
-            "| {index} | {timestamp} | {agent} | {action} | {status} | {digest} | {inp} | {out} |".format(
+            "| {index} | {timestamp} | {agent} | {action} | {status} | {served} | {digest} | {inp} | {out} |".format(
                 index=index,
                 timestamp=_cell(event.get("timestamp")),
                 agent=_cell(event.get("agent_name")),
                 action=_cell(event.get("action")),
                 status=_cell(event.get("status")),
+                served=_cell(served_model(event)),
                 digest=_hash(event.get("line_hash")),
                 inp=_cell(event.get("input_summary")),
                 out=_cell(event.get("output_summary")),
             )
         )
     if not events:
-        lines.append("|  |  |  |  |  |  |  | no events |")
+        lines.append("|  |  |  |  |  |  |  |  | no events |")
     if events and events[-1].get("action") == "RUN_SEAL":
         lines.extend(["", f"Run hash: {events[-1].get('line_hash')}", ""])
     lines.append("")
@@ -71,12 +88,13 @@ def render_html(events: list[dict], *, title: str) -> str:
             str(event.get("agent_name") or ""),
             str(event.get("action") or ""),
             str(event.get("status") or ""),
+            served_model(event),
             _hash(event.get("line_hash")),
             str(event.get("input_summary") or ""),
             str(event.get("output_summary") or ""),
         ]
         rows.append("<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in cells) + "</tr>")
-    body = "\n".join(rows) if rows else "<tr><td colspan='8'>no events</td></tr>"
+    body = "\n".join(rows) if rows else "<tr><td colspan='9'>no events</td></tr>"
     seal = ""
     if events and events[-1].get("action") == "RUN_SEAL":
         seal = "<p>Run hash: " + html.escape(str(events[-1].get("line_hash") or "")) + "</p>"
@@ -94,7 +112,7 @@ def render_html(events: list[dict], *, title: str) -> str:
         + "</h1>"
         + note
         + "<table><thead><tr><th>#</th><th>timestamp</th><th>agent</th>"
-        + "<th>action</th><th>status</th><th>line_hash</th><th>input</th><th>output</th></tr></thead><tbody>"
+        + "<th>action</th><th>status</th><th>served_model</th><th>line_hash</th><th>input</th><th>output</th></tr></thead><tbody>"
         + body
         + "</tbody></table>"
         + seal

@@ -61,6 +61,8 @@ def _workflow_excerpt(text: str) -> str:
             kept.append(flat)
         elif "cron:" in flat:
             kept.append(flat)
+        elif "run:" in flat:
+            kept.append(flat)
     for needle in (
         "actions/checkout@v2",
         "actions/setup-node@v2",
@@ -76,14 +78,74 @@ def _workflow_excerpt(text: str) -> str:
     return "; ".join(kept)
 
 
+_BUILD_COMMANDS = (
+    "yarn test",
+    "yarn build",
+    "yarn install",
+    "npm test",
+    "npm run build",
+    "pnpm test",
+    "go test",
+    "cargo test",
+    "cargo build",
+    "pytest",
+    "mvn test",
+    "gradle test",
+    "dotnet test",
+)
+
+
 def _workflow_runs_build(text: str) -> str:
-    excerpt = _workflow_excerpt(text) if text else ""
-    if not excerpt:
+    if not text.strip():
         return ""
-    lowered = excerpt.lower()
-    if any(marker in lowered for marker in ("yarn test", "yarn build", "npm test", "npm run build")):
+    lowered = text.lower()
+    if any(marker in lowered for marker in _BUILD_COMMANDS):
         return "true"
     return "false"
+
+
+def compare_commit_shas(payload: object) -> list[str]:
+    """SHAs the fork is ahead by. The upstream base commit is not in this list."""
+
+    if not isinstance(payload, dict) or not isinstance(payload.get("commits"), list):
+        return []
+    shas: list[str] = []
+    for item in payload["commits"]:
+        if isinstance(item, dict):
+            sha = _text(item.get("sha"))
+            if sha:
+                shas.append(sha)
+    return shas
+
+
+def _head_repository(run: dict) -> str:
+    head = run.get("head_repository")
+    if isinstance(head, dict):
+        return _text(head.get("full_name"))
+    return ""
+
+
+def _run_by_id(runs: list[dict], run_id: str) -> dict | None:
+    for run in runs:
+        if _text(run.get("id")) == run_id:
+            return run
+    return None
+
+
+def fetch_run_workflow(client: GitHubClient, run: dict) -> tuple[str, str, str]:
+    """Read the workflow file from the run's head repository at the run's head_sha.
+
+    The path is the run's own path. This does not read the upstream file.
+    """
+
+    path = _text(run.get("path"))
+    sha = _text(run.get("head_sha"))
+    repo = _head_repository(run)
+    if not path or not sha or not repo:
+        return path, "", repo
+    payload, status = client.get_json(f"https://api.github.com/repos/{repo}/contents/{path}?ref={sha}")
+    text = _decode_content(payload) if status == 200 else ""
+    return path, text, repo
 
 
 def _package_excerpt(payload: object) -> str:
@@ -142,6 +204,24 @@ def collect_attempt(
 
     branch_runs = _runs_on_branch(runs_payload, fork_branch)
     conclusion, has_run, facts = select_build_ci({"workflow_runs": branch_runs}, fork)
+    compare_shas = compare_commit_shas(compare_payload)
+    chosen = _run_by_id(branch_runs, facts.get("id", "")) if facts else None
+    attempt_path = ""
+    attempt_steps = ""
+    attempt_runs_build = ""
+    attempt_head_repo = ""
+    attempt_sha = ""
+    sha_in_compare = False
+    if chosen is not None:
+        attempt_sha = _text(chosen.get("head_sha"))
+        attempt_head_repo = _head_repository(chosen)
+        sha_in_compare = bool(attempt_sha) and attempt_sha in compare_shas
+        if sha_in_compare:
+            attempt_path, attempt_workflow, attempt_head_repo = fetch_run_workflow(client, chosen)
+            attempt_steps = _workflow_excerpt(attempt_workflow) if attempt_workflow else ""
+            if not attempt_steps and attempt_workflow:
+                attempt_steps = " ".join(attempt_workflow.split())[:300]
+            attempt_runs_build = _workflow_runs_build(attempt_workflow)
     ahead = compare_payload.get("ahead_by") if isinstance(compare_payload, dict) else None
     behind = compare_payload.get("behind_by") if isinstance(compare_payload, dict) else None
     total_commits = compare_payload.get("total_commits") if isinstance(compare_payload, dict) else None
@@ -153,27 +233,38 @@ def collect_attempt(
     if isinstance(compare_payload, dict):
         compare_html = _text(compare_payload.get("html_url")) or _text(compare_payload.get("permalink_url"))
     attempt_commit = isinstance(ahead, int) and ahead > 0
+    runs_build = attempt_runs_build == "true"
+    # A green run counts only when its head SHA is in the compare list and the
+    # workflow file at that SHA actually runs a build or test command.
+    qualified_run = bool(
+        attempt_commit
+        and sha_in_compare
+        and chosen is not None
+        and runs_build
+        and facts.get("html_url")
+        and attempt_head_repo.casefold() == fork.casefold()
+    )
     ci_status = ""
     ci_run_url = ""
     ci_run_name = ""
     ci_run_event = ""
     commit_sha = ""
     revive_status = "not_attempted"
-    if attempt_commit and has_run and conclusion == "success" and facts.get("html_url"):
+    if qualified_run and conclusion == "success":
         revive_status = "success"
         ci_status = "success"
         ci_run_url = facts.get("html_url", "")
         ci_run_name = facts.get("name", "")
         ci_run_event = facts.get("event", "")
-        commit_sha = _head_sha(branch_runs, facts.get("id", ""))
-    elif attempt_commit and has_run and conclusion in {"failure", "cancelled", "timed_out", "startup_failure"} and facts.get("html_url"):
+        commit_sha = attempt_sha
+    elif qualified_run and conclusion in {"failure", "cancelled", "timed_out", "startup_failure"}:
         revive_status = "failure"
         ci_status = conclusion or ""
         ci_run_url = facts.get("html_url", "")
         ci_run_name = facts.get("name", "")
         ci_run_event = facts.get("event", "")
-        commit_sha = _head_sha(branch_runs, facts.get("id", ""))
-    elif attempt_commit and has_run and not conclusion:
+        commit_sha = attempt_sha
+    elif attempt_commit and has_run and sha_in_compare and runs_build and not conclusion:
         revive_status = "unknown"
 
     attempts = []
@@ -194,10 +285,11 @@ def collect_attempt(
                 "default_branch": fork_branch,
                 "head_sha": base_sha,
                 "upstream_base_sha": base_sha,
-                "ci_head_repo": fork if commit_sha else "",
-                "workflow_path": ".github/workflows/ci.yml" if workflow_text else "",
-                "workflow_steps": _workflow_excerpt(workflow_text) if workflow_text else "",
-                "workflow_runs_build": _workflow_runs_build(workflow_text),
+                "ci_head_repo": attempt_head_repo if chosen is not None else "",
+                "workflow_path": attempt_path if stage == "revive" else "",
+                "workflow_steps": attempt_steps if stage == "revive" else "",
+                "workflow_runs_build": attempt_runs_build if stage == "revive" else "",
+                "compare_shas": " ".join(compare_shas),
                 "data_origin": origin,
             }
         )
@@ -290,10 +382,12 @@ def collect_attempt(
         "fork_pushed_at": _text(fork_payload.get("pushed_at")),
         "issue_number": issue_number,
         "stage_rule": (
-            "status success or failure is recorded on stage revive only when compare ahead_by is greater than 0 "
-            "and the fork default branch has an eligible build/test run. Otherwise every stage is not_attempted. "
-            "Refactor and upgrade are not inferred from commit messages. head_sha is the compare base SHA, not an attempt commit. "
-            "commit_sha stays empty until an attempt commit is the head of an eligible run."
+            "status success or failure is recorded on stage revive only when compare ahead_by is greater than 0, "
+            "the run head_sha is in the compare commit list, ci_head_repo is that run's head repository, "
+            "and the workflow file fetched from that repository at that SHA runs a build or test command. "
+            "An echo-only workflow is not_attempted. A commit outside the compare list is not_attempted. "
+            "The attempt workflow is not copied from upstream. "
+            "Refactor and upgrade are not inferred from commit messages. head_sha on the row is the compare base SHA, not an attempt commit."
         ),
         "calls": client.calls,
         "statuses": {

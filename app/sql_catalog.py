@@ -52,6 +52,7 @@ ATTEMPT_COLUMNS = (
     "workflow_path",
     "workflow_steps",
     "workflow_runs_build",
+    "compare_shas",
     "data_origin",
 )
 

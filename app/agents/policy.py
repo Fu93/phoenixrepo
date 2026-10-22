@@ -207,6 +207,7 @@ def normalize_attempt(row: dict[str, Any]) -> dict[str, Any]:
         "workflow_path": blank_text(row.get("workflow_path")),
         "workflow_steps": blank_text(row.get("workflow_steps")),
         "workflow_runs_build": blank_text(row.get("workflow_runs_build")).lower(),
+        "compare_shas": blank_text(row.get("compare_shas")),
         "attempted_at": blank_text(row.get("attempted_at")),
         "data_origin": blank_text(row.get("data_origin")),
     }
@@ -277,6 +278,9 @@ def qualify_revive_attempt(attempt: dict[str, Any]) -> tuple[bool, str]:
         return False, "upstream_base_sha is empty, so the row does not show the commit is ahead of upstream."
     if commit == base:
         return False, "commit_sha equals the upstream base SHA, so the CI run is not an attempt commit."
+    listed = [part for part in str(attempt.get("compare_shas") or "").split() if part]
+    if commit not in listed:
+        return False, "commit_sha is not in the fork compare commit list."
     if not fork or head_repo.casefold() != fork.casefold():
         return False, f"CI head repo {head_repo or 'empty'} is not the fork {fork or 'empty'}."
     flag = (attempt.get("workflow_runs_build") or "").lower()

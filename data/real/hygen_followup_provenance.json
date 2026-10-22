@@ -3,7 +3,7 @@
   "generator": "scripts/collect_hygen_followup.py",
   "token_used": false,
   "token_written": false,
-  "note": "This follow-up does not replace revival_attempts_provenance.json. Existing attempt status cells were kept. New columns and source rows come from this run. The cache-400 sentence is a verification report because the job log request was not HTTP 200.",
+  "note": "This follow-up does not replace revival_attempts_provenance.json. Existing attempt status cells were kept. New columns and source rows come from this run. The cache-400 line is credited to the upstream job log for job 111258182240. The log archive GET was HTTP 403, so the archive bytes were not stored. The attempt workflow cells were cleared in a later offline edit because no fork run was collected.",
   "statuses": {
     "workflow": 200,
     "package": 200,

@@ -343,7 +343,7 @@ def build_revival_prd(
         cache_clause = ""
         if any("Cache service responded with 400" in str(source.get("excerpt") or "") for source in log_sources):
             cache_clause = (
-                " A cited excerpt reports the log line `Cache service responded with 400` "
+                " The cited upstream job log contains the line `Cache service responded with 400` "
                 "inside actions/setup-node@v2 cache, plus deprecated v2 action runtimes."
             )
         acceptance = []
@@ -694,7 +694,7 @@ def build_revival_prd(
         "repo_id": repo_id,
         "drafted_by": "deterministic",
         "llm_drafted": False,
-        "run_hash": "absent",
+        "run_hash": "not sealed; this file is the deterministic snapshot, not an investigation run",
         "problem_framing": "non-factual",
         "out_of_scope_framing": "non-factual",
         "window": WINDOW,
@@ -725,7 +725,7 @@ def render_markdown(document: dict[str, Any]) -> str:
         f"# Revival PRD: {document['repo_id']}",
         "",
         f"Drafted by: {document['drafted_by']}. llm_drafted: {str(document['llm_drafted']).lower()}.",
-        f"Run hash: {document.get('run_hash') or 'absent'}",
+        f"Run hash: {document.get('run_hash') or 'not sealed; this file is the deterministic snapshot, not an investigation run'}",
         f"Window: {document['window']}",
         "",
         "## Problem statement",

@@ -52,6 +52,7 @@ def _success(repo_id: str = "jondot/hygen") -> dict:
         "workflow_path": ".github/workflows/ci.yml",
         "workflow_steps": "yarn install; yarn build; yarn test",
         "workflow_runs_build": "true",
+        "compare_shas": "abc123",
         "data_origin": "github_rest_api:2026-10-22",
     }
 
@@ -158,6 +159,15 @@ def test_ci_run_on_the_upstream_repo_is_not_a_fork_success():
     assert "not the fork" in reason
 
 
+def test_a_commit_outside_the_compare_list_is_not_a_stage_one_success():
+    row = _profile("jondot/hygen")
+    attempt = _success()
+    attempt["compare_shas"] = "someone-else"
+    decision, reason, _upgrade = apply_revival_attempts(row, _signals("jondot/hygen"), [attempt])
+    assert decision == "RESURRECTION_FAILED"
+    assert "compare commit list" in reason
+
+
 def test_a_workflow_that_does_not_run_tests_is_flagged():
     row = _profile("42wim/matterbridge")
     attempt = _success("42wim/matterbridge")
@@ -175,6 +185,7 @@ def test_a_later_failure_beats_an_earlier_success():
     failure["status"] = "failure"
     failure["ci_status"] = "failure"
     failure["commit_sha"] = "def456"
+    failure["compare_shas"] = "abc123 def456"
     failure["ci_run_url"] = "https://github.com/Fu93/hygen/actions/runs/2"
     decision, reason, _upgrade = apply_revival_attempts(row, _signals("42wim/matterbridge"), [success, failure])
     assert decision == "RESURRECTION_FAILED"

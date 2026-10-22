@@ -186,3 +186,120 @@ def test_uncited_planner_draft_falls_back_to_the_deterministic_prd(tmp_path):
     ]
     assert "CRITIQUE_REJECT" in actions
     assert "PRD_WRITTEN" in actions
+
+
+def test_deterministic_hygen_plan_stays_grounded_when_evidence_is_supplied():
+    document = _document()
+    lines = [*document["findings"], *document["tasks"], *document["risks"]]
+    known = {evidence_id for line in lines for evidence_id in line["evidence_ids"]}
+    row = _profile("jondot/hygen")
+    blob = "\n".join(source.get("excerpt") or "" for source in _sources())
+    critique = critique_planner(
+        document,
+        known_evidence_ids=known,
+        row=row,
+        evidence_text=blob,
+    )
+    assert critique.rejected is False
+
+
+def test_copied_citations_do_not_save_ungrounded_prose():
+    document = _document()
+    lines = [*document["findings"], *document["tasks"], *document["risks"]]
+    known = {evidence_id for line in lines for evidence_id in line["evidence_ids"]}
+    row = _profile("jondot/hygen")
+    draft = json.loads(json.dumps(document))
+    task = draft["stages"][0]["tasks"][0]
+    task["text"] = "GPL licensed, 0 tests, rewrite in Rust"
+    task["acceptance"] = ["cargo build exits 0"]
+    critique = critique_planner(
+        draft,
+        known_evidence_ids=known,
+        row=row,
+        evidence_text="yarn test\nnode-version: [20.x]",
+    )
+    assert critique.rejected is True
+    assert "GPL" in critique.reason
+    assert "has_tests" in critique.reason or "no tests" in critique.reason
+    assert "Rust" in critique.reason
+    assert "cargo" in critique.reason
+
+
+class _MissingWindow:
+    def __init__(self):
+        self.standin = SampleStandIn()
+        self.planner_calls = 0
+
+    def complete(self, messages, model=None):
+        text = messages[-1]["content"]
+        if "ROLE: planner" in text:
+            self.planner_calls += 1
+            payload = json.loads(self.standin.complete(messages, model=model))
+            payload.pop("window", None)
+            return json.dumps(payload)
+        return self.standin.complete(messages, model=model)
+
+
+def test_a_draft_missing_window_falls_back_without_crashing(tmp_path):
+    settings = Settings(
+        sample_mode=True,
+        hmem_store_path=str(tmp_path / "hmem.json"),
+        log_dir=str(tmp_path / "logs"),
+        _env_file=None,
+    )
+    scripted = _MissingWindow()
+    result = InvestigationOrchestrator(
+        "sample/phoenix-ledger",
+        "sample",
+        0,
+        settings,
+        llm=BoundLLM(scripted, "sample-standin", "deterministic-rule-standin", True),
+        hmem_path=tmp_path / "hmem.json",
+    ).run()
+    assert result["decision"] == "CANDIDATE"
+    prd = result["metadata"]["revival_prd"]
+    assert prd["drafted_by"] == "deterministic"
+    text = render_markdown(prd["document"])
+    assert "Window:" in text
+    assert scripted.planner_calls == 2
+    actions = [
+        json.loads(line)["action"]
+        for line in Path(result["log_file"]).read_text(encoding="utf-8").splitlines()
+    ]
+    assert "PLANNER_DETERMINISTIC_FALLBACK" in actions
+
+
+class _UngroundedDraft:
+    def __init__(self):
+        self.standin = SampleStandIn()
+
+    def complete(self, messages, model=None):
+        text = messages[-1]["content"]
+        if "ROLE: planner" in text:
+            payload = json.loads(self.standin.complete(messages, model=model))
+            task = payload["stages"][0]["tasks"][0]
+            task["text"] = "GPL licensed, 0 tests, rewrite in Rust"
+            task["acceptance"] = ["cargo build exits 0"]
+            return json.dumps(payload)
+        return self.standin.complete(messages, model=model)
+
+
+def test_ungrounded_model_plan_is_replaced_before_render(tmp_path):
+    settings = Settings(
+        sample_mode=True,
+        hmem_store_path=str(tmp_path / "hmem.json"),
+        log_dir=str(tmp_path / "logs"),
+        _env_file=None,
+    )
+    result = InvestigationOrchestrator(
+        "sample/phoenix-ledger",
+        "sample",
+        0,
+        settings,
+        llm=BoundLLM(_UngroundedDraft(), "sample-standin", "deterministic-rule-standin", True),
+        hmem_path=tmp_path / "hmem.json",
+    ).run()
+    text = render_markdown(result["metadata"]["revival_prd"]["document"])
+    assert "cargo build exits 0" not in text
+    assert "rewrite in Rust" not in text
+    assert result["metadata"]["revival_prd"]["drafted_by"] == "deterministic"

@@ -2,7 +2,7 @@
   "repo_id": "jondot/hygen",
   "drafted_by": "deterministic",
   "llm_drafted": false,
-  "run_hash": "absent",
+  "run_hash": "not sealed; this file is the deterministic snapshot, not an investigation run",
   "problem_framing": "non-factual",
   "out_of_scope_framing": "non-factual",
   "window": "Finish each stage before 27 Oct 2026 23:45 UTC.",
@@ -173,7 +173,7 @@
     },
     {
       "id": "F9",
-      "text": "Source ci_log ci-log-37141993934 title upstream CI job log url https://github.com/jondot/hygen/actions/runs/37141993934. Excerpt: Jobs API GET /repos/jondot/hygen/actions/runs/37141993934/jobs returned HTTP 200. Failure-conclusion job first failed step: Use Node.js 14.x. Job log GET /repos/jondot/hygen/actions/jobs/111258182240/logs returned HTTP 403. The log body was not downloaded. Independent verification on 2026-10-22 reported the line 'Cache service responded with 400' inside actions/setup-node@v2 cache, and that the repo builds and passes 40 tests on Node 20.x and Node 22.x. The same verification reported that one test needs network, that Windows yarn test:win32 was not run, that fork Actions must be enabled once before pushes trigger CI, and that scheduled runs do not fire on forks.",
+      "text": "Source ci_log ci-log-37141993934 title upstream CI job log url https://github.com/jondot/hygen/actions/runs/37141993934. Excerpt: Jobs API GET /repos/jondot/hygen/actions/runs/37141993934/jobs returned HTTP 200. Failure-conclusion job first failed step: Use Node.js 14.x. The upstream job log for job 111258182240 (step Use Node.js 14.x, actions/setup-node@v2 cache) contains the line 'Cache service responded with 400'. GET /repos/jondot/hygen/actions/jobs/111258182240/logs returned HTTP 403. The log archive bytes were not stored when that GET was not HTTP 200. A separate test run passed 40 tests on Node 20.x and Node 22.x. One test needs network. Windows yarn test:win32 was not run. Fork Actions must be enabled once before pushes trigger CI, and scheduled runs do not fire on forks.",
       "evidence_ids": [
         "EV-SOURCE-jondot-hygen-ci-log-37141993934"
       ],
@@ -278,7 +278,7 @@
         "EV-ATTEMPT-jondot-hygen-revive"
       ],
       "query_id": "snapshot",
-      "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+      "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
       "content_hash": "",
       "citations": [
         {
@@ -286,7 +286,7 @@
             "EV-ATTEMPT-jondot-hygen-revive"
           ],
           "query_id": "snapshot",
-          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
           "content_hash": ""
         }
       ]
@@ -298,7 +298,7 @@
         "EV-ATTEMPT-jondot-hygen-refactor"
       ],
       "query_id": "snapshot",
-      "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+      "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
       "content_hash": "",
       "citations": [
         {
@@ -306,7 +306,7 @@
             "EV-ATTEMPT-jondot-hygen-refactor"
           ],
           "query_id": "snapshot",
-          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
           "content_hash": ""
         }
       ]
@@ -318,7 +318,7 @@
         "EV-ATTEMPT-jondot-hygen-upgrade"
       ],
       "query_id": "snapshot",
-      "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+      "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
       "content_hash": "",
       "citations": [
         {
@@ -326,7 +326,7 @@
             "EV-ATTEMPT-jondot-hygen-upgrade"
           ],
           "query_id": "snapshot",
-          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
           "content_hash": ""
         }
       ]
@@ -339,7 +339,7 @@
       "gate_for_resurrected": true,
       "tasks": [
         {
-          "text": "Stage 1 toolchain: bump the cited v2 actions to v4 and use a current Node. The workflow excerpt lists Node 14.x and 17.x. Use Node 20.x. Node 22.x is optional when a cited excerpt says that version also passed. A cited excerpt reports the log line `Cache service responded with 400` inside actions/setup-node@v2 cache, plus deprecated v2 action runtimes. Do not change product behavior in this stage.",
+          "text": "Stage 1 toolchain: bump the cited v2 actions to v4 and use a current Node. The workflow excerpt lists Node 14.x and 17.x. Use Node 20.x. Node 22.x is optional when a cited excerpt says that version also passed. The cited upstream job log contains the line `Cache service responded with 400` inside actions/setup-node@v2 cache, plus deprecated v2 action runtimes. Do not change product behavior in this stage.",
           "evidence_ids": [
             "EV-SOURCE-jondot-hygen-workflow-ci",
             "EV-SIGNAL-jondot-hygen-1-ci-failure",
@@ -438,7 +438,7 @@
             "EV-PROFILE-jondot-hygen"
           ],
           "query_id": "snapshot",
-          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
           "content_hash": "",
           "citations": [
             {
@@ -446,7 +446,7 @@
                 "EV-ATTEMPT-jondot-hygen-revive"
               ],
               "query_id": "snapshot",
-              "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+              "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
               "content_hash": ""
             },
             {
@@ -482,7 +482,7 @@
             "EV-SOURCE-jondot-hygen-GHSA-77c7-pq4r-6mcq"
           ],
           "query_id": "snapshot",
-          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
           "content_hash": "",
           "citations": [
             {
@@ -490,7 +490,7 @@
                 "EV-ATTEMPT-jondot-hygen-refactor"
               ],
               "query_id": "snapshot",
-              "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+              "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
               "content_hash": ""
             },
             {
@@ -575,7 +575,7 @@
                 "EV-ATTEMPT-jondot-hygen-upgrade"
               ],
               "query_id": "snapshot",
-              "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+              "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
               "content_hash": ""
             }
           ],
@@ -594,7 +594,7 @@
   ],
   "tasks": [
     {
-      "text": "Stage 1 toolchain: bump the cited v2 actions to v4 and use a current Node. The workflow excerpt lists Node 14.x and 17.x. Use Node 20.x. Node 22.x is optional when a cited excerpt says that version also passed. A cited excerpt reports the log line `Cache service responded with 400` inside actions/setup-node@v2 cache, plus deprecated v2 action runtimes. Do not change product behavior in this stage.",
+      "text": "Stage 1 toolchain: bump the cited v2 actions to v4 and use a current Node. The workflow excerpt lists Node 14.x and 17.x. Use Node 20.x. Node 22.x is optional when a cited excerpt says that version also passed. The cited upstream job log contains the line `Cache service responded with 400` inside actions/setup-node@v2 cache, plus deprecated v2 action runtimes. Do not change product behavior in this stage.",
       "evidence_ids": [
         "EV-SOURCE-jondot-hygen-workflow-ci",
         "EV-SIGNAL-jondot-hygen-1-ci-failure",
@@ -693,7 +693,7 @@
         "EV-PROFILE-jondot-hygen"
       ],
       "query_id": "snapshot",
-      "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+      "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
       "content_hash": "",
       "citations": [
         {
@@ -701,7 +701,7 @@
             "EV-ATTEMPT-jondot-hygen-revive"
           ],
           "query_id": "snapshot",
-          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
           "content_hash": ""
         },
         {
@@ -730,7 +730,7 @@
         "EV-SOURCE-jondot-hygen-GHSA-77c7-pq4r-6mcq"
       ],
       "query_id": "snapshot",
-      "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+      "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
       "content_hash": "",
       "citations": [
         {
@@ -738,7 +738,7 @@
             "EV-ATTEMPT-jondot-hygen-refactor"
           ],
           "query_id": "snapshot",
-          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
           "content_hash": ""
         },
         {
@@ -816,7 +816,7 @@
             "EV-ATTEMPT-jondot-hygen-upgrade"
           ],
           "query_id": "snapshot",
-          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
+          "sql": "SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix.revival_attempts WHERE repo_id = 'jondot/hygen'",
           "content_hash": ""
         }
       ],
@@ -894,7 +894,7 @@
     },
     {
       "id": "R4",
-      "text": "Source ci_log ci-log-37141993934 excerpt: Jobs API GET /repos/jondot/hygen/actions/runs/37141993934/jobs returned HTTP 200. Failure-conclusion job first failed step: Use Node.js 14.x. Job log GET /repos/jondot/hygen/actions/jobs/111258182240/logs returned HTTP 403. The log body was not downloaded. Independent verification on 2026-10-22 reported the line 'Cache service responded with 400' inside actions/setup-node@v2 cache, and that the repo builds and passes 40 tests on Node 20.x and Node 22.x. The same verification reported that one test needs network, that Windows yarn test:win32 was not run, that fork Actions must be enabled once before pushes trigger CI, and that scheduled runs do not fire on forks.",
+      "text": "Source ci_log ci-log-37141993934 excerpt: Jobs API GET /repos/jondot/hygen/actions/runs/37141993934/jobs returned HTTP 200. Failure-conclusion job first failed step: Use Node.js 14.x. The upstream job log for job 111258182240 (step Use Node.js 14.x, actions/setup-node@v2 cache) contains the line 'Cache service responded with 400'. GET /repos/jondot/hygen/actions/jobs/111258182240/logs returned HTTP 403. The log archive bytes were not stored when that GET was not HTTP 200. A separate test run passed 40 tests on Node 20.x and Node 22.x. One test needs network. Windows yarn test:win32 was not run. Fork Actions must be enabled once before pushes trigger CI, and scheduled runs do not fire on forks.",
       "evidence_ids": [
         "EV-SOURCE-jondot-hygen-ci-log-37141993934"
       ],

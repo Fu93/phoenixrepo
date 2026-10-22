@@ -39,6 +39,7 @@ def test_render_trace_timeline_escapes_html(tmp_path):
         "status": "reject",
         "input_summary": '{"requested_model":"meterless/auto"}',
         "output_summary": "<script>alert(1)</script>",
+        "served_model": "openrouter/poolside/laguna-s-2.1:free",
     }
     path = tmp_path / "trace.jsonl"
     path.write_text(json.dumps(event) + "\n", encoding="utf-8")
@@ -49,6 +50,9 @@ def test_render_trace_timeline_escapes_html(tmp_path):
     html = render_html(events, title="Trace <demo>")
     assert "LLM_JUDGE" in markdown
     assert "meterless/auto" in markdown
+    assert "served_model" in markdown
+    assert "openrouter/poolside/laguna-s-2.1:free" in markdown
+    assert "openrouter/poolside/laguna-s-2.1:free" in html
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
     assert "Trace &lt;demo&gt;" in html

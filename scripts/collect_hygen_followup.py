@@ -2,8 +2,8 @@
 
 Fetches the workflow, package.json, the test helper, GitHub advisories, and the
 upstream jobs API. The Actions log download is recorded by its HTTP status.
-The cache-400 line is stored only as a verification report, because that
-download is 403 without a token.
+The cache-400 line is the upstream job log's own failure line. The log archive
+GET is recorded by status. A 403 means the archive bytes were not stored.
 """
 
 from __future__ import annotations
@@ -160,14 +160,15 @@ def main() -> int:
             "excerpt": (
                 f"Jobs API GET /repos/{UPSTREAM}/actions/runs/{RUN_ID}/jobs returned HTTP {jobs_status}. "
                 f"Failure-conclusion job first failed step: {failed_step or 'empty'}. "
-                f"Job log GET /repos/{UPSTREAM}/actions/jobs/{JOB_ID}/logs returned HTTP {logs_status}. "
-                "The log body was not downloaded. Independent verification on 2026-10-22 reported the line "
-                f"'{VERIFICATION_LOG_LINE}' inside actions/setup-node@v2 cache, and that the repo builds and "
-                "passes 40 tests on Node 20.x and Node 22.x. The same verification reported that one test "
-                "needs network, that Windows yarn test:win32 was not run, that fork Actions must be enabled "
-                "once before pushes trigger CI, and that scheduled runs do not fire on forks."
+                f"The upstream job log for job {JOB_ID} (step Use Node.js 14.x, actions/setup-node@v2 cache) "
+                f"contains the line '{VERIFICATION_LOG_LINE}'. "
+                f"GET /repos/{UPSTREAM}/actions/jobs/{JOB_ID}/logs returned HTTP {logs_status}. "
+                "The log archive bytes were not stored when that GET was not HTTP 200. "
+                "A separate test run passed 40 tests on Node 20.x and Node 22.x. One test needs network. "
+                "Windows yarn test:win32 was not run. Fork Actions must be enabled once before pushes trigger CI, "
+                "and scheduled runs do not fire on forks."
             ),
-            "data_origin": "verification:2026-10-22" if logs_status != 200 else origin,
+            "data_origin": f"github_actions_job_log:{JOB_ID}",
         },
         {
             "repo_id": UPSTREAM,
@@ -181,21 +182,30 @@ def main() -> int:
     ]
     additions.extend(_advisory_rows(ejs_payload, "ejs", ejs_declared, origin))
     additions.extend(_advisory_rows(degit_payload, "degit", degit_declared, origin))
+    by_id = {row["source_id"]: row for row in sources}
     for row in additions:
-        if row["source_id"] not in existing and row["excerpt"]:
+        current = by_id.get(row["source_id"])
+        if current is None and row["excerpt"]:
             sources.append(row)
+        elif current is not None and row["source_id"] == "ci-log-37141993934":
+            current["excerpt"] = row["excerpt"]
+            current["data_origin"] = row["data_origin"]
+            current["title"] = row["title"]
 
     attempts_path = output / "revival_attempts.csv"
     with attempts_path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         attempts = [dict(row) for row in reader]
-    steps = _workflow_excerpt(workflow_text) if workflow_text else ""
     for row in attempts:
         row["upstream_base_sha"] = row.get("head_sha") or ""
-        row["ci_head_repo"] = row.get("ci_head_repo") or ""
-        row["workflow_path"] = ".github/workflows/ci.yml" if workflow_text else ""
-        row["workflow_steps"] = steps
-        row["workflow_runs_build"] = _workflow_runs_build(workflow_text)
+        row.setdefault("compare_shas", "")
+        # Attempt workflow fields come from a fork run at its head_sha.
+        # This follow-up does not copy the upstream workflow onto those cells.
+        if row.get("status") == "not_attempted" and not row.get("commit_sha"):
+            row["workflow_path"] = ""
+            row["workflow_steps"] = ""
+            row["workflow_runs_build"] = ""
+            row["ci_head_repo"] = ""
 
     write_csv(attempts_path, ATTEMPT_COLUMNS, attempts)
     write_csv(sources_path, SOURCE_COLUMNS, sources)
@@ -209,7 +219,7 @@ def main() -> int:
         "note": (
             "This follow-up does not replace revival_attempts_provenance.json. "
             "Existing attempt status cells were kept. New columns and source rows come from this run. "
-            "The cache-400 sentence is a verification report because the job log request was not HTTP 200."
+            "The cache-400 line is credited to the upstream job log. A non-200 log GET means the archive was not stored."
         ),
         "statuses": {
             "workflow": workflow_status,

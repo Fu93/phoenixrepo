@@ -225,7 +225,14 @@ class InvestigationOrchestrator:
             status="ok",
         )
         run_hash = self.trace.seal()
-        verdict_text = verdict_text.rstrip() + f" Run hash {run_hash}."
+        requested = str(getattr(self.llm, "requested_model", "") or "")
+        served = getattr(self.llm, "served_model", None)
+        verdict_text = (
+            verdict_text.rstrip()
+            + f" Run hash {run_hash}."
+            + f" Requested model {requested or 'empty'}."
+            + f" Served model {served or 'empty'}."
+        )
         self._stamp_run_hash(run_hash)
         return self._response(
             decision=decision,
@@ -434,6 +441,7 @@ class InvestigationOrchestrator:
                 known_evidence_ids=known,
                 row=row,
                 evidence_by_id=catalog,
+                evidence_text=_planner_evidence_text(row, signals, attempts, sources),
             )
             if not critique.rejected:
                 accepted = label_prd(payload, model_produced=not self.llm.sample_standin)
@@ -449,7 +457,19 @@ class InvestigationOrchestrator:
                 target_agent="planner",
                 status="ok",
             )
-        self.revival_prd = self._write_prd(accepted)
+        try:
+            self.revival_prd = self._write_prd(accepted)
+        except (KeyError, TypeError) as exc:
+            accepted = label_prd(document, model_produced=False)
+            self.trace.event(
+                agent_name="validator",
+                action="PLANNER_DETERMINISTIC_FALLBACK",
+                input_summary=f"{type(exc).__name__}: {exc}",
+                output_summary="The deterministic PRD replaced a draft that could not be rendered.",
+                target_agent="planner",
+                status="ok",
+            )
+            self.revival_prd = self._write_prd(accepted)
 
     def _write_prd(self, document: dict) -> dict[str, Any]:
         import os
@@ -599,6 +619,7 @@ class InvestigationOrchestrator:
                 target_agent="market_judge",
                 status="rejected",
                 retry_count=1,
+                llm=self._llm_trace(),
             )
             return {"accepted": False, "explanation": ""}
         return {"accepted": True, "explanation": accepted_payload["explanation"]}
@@ -670,7 +691,7 @@ class InvestigationOrchestrator:
             {"role": "user", "content": user},
         ]
         try:
-            raw = self.llm.complete(messages)
+            raw = self.llm.complete(messages, deadline=self._llm_deadline())
         except MeterlessError as exc:
             self._flush_llm_fallbacks()
             self.provider_degraded = True
@@ -687,8 +708,11 @@ class InvestigationOrchestrator:
                 target_agent="validator",
                 retry_count=attempt - 1,
                 status="degraded",
+                llm=self._llm_trace(),
             )
             raw = SampleStandIn().complete(messages)
+            self.llm.requested_model = SampleStandIn.model_name
+            self.llm.served_model = SampleStandIn.model_name
         else:
             self._flush_llm_fallbacks()
         model_trace = {
@@ -716,6 +740,7 @@ class InvestigationOrchestrator:
                 target_agent="validator",
                 retry_count=attempt - 1,
                 status="error",
+                llm=model_trace,
             )
             raise
         summary = {key: parsed.get(key) for key in ("decision", "claims", "steps", "contract", "action") if key in parsed}
@@ -727,6 +752,7 @@ class InvestigationOrchestrator:
             target_agent=target,
             retry_count=attempt - 1,
             confidence=0.9 if self.llm.sample_standin else None,
+            llm=model_trace,
         )
         carry = json.dumps({"role": role, "attempt": attempt, "keys": sorted(parsed)}, ensure_ascii=False)
         return parsed, carry
@@ -795,6 +821,7 @@ class InvestigationOrchestrator:
             target_agent=role,
             retry_count=attempt - 1,
             status=status,
+            llm={"requested_model": requested_model, "served_model": served_model},
         )
 
     def _note_judge_exhausted(self, role: str) -> None:
@@ -802,10 +829,16 @@ class InvestigationOrchestrator:
         self.trace.event(
             agent_name="validator",
             action="LLM_JUDGE_EXHAUSTED",
-            input_summary={"role": role, "advisory": True},
+            input_summary={
+                "role": role,
+                "advisory": True,
+                "requested_model": getattr(self.llm, "requested_model", ""),
+                "served_model": getattr(self.llm, "served_model", None),
+            },
             output_summary="The advisory judge kept rejecting after the retry. The deterministic policy verdict is still produced.",
             target_agent=role,
             status="advisory",
+            llm=self._llm_trace(),
         )
 
     def _judge_verdict_note(self) -> str:
@@ -1117,6 +1150,11 @@ class InvestigationOrchestrator:
                     "model": self.llm.model,
                     "requested_model": self.llm.requested_model,
                     "served_model": self.llm.served_model,
+                    "provenance": {
+                        "requested_model": self.llm.requested_model,
+                        "served_model": self.llm.served_model,
+                        "run_hash": run_hash,
+                    },
                     "sample_standin": self.llm.sample_standin,
                     "degraded": self.provider_degraded,
                     "fallbacks": list(getattr(self.llm, "fallback_log", []) or []),
@@ -1192,6 +1230,10 @@ class InvestigationOrchestrator:
                 },
                 output_summary=event.get("reason") or "",
                 status="fallback",
+                llm={
+                    "requested_model": event.get("requested_model"),
+                    "served_model": event.get("served_model"),
+                },
             )
 
     def _stamp_run_hash(self, run_hash: str) -> None:
@@ -1215,9 +1257,45 @@ class InvestigationOrchestrator:
             evidence_ids=evidence_ids,
         )
 
+    def _llm_trace(self) -> dict[str, Any]:
+        return {
+            "requested_model": getattr(self.llm, "requested_model", "") or "",
+            "served_model": getattr(self.llm, "served_model", None),
+        }
+
+    def _llm_deadline(self) -> float | None:
+        step_deadline = getattr(self.chunks, "step_deadline", None)
+        if step_deadline is None:
+            return None
+        budget = float(self.chunks.config.chunk_timeout_seconds)
+        slack = 0.05 if budget >= 5 else min(0.2, budget * 0.3)
+        return float(step_deadline) - slack
+
     def _check_run_budget(self) -> None:
         if time.monotonic() - self.started > self.settings.run_timeout_seconds:
             raise InvestigationError("RunTimeout", "The investigation exceeded its run timeout.", 504)
+
+
+def _planner_evidence_text(row: dict, signals: list[dict], attempts: list[dict], sources: list[dict]) -> str:
+    """Everything the deterministic template is allowed to quote, plus the row itself."""
+
+    parts = [
+        str(row.get("primary_language") or ""),
+        str(row.get("licence_spdx") or ""),
+        str(row.get("description") or ""),
+        str(row.get("ci_status") or ""),
+    ]
+    for signal in signals:
+        parts.append(str(signal.get("detail") or ""))
+        parts.append(str(signal.get("signal") or ""))
+    for attempt in attempts:
+        parts.append(str(attempt.get("workflow_steps") or ""))
+        parts.append(str(attempt.get("workflow_path") or ""))
+    for source in sources:
+        parts.append(str(source.get("excerpt") or ""))
+        parts.append(str(source.get("title") or ""))
+        parts.append(str(source.get("url") or ""))
+    return "\n".join(parts)
 
 
 def _evidence_catalog(context: dict) -> dict[str, dict[str, str]]:

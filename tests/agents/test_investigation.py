@@ -117,6 +117,12 @@ def test_sample_trace_records_requested_and_served_model(tmp_path):
     assert outputs
     assert outputs[0]["requested_model"] == "deterministic-rule-standin"
     assert outputs[0]["served_model"] == "deterministic-rule-standin"
+    assert records
+    model_lines = [record for record in records if record["action"] == "MODEL_OUTPUT"]
+    assert model_lines[0]["requested_model"] == "deterministic-rule-standin"
+    assert model_lines[0]["served_model"] == "deterministic-rule-standin"
+    assert "Served model deterministic-rule-standin." in result["metadata"]["verdict_text"]
+    assert result["metadata"]["llm"]["provenance"]["served_model"] == "deterministic-rule-standin"
 
 
 def test_hmem_recalls_a_prior_verdict_on_the_next_run(tmp_path):

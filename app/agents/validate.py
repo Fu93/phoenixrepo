@@ -69,6 +69,7 @@ def critique_planner(
     known_evidence_ids: set[str],
     row: dict | None = None,
     evidence_by_id: dict | None = None,
+    evidence_text: str | None = None,
 ) -> Critique:
     """Reject a PRD line that does not cite evidence, or that contradicts the cited row.
 
@@ -81,6 +82,7 @@ def critique_planner(
             known_evidence_ids=known_evidence_ids,
             row=row,
             evidence_by_id=evidence_by_id,
+            evidence_text=evidence_text,
         )
     except (KeyError, TypeError, AttributeError) as exc:
         return Critique(
@@ -97,7 +99,11 @@ def _critique_planner(
     known_evidence_ids: set[str],
     row: dict | None,
     evidence_by_id: dict | None,
+    evidence_text: str | None,
 ) -> Critique:
+    missing = _missing_document_field(payload)
+    if missing:
+        return Critique(True, missing, ["PLANNER"], "planner")
     findings = payload.get("findings")
     stages = payload.get("stages")
     if not isinstance(findings, list) or not findings:
@@ -149,10 +155,22 @@ def _critique_planner(
         if mismatch:
             rejected.append(line_id)
             reasons.append(f"{line_id} {mismatch}")
-        contradiction = _row_contradiction(str(line.get("text") or ""), line.get("evidence_ids") or [], row)
+        text = str(line.get("text") or "")
+        acceptance = line.get("acceptance") or []
+        pieces = [text]
+        if isinstance(acceptance, list):
+            pieces.extend(str(item) for item in acceptance)
+        # Field patterns such as "ci_status success" describe the future gate.
+        # They are checked on the claim text. Acceptance commands are checked
+        # with the rest of the prose so a cargo gate cannot ride on a yarn repo.
+        contradiction = _row_contradiction(text, line.get("evidence_ids") or [], row)
         if contradiction:
             rejected.append(line_id)
             reasons.append(f"{line_id} {contradiction}")
+        ungrounded = _ungrounded("\n".join(pieces), row, evidence_text)
+        if ungrounded:
+            rejected.append(line_id)
+            reasons.append(f"{line_id} {ungrounded}")
     if rejected:
         return Critique(True, " ".join(reasons), sorted(set(rejected)), "planner")
     return Critique(False)
@@ -197,6 +215,104 @@ def _row_contradiction(text: str, evidence_ids: list, row: dict | None) -> str:
                     f"the draft says {match.group(1)}."
                 )
     return ""
+
+
+_REQUIRED_DOCUMENT_FIELDS = ("repo_id", "window", "problem", "findings", "stages")
+
+# Longer tokens first so "GPL" is not also reported inside an accepted "GPL-3.0".
+_LICENCE_TOKENS = (
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "Apache-2.0",
+    "GPL-3.0",
+    "GPL-2.0",
+    "MPL-2.0",
+    "AGPL",
+    "LGPL",
+    "GPL",
+    "MIT",
+    "ISC",
+)
+_NO_TESTS = re.compile(r"\b(?:0 tests|no tests|without tests)\b", re.IGNORECASE)
+_REWRITE = re.compile(r"\brewrite in ([A-Za-z0-9+#.]+)", re.IGNORECASE)
+_COMMANDS = (
+    ("cargo", re.compile(r"\bcargo\b", re.IGNORECASE)),
+    ("go test", re.compile(r"\bgo test\b", re.IGNORECASE)),
+    ("pytest", re.compile(r"\bpytest\b", re.IGNORECASE)),
+    ("mvn", re.compile(r"\bmvn\b", re.IGNORECASE)),
+    ("gradle", re.compile(r"\bgradle\b", re.IGNORECASE)),
+    ("dotnet", re.compile(r"\bdotnet\b", re.IGNORECASE)),
+    ("bundle exec", re.compile(r"\bbundle exec\b", re.IGNORECASE)),
+    ("yarn", re.compile(r"\byarn\b", re.IGNORECASE)),
+    ("pnpm", re.compile(r"\bpnpm\b", re.IGNORECASE)),
+    ("npm", re.compile(r"\bnpm\b", re.IGNORECASE)),
+    ("node", re.compile(r"\bnode\b", re.IGNORECASE)),
+)
+
+
+def _missing_document_field(payload: dict) -> str:
+    """A draft that cannot be rendered is rejected. The run uses the deterministic plan."""
+
+    if not isinstance(payload, dict):
+        return "Planner draft is not an object."
+    for key in _REQUIRED_DOCUMENT_FIELDS:
+        if key not in payload or payload.get(key) in (None, ""):
+            return f"Planner draft is missing {key}."
+    return ""
+
+
+def _tests_present(row: dict | None) -> bool | None:
+    if row is None or "has_tests" not in row:
+        return None
+    value = row.get("has_tests")
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    if value is None or value == "":
+        return None
+    return bool(value)
+
+
+def _ungrounded(prose: str, row: dict | None, evidence_text: str | None) -> str:
+    """Factual sentences have to match the cited row and the evidence toolchain.
+
+    evidence_text None skips the toolchain check so a caller that only has the
+    row can still reject a licence or test contradiction. An empty string is a
+    real evidence blob and does reject a command that is not in it.
+    """
+
+    reasons: list[str] = []
+    if row is not None:
+        reasons.extend(_row_prose_ungrounded(prose, row))
+    if evidence_text is not None:
+        blob = evidence_text.lower()
+        for name, pattern in _COMMANDS:
+            if pattern.search(prose) and name.lower() not in blob:
+                reasons.append(f"acceptance command {name} is not in the cited evidence toolchain.")
+                break
+    return " ".join(reasons)
+
+
+def _row_prose_ungrounded(prose: str, row: dict) -> list[str]:
+    reasons: list[str] = []
+    licence = str(row.get("licence_spdx") or "").strip()
+    for token in _LICENCE_TOKENS:
+        if not re.search(rf"(?<![A-Za-z0-9]){re.escape(token)}(?![A-Za-z0-9.+])", prose):
+            continue
+        if licence and (
+            token.casefold() == licence.casefold() or licence.casefold().startswith(token.casefold() + "-")
+        ):
+            continue
+        reasons.append(f"names licence {token}, which is not the cited row licence {licence or 'empty'}.")
+        break
+    if _tests_present(row) is True and _NO_TESTS.search(prose):
+        reasons.append("claims the repository has no tests, but has_tests is true.")
+    language = str(row.get("primary_language") or "").strip()
+    rewrite = _REWRITE.search(prose)
+    if rewrite and rewrite.group(1).casefold() != language.casefold():
+        reasons.append(
+            f"claims a rewrite in {rewrite.group(1)}, which is not primary_language {language or 'empty'}."
+        )
+    return reasons
 
 
 def _citation_mismatch(line: dict, evidence_by_id: dict | None) -> str:

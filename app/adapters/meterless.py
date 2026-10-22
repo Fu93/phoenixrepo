@@ -266,9 +266,18 @@ class MeterlessRuntime:
             last = status
         return last
 
-    def complete(self, messages: list[dict[str, str]], *, model: str | None = None) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        timeout: float | None = None,
+    ) -> str:
         self._require_token()
         chosen = model or self.model
+        limit = self.timeout_seconds if timeout is None else float(timeout)
+        if limit <= 0:
+            raise MeterlessError(f"Meterless chat timed out after {limit}s.")
         if not isinstance(messages, list) or not messages:
             raise MeterlessError("Chat messages are empty.", status_code=400)
         url = self.base_url.rstrip("/") + "/chat/completions"
@@ -280,12 +289,10 @@ class MeterlessRuntime:
             "max_tokens": self.max_tokens,
         }
         try:
-            with httpx.Client(timeout=self.timeout_seconds, transport=self._transport) as client:
+            with httpx.Client(timeout=limit, transport=self._transport) as client:
                 response = client.post(url, headers=self._headers(chat=True), json=body)
         except httpx.TimeoutException as exc:
-            raise MeterlessError(
-                f"Meterless chat timed out after {self.timeout_seconds}s."
-            ) from exc
+            raise MeterlessError(f"Meterless chat timed out after {limit}s.") from exc
         except httpx.HTTPError as exc:
             raise MeterlessError("Meterless chat request failed.") from exc
         if response.status_code in (401, 403):
