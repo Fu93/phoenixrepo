@@ -30,6 +30,7 @@ def test_committed_outputs_match_fresh_sample_runs(tmp_path):
             sample_mode=True,
             hmem_store_path=str(tmp_path / filename),
             log_dir=str(tmp_path / "logs"),
+            _env_file=None,
         )
         fresh = InvestigationOrchestrator(
             repo,

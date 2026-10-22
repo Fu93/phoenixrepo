@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from app.adapters.meterless import message_text
+from app.adapters.meterless import DEFAULT_MAX_TOKENS, message_text
 from app.errors import InvestigationError
 
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
@@ -40,6 +40,7 @@ class NvidiaDirect:
         base_url: str = DEFAULT_BASE_URL,
         model: str = "",
         timeout_seconds: float = 90,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         if not api_key:
@@ -54,7 +55,10 @@ class NvidiaDirect:
         self.base_url = normalize_nvidia_base_url(base_url)
         self.model = model
         self.timeout_seconds = timeout_seconds
+        self.max_tokens = max_tokens
         self._transport = transport
+        self.last_requested_model = model
+        self.last_served_model: str | None = None
 
     def provider(self) -> str:
         return self.provider_id
@@ -79,7 +83,9 @@ class NvidiaDirect:
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-        body = {"model": model or self.model, "messages": messages, "stream": False}
+        chosen = model or self.model
+        self.last_requested_model = chosen
+        body = {"model": chosen, "messages": messages, "stream": False, "max_tokens": self.max_tokens}
         try:
             with httpx.Client(timeout=self.timeout_seconds, transport=self._transport) as client:
                 response = client.post(url, headers=headers, json=body)
@@ -92,8 +98,12 @@ class NvidiaDirect:
         if response.status_code >= 400:
             raise NvidiaError(f"NVIDIA chat failed with HTTP {response.status_code}.")
         try:
-            return message_text(response.json())
-        except InvestigationError as exc:
-            raise NvidiaError(exc.message) from exc
+            payload = response.json()
         except ValueError as exc:
             raise NvidiaError("NVIDIA chat returned non-JSON.") from exc
+        served = payload.get("model") if isinstance(payload, dict) else None
+        self.last_served_model = served.strip() if isinstance(served, str) and served.strip() else None
+        try:
+            return message_text(payload)
+        except InvestigationError as exc:
+            raise NvidiaError(exc.message) from exc

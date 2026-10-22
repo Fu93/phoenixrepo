@@ -23,9 +23,10 @@ def build_adapters(settings: Settings, mode: str):
     meterless = MeterlessRuntime(
         base_url=settings.meterless_base_url,
         token=settings.meterless_runtime_token,
-        model=settings.meterless_model,
+        model=settings.requested_model(),
         app_id=settings.meterless_app,
         timeout_seconds=settings.meterless_timeout_seconds,
+        max_tokens=settings.meterless_max_tokens,
     )
     return zetaris, meterless
 

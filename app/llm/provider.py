@@ -13,9 +13,23 @@ class BoundLLM:
     provider: str
     model: str
     sample_standin: bool
+    requested_model: str = ""
+    served_model: str | None = None
+
+    def __post_init__(self) -> None:
+        self.requested_model = self.model
+        self.served_model = self.model if self.sample_standin else None
 
     def complete(self, messages: list[dict[str, str]]) -> str:
-        return self.inner.complete(messages, model=self.model)  # type: ignore[attr-defined]
+        self.requested_model = self.model
+        text = self.inner.complete(messages, model=self.model)  # type: ignore[attr-defined]
+        self.requested_model = getattr(self.inner, "last_requested_model", self.model)
+        served = getattr(self.inner, "last_served_model", None)
+        if served:
+            self.served_model = served
+        elif self.sample_standin:
+            self.served_model = self.model
+        return text
 
     def label(self) -> str:
         if self.sample_standin:
@@ -50,9 +64,10 @@ def build_llm(settings: Settings, *, sample: bool) -> BoundLLM:
     client = MeterlessRuntime(
         base_url=settings.meterless_base_url,
         token=settings.meterless_runtime_token,
-        model=settings.meterless_model,
+        model=settings.requested_model(),
         app_id=settings.meterless_app,
         timeout_seconds=settings.meterless_timeout_seconds,
+        max_tokens=settings.meterless_max_tokens,
     )
     if not client.configured():
         raise InvestigationError(

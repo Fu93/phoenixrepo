@@ -12,7 +12,7 @@ as aliases so one .env can drive both this script and the app.
   ZETARIS_BASE_URL (optional, default http://localhost:3000)
   MODEL_BASE_URL or METERLESS_BASE_URL
   MODEL_API_KEY or METERLESS_RUNTIME_TOKEN
-  NEMOTRON_MODEL or METERLESS_MODEL
+  MODEL_NAME, NEMOTRON_MODEL, or METERLESS_MODEL
 
 The model call sends meterless-app and meterless-scope when the base URL is the
 Meterless one. A /healthz response is not used as proof.
@@ -61,11 +61,11 @@ def redact(message: str) -> str:
 
 def check(name: str, fn) -> None:
     try:
-        fn()
+        detail = fn() or ""
     except Exception as exc:
         RESULTS.append(("FAIL", name, redact(str(exc))))
         return
-    RESULTS.append(("PASS", name, ""))
+    RESULTS.append(("PASS", name, detail if isinstance(detail, str) else ""))
 
 
 def zetaris_web() -> None:
@@ -100,14 +100,14 @@ def zetaris_sql() -> None:
         raise AssertionError("unexpected reply")
 
 
-def model_reply() -> None:
+def model_reply() -> str:
     base = env("MODEL_BASE_URL", "METERLESS_BASE_URL")
     key = env("MODEL_API_KEY", "METERLESS_RUNTIME_TOKEN")
-    model = env("NEMOTRON_MODEL", "METERLESS_MODEL")
+    model = env("MODEL_NAME", "NEMOTRON_MODEL", "METERLESS_MODEL") or "meterless/auto"
     if not base or not key or not model:
         raise AssertionError(
             "MODEL_BASE_URL/METERLESS_BASE_URL, MODEL_API_KEY/METERLESS_RUNTIME_TOKEN, "
-            "and NEMOTRON_MODEL/METERLESS_MODEL are required"
+            "and MODEL_NAME/NEMOTRON_MODEL/METERLESS_MODEL are required"
         )
     root = base.rstrip("/")
     if not root.endswith("/v1"):
@@ -125,13 +125,17 @@ def model_reply() -> None:
         json={
             "model": model,
             "messages": [{"role": "user", "content": "Reply with the single word: ready"}],
+            "max_tokens": int(os.environ.get("METERLESS_MAX_TOKENS", "8192")),
         },
         timeout=180,
     )
     response.raise_for_status()
-    choices = response.json().get("choices")
+    payload = response.json()
+    choices = payload.get("choices")
     if not choices:
         raise AssertionError("no reply from the model")
+    served = payload.get("model") or "-"
+    return f"requested={model} served={served}"
 
 
 def main() -> int:

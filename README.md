@@ -88,7 +88,7 @@ Sample mode needs no accounts. From PowerShell in this repo:
 
 ```powershell
 py -3 -m venv .venv
-Set-ExecutionPolicy -Scope Process Bypass
+Set-ExecutionPolicy -Scope Process Bypass -Force
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env
@@ -96,7 +96,7 @@ py -3 -m pytest -q
 py -3 run.py
 ```
 
-`Activate.ps1` may be blocked by the execution policy. `Set-ExecutionPolicy -Scope Process Bypass` applies only to that PowerShell window. The copied `.env.example` leaves `ZETARIS_API_KEY`, `METERLESS_RUNTIME_TOKEN`, and `NVIDIA_API_KEY` blank. Placeholder text such as `your-zetaris-api-key` is treated as unset, so `pytest` stays offline.
+`Activate.ps1` may be blocked by the execution policy. `Set-ExecutionPolicy -Scope Process Bypass -Force` applies only to that PowerShell window. The copied `.env.example` leaves `ZETARIS_API_KEY`, `METERLESS_RUNTIME_TOKEN`, and `NVIDIA_API_KEY` blank. Placeholder text such as `your-zetaris-api-key` is treated as unset, so `pytest` stays offline.
 
 In a second terminal, with the venv inactive and the server left running:
 
@@ -133,7 +133,7 @@ The live repository id you POST is `owner/name`, matching GitHub `full_name` and
 
 Install Nightshift for Windows from meterless.ai. In Nightshift's Providers tab, add NVIDIA and paste the NVIDIA API key there. Do not put that key in Cursor's model settings.
 
-On the NIGHT lanes, add a Nemotron model. Use a **Nemotron 3 Super** lane. `nemotron-3.5-super-vl-120b` was reported flaky. Confirm the exact id in your NVIDIA catalog and in Nightshift's model list. This repo does not guess a slug.
+On the NIGHT lanes, add a Nemotron model. The lane id observed in Nightshift model discovery is `nvidia/nemotron-3-super-120b-a12b`. `nemotron-3.5-super-vl-120b` was reported flaky.
 
 From the Nightshift Console, copy the Runtime URL and the runtime token into `.env`:
 
@@ -143,9 +143,16 @@ LLM_PROVIDER=meterless
 METERLESS_BASE_URL=http://127.0.0.1:8088/v1
 METERLESS_RUNTIME_TOKEN=the-console-token
 METERLESS_MODEL=meterless/auto
+MODEL_NAME=
 ```
 
-`meterless/auto` is a routing mode. If several lanes are eligible it may not land on Nemotron. For a Nemotron demo, pin a `meterless/*` id from discovery that is backed by the Nemotron lane.
+The default requested model is `meterless/auto`. Set `MODEL_NAME` to override it. For the Nemotron lane:
+
+```
+MODEL_NAME=nvidia/nemotron-3-super-120b-a12b
+```
+
+Checked on the user's Windows machine at 22 Oct 2026 15:00 BST. Nightshift's public API was `http://127.0.0.1:8088/v1`. `GET /v1/models` with the runtime token returned HTTP 200 and listed `meterless/auto`, `meterless/fast`, `meterless/deep`, `meterless/judge`, `nvidia/nemotron-3-super-120b-a12b`, `nvidia/nemotron-3-ultra-550b-a55b`, and other ids. Chat completions requesting `nvidia/nemotron-3-super-120b-a12b` and `meterless/auto` both returned HTTP 200 in 8–12 seconds. In both cases the response `model` field was `nvidia/nemotron-3-ultra-550b-a55b`: Nightshift reroutes. The message content began with the model's reasoning prose (for example `The user asks: ... We must reply with exactly`) before the answer, sometimes inside a `<think>` block. This app sends `max_tokens` 8192, records `requested_model` and `served_model` on each `MODEL_OUTPUT` trace line and in `metadata.llm`, and parses the last JSON object after that preamble.
 
 Check the connection (this does not print the token):
 
@@ -159,11 +166,11 @@ py -3 smoke_test.py
 
 Then:
 
-Replace `OWNER/REPO` in `input_examples/example_live.json`, then:
+Replace `OWNER/REPO` in `examples_live/example_live.json`, then:
 
 ```powershell
 py -3 run.py
-curl.exe -X POST http://127.0.0.1:8000/run -H "Content-Type: application/json" --data-binary "@input_examples/example_live.json"
+curl.exe -X POST http://127.0.0.1:8000/run -H "Content-Type: application/json" --data-binary "@examples_live/example_live.json"
 ```
 
 `--data-binary @file` is the form that works in Windows PowerShell 5.1 and pwsh 7. `curl.exe` is real curl, not `Invoke-WebRequest`.
@@ -216,8 +223,8 @@ Each output file is the JSON body of one real sample run, including that run's i
 - **Zetaris.** The only evidence source. Live calls use `POST {ZETARIS_REST_URL}/sql-editor/sqls/run` with a bearer API key, `X-Org-ID`, a fresh `X-Request-ID`, and a body of `queryId`, one `sql` statement, `source: SqlEditor`, and `limit`. Credentials are not logged.
 - **Meterless H-MEM.** Persistent memory of evidence claims and verdicts, with retrieval traces and an append-only ledger. `tests/engines/test_hmem_conformance.py` holds project tests modelled on the published H-MEM spec: the store, the ranking formula, promotion, decay of non-long-term memory, and supersede-without-delete. The official TypeScript conformance suite at github.com/Meterless/Meterless was not run.
 - **Meterless Markovian.** The multi-step investigation is a chunk loop with a bounded carryover.
-- **Meterless Runtime.** Primary model provider, implemented from the Power prompt "Add Meterless as a provider" on meterless.ai/engines.html (fetched 22 Oct 2026, Runtime contract as published there). Discovery is `GET /v1/models`. Chat is `POST /v1/chat/completions` with `meterless-app: phoenixrepo` and `meterless-scope: user`. The placeholder token `rt-local` is rejected. `/healthz` is not proof.
-- **NVIDIA.** Optional direct fallback. The award path is a Nemotron lane reached through Nightshift, which this Linux build environment cannot run. That live path is unverified here.
+- **Meterless Runtime.** Primary model provider, implemented from the Power prompt "Add Meterless as a provider" on meterless.ai/engines.html (fetched 22 Oct 2026, Runtime contract as published there). Discovery is `GET /v1/models`. Chat is `POST /v1/chat/completions` with `meterless-app: phoenixrepo` and `meterless-scope: user`. The default model is `meterless/auto`, overridable with `MODEL_NAME` (`nvidia/nemotron-3-super-120b-a12b` is the observed Nemotron lane). Nightshift may serve a different id than the one requested; each trace records both. The placeholder token `rt-local` is rejected. `/healthz` is not proof.
+- **NVIDIA.** Optional direct fallback via `LLM_PROVIDER=nvidia`. The award path is the Nightshift lane above. A manual check on 22 Oct 2026 15:00 BST saw Nightshift serve `nvidia/nemotron-3-ultra-550b-a55b` when `meterless/auto` or `nvidia/nemotron-3-super-120b-a12b` was requested. The automated tests here still use a local mock.
 - **Cursor.** Used as a coding agent. A Cursor cloud agent (Grok 4.7) implemented this build-window core. Cursor credit is not the product's model route. As of the 22 Oct 2026 organiser update, Cursor is optional and is declared here as a tool, not as a sponsor dependency of the running product.
 
 `metadata.json` is the same summary in one file.

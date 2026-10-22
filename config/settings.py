@@ -1,4 +1,4 @@
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Documented stand-ins. A copied .env.example must not look configured.
@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     meterless_base_url: str = "http://127.0.0.1:8088/v1"
     meterless_runtime_token: str | None = None
     meterless_model: str = "meterless/auto"
+    model_override: str = Field(default="", validation_alias=AliasChoices("MODEL_NAME"))
+    meterless_max_tokens: int = 8192
     meterless_app: str = "phoenixrepo"
     meterless_timeout_seconds: float = 180
 
@@ -66,6 +68,15 @@ class Settings(BaseSettings):
         if value is None:
             return None
         return usable_secret(str(value))
+
+    def requested_model(self) -> str:
+        """Nightshift model id to send. MODEL_NAME overrides METERLESS_MODEL."""
+
+        override = (self.model_override or "").strip()
+        if override:
+            return override
+        configured = (self.meterless_model or "").strip()
+        return configured or "meterless/auto"
 
     def secret_values(self) -> list[str]:
         values = [

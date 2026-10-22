@@ -12,10 +12,22 @@ from app.errors import InvestigationError
 from app.sql_catalog import ABANDONED_AFTER_DAYS, PERMISSIVE_LICENCES, SIMILAR_REPO_BLOCK
 
 
+_EMPTY_TEXT = {"", "none", "null", "nan"}
+
+
 def as_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"true", "1", "yes"}
+
+
+def blank_text(value: Any) -> str:
+    """Zetaris returns every cell as a string. Null markers are empty policy inputs."""
+
+    text = str(value if value is not None else "").strip()
+    if text.lower() in _EMPTY_TEXT:
+        return ""
+    return text
 
 
 def normalize_profile(row: dict[str, Any]) -> dict[str, Any]:
@@ -51,20 +63,20 @@ def normalize_profile(row: dict[str, Any]) -> dict[str, Any]:
         ) from exc
     return {
         **row,
-        "repo_id": str(row["repo_id"]),
-        "licence_spdx": str(row.get("licence_spdx") or "").strip(),
+        "repo_id": blank_text(row["repo_id"]),
+        "licence_spdx": blank_text(row.get("licence_spdx")),
         "days_since_push": days,
         "similar_repo_count": similar,
-        "unique_capability": str(row.get("unique_capability") or "").strip(),
-        "successor_url": str(row.get("successor_url") or "").strip(),
+        "unique_capability": blank_text(row.get("unique_capability")),
+        "successor_url": blank_text(row.get("successor_url")),
         "has_tests": as_bool(row.get("has_tests")),
         "has_license_file": as_bool(row.get("has_license_file")),
         "has_readme": as_bool(row.get("has_readme")),
         "has_ci": as_bool(row.get("has_ci")),
-        "ci_status": str(row.get("ci_status") or "").strip().lower(),
-        "category": str(row.get("category") or "").strip(),
-        "description": str(row.get("description") or "").strip(),
-        "data_origin": str(row.get("data_origin") or "").strip(),
+        "ci_status": blank_text(row.get("ci_status")).lower(),
+        "category": blank_text(row.get("category")),
+        "description": blank_text(row.get("description")),
+        "data_origin": blank_text(row.get("data_origin")),
         "archived": as_bool(row.get("archived")),
     }
 
@@ -78,9 +90,9 @@ def normalize_signal(row: dict[str, Any]) -> dict[str, Any]:
             status_code=502,
         )
     return {
-        "repo_id": str(row["repo_id"]),
-        "signal": str(row["signal"]),
-        "detail": str(row["detail"]),
+        "repo_id": blank_text(row["repo_id"]),
+        "signal": blank_text(row["signal"]),
+        "detail": blank_text(row["detail"]),
         "supports_revival": as_bool(row["supports_revival"]),
     }
 

@@ -3,23 +3,41 @@ import re
 
 from app.errors import InvestigationError
 
-_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+_THINK = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
+
+
+def _last_json_object(text: str) -> dict | None:
+    """Return the JSON object that ends last. Nested objects lose to their parent."""
+
+    decoder = json.JSONDecoder()
+    found: dict | None = None
+    found_end = -1
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            payload, offset = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        end = index + offset
+        if isinstance(payload, dict) and end > found_end:
+            found = payload
+            found_end = end
+    return found
 
 
 def parse_model_json(text: str) -> dict:
-    raw = text.strip()
-    if raw.startswith("```"):
-        raw = _FENCE.sub("", raw).strip()
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start < 0 or end < start:
+    """Accept a JSON object after reasoning prose, think tags, or a code fence.
+
+    Nightshift reasoning models prepend text such as "The user asks: ... We must
+    reply with exactly" and may wrap a draft in <think>. The answer is the last
+    JSON object in what remains.
+    """
+
+    raw = _THINK.sub("", text).strip()
+    payload = _last_json_object(raw)
+    if payload is None:
         raise InvestigationError("ModelOutputInvalid", "The model did not return a JSON object.", status_code=502)
-    try:
-        payload = json.loads(raw[start : end + 1])
-    except json.JSONDecodeError as exc:
-        raise InvestigationError("ModelOutputInvalid", "The model returned invalid JSON.", status_code=502) from exc
-    if not isinstance(payload, dict):
-        raise InvestigationError("ModelOutputInvalid", "The model JSON was not an object.", status_code=502)
     return payload
 
 

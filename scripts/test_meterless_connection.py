@@ -30,12 +30,14 @@ def main() -> int:
     parser.add_argument("--auto-detect", action="store_true", help="Probe the documented local ports.")
     args = parser.parse_args()
     settings = Settings()
+    requested = settings.requested_model()
     runtime = MeterlessRuntime(
         base_url=settings.meterless_base_url,
         token=settings.meterless_runtime_token,
-        model=settings.meterless_model,
+        model=requested,
         app_id=settings.meterless_app,
         timeout_seconds=settings.meterless_timeout_seconds,
+        max_tokens=settings.meterless_max_tokens,
     )
     try:
         status = runtime.auto_detect() if args.auto_detect else runtime.connection_status()
@@ -52,12 +54,15 @@ def main() -> int:
     try:
         reply = runtime.complete(
             [{"role": "user", "content": "Reply with the single word: ready"}],
-            model=settings.meterless_model,
+            model=requested,
         )
     except Exception as exc:
         print(f"FAIL chat: {exc}")
         return 1
-    print(f"chat ok model={settings.meterless_model} reply={reply.strip()[:120]}")
+    print(
+        f"chat ok requested={runtime.last_requested_model} "
+        f"served={runtime.last_served_model or '-'} reply={reply.strip()[:120]}"
+    )
     return 0
 
 

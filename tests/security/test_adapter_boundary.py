@@ -5,7 +5,7 @@ from config.settings import Settings
 
 
 def test_sponsor_adapters_are_real_integrations():
-    zetaris, meterless = build_adapters(Settings(), "sample")
+    zetaris, meterless = build_adapters(Settings(_env_file=None), "sample")
     assert zetaris.status()["integration"] == "SAMPLE_CACHE"
     assert meterless.status()["integration"] == "OPENAI_COMPATIBLE_RUNTIME"
     assert meterless.status()["name"] == "Meterless Runtime"

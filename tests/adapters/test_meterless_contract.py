@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from app.adapters.meterless import (
+    DEFAULT_MAX_TOKENS,
     MeterlessRuntime,
     candidate_base_urls,
     message_text,
@@ -79,6 +80,7 @@ class _Handler(BaseHTTPRequestHandler):
         assert self.headers.get("meterless-scope") == "user"
         assert self.headers.get("meterless-app") == "phoenixrepo"
         assert raw["model"] == "meterless/auto"
+        assert raw["max_tokens"] == DEFAULT_MAX_TOKENS
         body = json.dumps(
             {"choices": [{"message": {"content": [{"type": "text", "text": "ready"}]}}]}
         ).encode()
@@ -104,6 +106,52 @@ def test_discovery_and_chat_use_the_runtime_contract():
         assert good.complete([{"role": "user", "content": "ping"}]) == "ready"
     finally:
         server.shutdown()
+
+
+def test_rerouted_response_keeps_requested_and_served_models():
+    seen = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            return
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            seen["body"] = json.loads(self.rfile.read(length).decode())
+            content = (
+                "The user asks: reply ready. We must reply with exactly the word.\n"
+                "<think>draft answer</think>ready"
+            )
+            payload = {
+                "model": "nvidia/nemotron-3-ultra-550b-a55b",
+                "choices": [{"message": {"content": content}}],
+            }
+            encoded = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        runtime = MeterlessRuntime(
+            base_url=f"http://127.0.0.1:{server.server_address[1]}/v1",
+            token="real-token",
+            model="nvidia/nemotron-3-super-120b-a12b",
+            timeout_seconds=5,
+        )
+        text = runtime.complete([{"role": "user", "content": "ping"}])
+    finally:
+        server.shutdown()
+    assert seen["body"]["model"] == "nvidia/nemotron-3-super-120b-a12b"
+    assert seen["body"]["max_tokens"] == DEFAULT_MAX_TOKENS
+    assert runtime.last_requested_model == "nvidia/nemotron-3-super-120b-a12b"
+    assert runtime.last_served_model == "nvidia/nemotron-3-ultra-550b-a55b"
+    assert "ready" in text
+    assert "<think>" in text
 
 
 def test_message_text_keeps_a_plain_string():

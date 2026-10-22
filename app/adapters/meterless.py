@@ -15,6 +15,7 @@ from app.errors import InvestigationError
 from config.settings import usable_secret
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8088/v1"
+DEFAULT_MAX_TOKENS = 8192
 AUTO_DETECT_HOSTS = ("127.0.0.1", "localhost", "::1")
 AUTO_DETECT_PORTS = (8088, 8090, 8787, 11434)
 REJECTED_TOKEN = "rt-local"
@@ -135,6 +136,7 @@ class MeterlessRuntime:
         model: str = "meterless/auto",
         app_id: str = "phoenixrepo",
         timeout_seconds: float = 180,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.base_url = normalize_meterless_base_url(base_url)
@@ -142,7 +144,10 @@ class MeterlessRuntime:
         self.model = model or "meterless/auto"
         self.app_id = app_id or "phoenixrepo"
         self.timeout_seconds = timeout_seconds
+        self.max_tokens = max_tokens
         self._transport = transport
+        self.last_requested_model = self.model
+        self.last_served_model: str | None = None
 
     def provider(self) -> str:
         return self.provider_id
@@ -267,7 +272,13 @@ class MeterlessRuntime:
         if not isinstance(messages, list) or not messages:
             raise MeterlessError("Chat messages are empty.", status_code=400)
         url = self.base_url.rstrip("/") + "/chat/completions"
-        body = {"model": chosen, "messages": messages, "stream": False}
+        self.last_requested_model = chosen
+        body = {
+            "model": chosen,
+            "messages": messages,
+            "stream": False,
+            "max_tokens": self.max_tokens,
+        }
         try:
             with httpx.Client(timeout=self.timeout_seconds, transport=self._transport) as client:
                 response = client.post(url, headers=self._headers(chat=True), json=body)
@@ -289,4 +300,6 @@ class MeterlessRuntime:
             payload = response.json()
         except ValueError as exc:
             raise MeterlessError("Meterless chat returned non-JSON.") from exc
+        served = payload.get("model") if isinstance(payload, dict) else None
+        self.last_served_model = served.strip() if isinstance(served, str) and served.strip() else None
         return message_text(payload)

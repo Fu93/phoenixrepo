@@ -408,7 +408,8 @@ class InvestigationOrchestrator:
         user = (
             f"ROLE: {role}\nATTEMPT: {attempt}\nCARRYOVER:\n{carryover}\n"
             f"EVIDENCE_JSON:\n{json.dumps(payload, ensure_ascii=False, default=str)}\n"
-            "Return one JSON object. Cite only evidence ids from EVIDENCE_JSON."
+            "Return one JSON object and cite only evidence ids from EVIDENCE_JSON. "
+            "Reasoning before the answer is allowed. The last value in the reply must be that JSON object."
         )
         messages = [
             {
@@ -421,13 +422,17 @@ class InvestigationOrchestrator:
             {"role": "user", "content": user},
         ]
         raw = self.llm.complete(messages)
+        model_trace = {
+            "requested_model": self.llm.requested_model,
+            "served_model": self.llm.served_model,
+        }
         try:
             parsed = parse_model_json(raw)
         except InvestigationError as exc:
             self.trace.event(
                 agent_name=role,
                 action="MODEL_OUTPUT",
-                input_summary={"attempt": attempt},
+                input_summary={"attempt": attempt, **model_trace},
                 output_summary=exc.message,
                 target_agent="validator",
                 retry_count=attempt - 1,
@@ -438,7 +443,7 @@ class InvestigationOrchestrator:
         self.trace.event(
             agent_name=role,
             action="MODEL_OUTPUT",
-            input_summary={"attempt": attempt, "carryover_chars": len(carryover)},
+            input_summary={"attempt": attempt, "carryover_chars": len(carryover), **model_trace},
             output_summary=summary or parsed,
             target_agent=target,
             retry_count=attempt - 1,
@@ -736,6 +741,8 @@ class InvestigationOrchestrator:
                 "llm": {
                     "provider": self.llm.provider,
                     "model": self.llm.model,
+                    "requested_model": self.llm.requested_model,
+                    "served_model": self.llm.served_model,
                     "sample_standin": self.llm.sample_standin,
                     "label": self.llm.label(),
                     "explanation_accepted": model_accepted,

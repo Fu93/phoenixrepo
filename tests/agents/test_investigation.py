@@ -13,6 +13,7 @@ def _run(repo: str, repairs: int, tmp_path: Path) -> dict:
         sample_mode=True,
         hmem_store_path=str(tmp_path / "hmem.json"),
         log_dir=str(tmp_path / "logs"),
+        _env_file=None,
     )
     return InvestigationOrchestrator(
         repo,
@@ -98,6 +99,25 @@ def test_preexisting_duplicate_evidence_collapses_on_the_next_run(tmp_path):
     assert sum(1 for record in records if record["extra"].get("claim_id") == "CLM-LICENCE") == 8
 
 
+def test_sample_trace_records_requested_and_served_model(tmp_path):
+    result = _run("sample/generic-qr", 0, tmp_path)
+    assert result["metadata"]["llm"]["requested_model"] == "deterministic-rule-standin"
+    assert result["metadata"]["llm"]["served_model"] == "deterministic-rule-standin"
+    records = [
+        json.loads(line)
+        for line in Path(result["log_file"]).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    outputs = [
+        json.loads(record["input_summary"])
+        for record in records
+        if record["action"] == "MODEL_OUTPUT"
+    ]
+    assert outputs
+    assert outputs[0]["requested_model"] == "deterministic-rule-standin"
+    assert outputs[0]["served_model"] == "deterministic-rule-standin"
+
+
 def test_hmem_recalls_a_prior_verdict_on_the_next_run(tmp_path):
     first = _run("sample/field-notes", 0, tmp_path)
     second = _run("sample/field-notes", 0, tmp_path)
@@ -111,7 +131,12 @@ def test_hmem_recalls_a_prior_verdict_on_the_next_run(tmp_path):
 
 
 def test_missing_zetaris_does_not_fall_back(tmp_path):
-    settings = Settings(sample_mode=False, zetaris_api_key=None, llm_provider="meterless")
+    settings = Settings(
+        sample_mode=False,
+        zetaris_api_key=None,
+        llm_provider="meterless",
+        _env_file=None,
+    )
     try:
         InvestigationOrchestrator("sample/phoenix-ledger", "live", 0, settings).run()
     except Exception as exc:
