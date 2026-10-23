@@ -55,3 +55,7 @@ Do not emit this. If a quote is not in the text, write unknown rather than inven
   "alternative_quote": null
 }
 ```
+
+
+## Substitution rule (overrides feature-by-feature comparison)
+Judge by the user's core job, not by feature lists. Ask: "If this repository disappeared, could its target user do the same core job with the alternative, with at most minor inconvenience?" If yes, the overlap is "full" even when the alternative lacks some secondary features (diff view, tree view, stars, cookies, offline mode, UI polish) or combines them differently. A unique combination of secondary features is NOT novelty. Only a capability the core job cannot be done without, and that no alternative offers, counts as differentiation.

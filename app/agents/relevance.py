@@ -725,8 +725,10 @@ def build_search_queries(candidate: dict[str, Any], problem_statement: dict[str,
         "postgres", "sqlite", "mysql", "redis", "mongodb", "elastic", "docker", "kubernetes",
         "aws", "gcp", "azure", "kafka", "rabbitmq", "developer",
     }
-    if platform in stack_components:
-        # A database/infra word is how the repo is built, not the job it does.
+    identity_text = f"{cand_id} {desc}"
+    if platform in stack_components or not re.search(r"\b" + re.escape(platform) + r"\b", identity_text):
+        # A database/infra word is how the repo is built, not the job it does; and a platform
+        # only mentioned somewhere in the README (e.g. "github") is not what the tool is for.
         pattern_queries = []
     # Interleave so both the user's job (LLM) and platform patterns get searched early.
     interleaved: list[str] = []
@@ -1258,7 +1260,9 @@ def search_prior_art(
             elif not web_res.ok:
                 source_status["web"] = "SOURCE_ERROR"
 
-        buckets.append(bucket)
+        # One bucket per (query, source) so GitHub rows cannot crowd out npm and web rows.
+        for src in ("github", "npm", "web"):
+            buckets.append([x for x in bucket if x[1]["source"] == src])
 
     # Round-robin merge across queries
     cursors = [0] * len(buckets)

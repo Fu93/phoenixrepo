@@ -341,12 +341,18 @@ def search_web(
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     }
     try:
-        with httpx.Client(transport=transport, timeout=timeout_seconds) as client:
+        with httpx.Client(transport=transport, timeout=timeout_seconds, follow_redirects=True) as client:
             resp = client.get(url, headers=headers)
-            if resp.status_code >= 400:
+            if resp.status_code != 200:
+                # DuckDuckGo answers 202 with a challenge page when it rate-limits bots.
                 return [], "SOURCE_ERROR"
             items = parse_ddg_html(resp.text)
-            cache_file.write_text(json.dumps({"items": items, "status": "ok"}, indent=2), encoding="utf-8")
+            if not items and "no results" not in resp.text.lower():
+                # A 200 page with neither results nor a "no results" notice is a block page,
+                # not an empty search. Never cache it as a real empty result.
+                return [], "SOURCE_ERROR"
+            if items:
+                cache_file.write_text(json.dumps({"items": items, "status": "ok"}, indent=2), encoding="utf-8")
             return items, "ok"
     except Exception:
         return [], "SOURCE_ERROR"
