@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import os
 import urllib.parse
 from datetime import datetime, timezone
@@ -319,12 +320,119 @@ def search_pypi(
         return [], "SOURCE_ERROR"
 
 
+EXA_MCP_URL = "https://mcp.exa.ai/mcp"
+HN_SEARCH_URL = "https://hn.algolia.com/api/v1/search"
+
+
+def parse_exa_mcp(body: str) -> list[dict[str, Any]]:
+    """Parse a keyless Exa MCP ``web_search_exa`` response (JSON or SSE) into items.
+
+    Raises ValueError("SOURCE_ERROR: ...") on any malformed, error or empty response:
+    a rate limit or an empty answer must never look like "no prior art".
+    """
+    text = (body or "").strip()
+    if not text:
+        raise ValueError("SOURCE_ERROR: empty Exa response")
+    payload: Any = None
+    if text.startswith("{"):
+        payload = json.loads(text)
+    else:
+        for line in text.splitlines():
+            if line.startswith("data:"):
+                chunk = line[5:].strip()
+                if chunk:
+                    payload = json.loads(chunk)
+                    break
+    if not isinstance(payload, dict):
+        raise ValueError("SOURCE_ERROR: Exa response has no JSON payload")
+    if payload.get("error"):
+        raise ValueError(f"SOURCE_ERROR: Exa error {payload['error']}")
+    result = payload.get("result") or {}
+    if result.get("isError"):
+        raise ValueError("SOURCE_ERROR: Exa tool returned isError")
+    blocks = [str(c.get("text") or "") for c in (result.get("content") or []) if isinstance(c, dict)]
+    joined = "\n".join(blocks)
+    items: list[dict[str, Any]] = []
+    parts = re.split(r"(?m)^Title: ", joined)
+    for part in parts[1:]:
+        lines = part.splitlines()
+        title = lines[0].strip() if lines else ""
+        m = re.search(r"(?m)^URL: (\S+)", part)
+        if not m:
+            continue
+        url = m.group(1).strip()
+        snippet = ""
+        h = part.find("Highlights:")
+        if h != -1:
+            snippet = " ".join(part[h + len("Highlights:"):].split())[:800]
+        items.append({"url": url, "title": title, "snippet": snippet, "source": "exa"})
+    if not items:
+        raise ValueError("SOURCE_ERROR: Exa returned no parseable results")
+    return items
+
+
+def _search_exa(q: str, client: httpx.Client, num_results: int = 8) -> list[dict[str, Any]]:
+    resp = client.post(
+        EXA_MCP_URL,
+        headers={"Accept": "application/json, text/event-stream", "Content-Type": "application/json"},
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "web_search_exa", "arguments": {"query": q, "numResults": num_results}},
+        },
+    )
+    if resp.status_code != 200:
+        raise ValueError(f"SOURCE_ERROR: Exa HTTP {resp.status_code}")
+    return parse_exa_mcp(resp.text)
+
+
+def _search_hn(q: str, client: httpx.Client, limit: int = 3) -> list[dict[str, Any]]:
+    """Supplementary Hacker News stories (Show HN / launches). Failures are ignored."""
+    try:
+        resp = client.get(HN_SEARCH_URL, params={"query": q, "tags": "story", "hitsPerPage": limit})
+        if resp.status_code != 200:
+            return []
+        out = []
+        for hit in (resp.json().get("hits") or [])[:limit]:
+            url = hit.get("url") or f"https://news.ycombinator.com/item?id={hit.get('objectID')}"
+            title = str(hit.get("title") or "").strip()
+            if title:
+                out.append({"url": url, "title": title, "snippet": f"Hacker News story: {title}", "source": "hn"})
+        return out
+    except Exception:
+        return []
+
+
+def _search_ddg(q: str, client: httpx.Client) -> list[dict[str, Any]]:
+    url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(q)}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+    resp = client.get(url, headers=headers)
+    if resp.status_code != 200:
+        # DuckDuckGo answers 202 with a challenge page when it rate-limits bots.
+        raise ValueError(f"SOURCE_ERROR: DuckDuckGo HTTP {resp.status_code}")
+    items = parse_ddg_html(resp.text)
+    if not items:
+        # A 200 page with no results is treated as a block page, never as "no prior art".
+        raise ValueError("SOURCE_ERROR: DuckDuckGo returned no results")
+    for it in items:
+        it.setdefault("source", "duckduckgo")
+    return items
+
+
 def search_web(
     query: str,
     transport: httpx.BaseTransport | None = None,
-    timeout_seconds: float = 10.0,
+    timeout_seconds: float = 30.0,
     cache_dir: Path | str | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
+    """Whole-web search: Exa (keyless MCP) first, Hacker News as a supplement,
+    DuckDuckGo HTML as a fallback. Bing is deliberately not used (bot-degraded junk).
+
+    Returns (items, "ok") or ([], "SOURCE_ERROR"). Only non-empty ok results are cached.
+    """
     q = query.strip()
     if not q:
         return [], "ok"
@@ -332,41 +440,39 @@ def search_web(
     if cache_file.exists():
         try:
             cached = json.loads(cache_file.read_text(encoding="utf-8"))
-            return cached.get("items", []), cached.get("status", "ok")
+            if cached.get("status") == "ok" and cached.get("items"):
+                return cached["items"], "ok"
         except Exception:
             pass
 
-    url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(q)}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    }
+    items: list[dict[str, Any]] = []
     try:
         with httpx.Client(transport=transport, timeout=timeout_seconds, follow_redirects=True) as client:
-            resp = client.get(url, headers=headers)
-            if resp.status_code != 200:
-                # DuckDuckGo answers 202 with a challenge page when it rate-limits bots.
-                return [], "SOURCE_ERROR"
-            items = parse_ddg_html(resp.text)
-            if not items and "no results" not in resp.text.lower():
-                # A 200 page with neither results nor a "no results" notice is a block page,
-                # not an empty search. Never cache it as a real empty result.
-                return [], "SOURCE_ERROR"
-            if items:
-                cache_file.write_text(json.dumps({"items": items, "status": "ok"}, indent=2), encoding="utf-8")
-            return items, "ok"
+            try:
+                items = _search_exa(q, client)
+                seen = {i["url"] for i in items}
+                items += [h for h in _search_hn(q, client) if h["url"] not in seen]
+            except Exception:
+                try:
+                    items = _search_ddg(q, client)
+                except Exception:
+                    return [], "SOURCE_ERROR"
     except Exception:
         return [], "SOURCE_ERROR"
 
+    cache_file.write_text(json.dumps({"items": items, "status": "ok"}, indent=2), encoding="utf-8")
+    return items, "ok"
+
 
 class WebSearchTool:
-    """Web search tool querying DuckDuckGo HTML with normal User-Agent."""
+    """Whole-web search tool: Exa keyless MCP, Hacker News supplement, DuckDuckGo fallback."""
 
     name = "web_search"
 
     def __init__(
         self,
         transport: httpx.BaseTransport | None = None,
-        timeout_seconds: float = 10.0,
+        timeout_seconds: float = 30.0,
         cache_dir: Path | str | None = None,
     ) -> None:
         self.transport = transport
@@ -384,12 +490,12 @@ class WebSearchTool:
             timeout_seconds=self.timeout_seconds,
             cache_dir=self.cache_dir,
         )
-        url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}"
+        url = f"{EXA_MCP_URL}?q={urllib.parse.quote_plus(query)}"
         if status == "SOURCE_ERROR":
             return ToolResult(
                 ok=False,
                 data="",
-                error="SOURCE_ERROR: DuckDuckGo search failed",
+                error="SOURCE_ERROR: web search failed (Exa and DuckDuckGo)",
                 source_url=url,
                 fetched_at=now,
             )
