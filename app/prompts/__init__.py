@@ -17,6 +17,12 @@ ROLES = (
     "equivalence",
     "venture_analyst",
     "venture_reviewer",
+    "relevance_discovery",
+    "relevance_problem",
+    "relevance_alternative",
+    "relevance_capabilities",
+    "relevance_demand",
+    "relevance_coverage",
 )
 
 _DIR = Path(__file__).resolve().parent

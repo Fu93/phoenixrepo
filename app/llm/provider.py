@@ -218,10 +218,14 @@ def build_llm(settings: Settings, *, sample: bool) -> BoundLLM:
             "Live mode requires METERLESS_RUNTIME_TOKEN. Sample mode is not used as a fallback.",
             status_code=400,
         )
+    lanes = settings.meterless_lanes_list()
+    req = settings.requested_model()
+    if req and (not lanes or lanes[0] != req):
+        lanes = (req, *(l for l in lanes if l != req))
     return BoundLLM(
         client,
         "meterless",
         client.model,
         False,
-        lanes=settings.meterless_lanes_list(),
+        lanes=lanes,
     )

@@ -47,7 +47,11 @@ class GitHubTool:
         query = str(args.get("query") or "")
         repo = str(args.get("repo") or "").strip()
 
-        if action == "issues" or query:
+        if action in {"repositories", "search_repos", "search_repositories"}:
+            q = query
+            per_page = int(args.get("per_page") or 10)
+            url = f"https://api.github.com/search/repositories?q={q}&per_page={per_page}"
+        elif action == "issues" or (query and action != "repo" and action != "readme"):
             q = query or f"repo:{repo}"
             url = f"https://api.github.com/search/issues?q={q}"
         elif action == "readme" or args.get("kind") == "readme":

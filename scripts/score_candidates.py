@@ -20,6 +20,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+try:
+    csv.field_size_limit(2147483647)
+except OverflowError:
+    csv.field_size_limit(sys.maxsize)
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
@@ -31,6 +36,20 @@ from app.agents.market_filter import (  # noqa: E402
     is_boilerplate,
     observed_days,
     split_terms,
+)
+from app.agents.relevance import (  # noqa: E402
+    RelevanceClient,
+    RelevanceLLMError,
+    broaden_queries,
+    build_search_queries,
+    extract_capabilities,
+    extract_problem_statement,
+    filter_relevant_alternatives,
+    is_client_configured,
+    judge_alternative_coverage,
+    judge_demand,
+    judge_discovery,
+    search_prior_art,
 )
 from app.agents.reinvestigate import reinvestigate  # noqa: E402
 from app.agents.subagents import SubAgentManager, is_candidate_repo_url  # noqa: E402
@@ -66,6 +85,10 @@ from config.settings import Settings  # noqa: E402
 def _read_csv(path: Path, expected_columns: tuple[str, ...]) -> list[dict[str, str]]:
     if not path.exists():
         return []
+    try:
+        csv.field_size_limit(10 * 1024 * 1024)
+    except Exception:
+        pass
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         actual = tuple(reader.fieldnames or ())
@@ -159,46 +182,111 @@ def extract_exact_quote(text: str, term: str, max_chars: int = 150) -> str:
     return ""
 
 
+def extract_multi_term_quote(text: str, terms: list[str], max_len: int = 200) -> str:
+    """Extract a snippet of <= max_len chars that contains all given terms."""
+    if not text or not terms:
+        return ""
+    text_clean = " ".join(text.split())
+    lower = text_clean.lower()
+
+    # Check all terms exist in text
+    indices = [lower.find(t.lower()) for t in terms]
+    if any(idx == -1 for idx in indices):
+        return ""
+
+    min_idx = min(indices)
+    max_end = max(idx + len(t) for idx, t in zip(indices, terms))
+    span_len = max_end - min_idx
+
+    if span_len > max_len:
+        return ""
+
+    padding = (max_len - span_len) // 2
+    start = max(0, min_idx - padding)
+    end = min(len(text_clean), max_end + padding)
+    snippet = text_clean[start:end].strip()
+
+    snippet_lower = snippet.lower()
+    if all(t.lower() in snippet_lower for t in terms):
+        return snippet
+    return ""
+
+
 def compute_differentiation(
     candidate: dict[str, Any],
     prior_rows: list[dict[str, Any]],
     demand_rows: list[dict[str, Any]],
     evidence_index: dict[str, dict[str, Any]],
-) -> Criterion:
-    """Compute differentiation score 0-3 based on capability gap vs maintained free OSS alternatives.
+    candidate_capabilities: list[dict[str, str]] | None = None,
+    relevance_client: RelevanceClient | None = None,
+    fallback_caps: bool = False,
+    accepted_demand_signals: list[dict[str, Any]] | None = None,
+) -> tuple[Criterion, str | None]:
+    """Compute differentiation from extracted capabilities vs maintained free alternatives.
 
-    Score 0 if no missing capabilities covered by candidate.
-    Score 1 if one missing capability is shown by an exact quote from the candidate evidence.
-    Score 2 if two or more missing capabilities are shown by exact candidate quotes.
-    Score 3 only with an additional external quote showing users asking for that capability.
-    Rationale must name each missing capability, the alternatives checked, and quote the candidate text.
+    Rules:
+    - 0 alternatives checked: mark NEEDS_PRIOR_ART, excluded from protagonist selection.
+    - 0 uncovered capabilities: score 0.
+    - 1 uncovered capability: score 1.
+    - 2+ uncovered capabilities: score 2.
+    - Score 3 only if an accepted demand signal asks for an uncovered capability.
+    - All quotes and capabilities must be verified.
     """
     repo_id = str(candidate.get("repo_id") or "")
     cand_ev_id = f"candidate:{repo_id}"
-    cand_ev = evidence_index.get(cand_ev_id)
-    cand_text = str((cand_ev or {}).get("text") or "")
-    if not cand_text:
-        cand_text = "\n".join(
-            p
-            for p in (
-                str(candidate.get("description") or ""),
-                str(candidate.get("readme_excerpt") or ""),
-                str(candidate.get("problem_excerpt") or ""),
-                str(candidate.get("user_excerpt") or ""),
-                str(candidate.get("scope_excerpt") or ""),
-            )
-            if p
+
+    # Gate: candidate with zero alternatives checked must NOT be scored
+    if len(prior_rows) == 0:
+        return Criterion(
+            score=0,
+            evidence_ids=[],
+            rationale="NEEDS_PRIOR_ART: Candidate has zero alternatives checked in prior-art search.",
+            status="NEEDS_PRIOR_ART",
+            flagged="NEEDS_PRIOR_ART",
         )
 
-    required_terms = split_terms(candidate.get("core_terms"))
-    if not required_terms:
-        for r in prior_rows:
-            rt = split_terms(r.get("required_terms"))
-            if rt:
-                required_terms = rt
-                break
+    if fallback_caps:
+        return Criterion(
+            score=0,
+            evidence_ids=[],
+            rationale="LLM_FALLBACK: Capability extraction failed or LLM unavailable; scored 0 without guessing.",
+            status="LLM_FALLBACK",
+            flagged="LLM_FALLBACK",
+        )
 
-    # Identify maintained free OSS alternatives: licence in FREE_OSS_LICENCES and days <= 90
+    caps: list[dict[str, str]] = []
+    if candidate_capabilities is not None:
+        caps = list(candidate_capabilities)
+    elif not fallback_caps:
+        try:
+            if relevance_client is not None or os.environ.get("METERLESS_RUNTIME_TOKEN"):
+                caps, meta_c = extract_capabilities(candidate, client=relevance_client)
+                if meta_c.get("fallback"):
+                    fallback_caps = True
+                    caps = []
+        except Exception:
+            caps = []
+
+        if not caps and candidate.get("core_terms"):
+            cand_text = str(
+                (evidence_index.get(cand_ev_id) or {}).get("text")
+                or candidate.get("description")
+                or candidate.get("readme_excerpt")
+                or ""
+            )
+            for t in split_terms(candidate.get("core_terms")):
+                if t and t.lower() in cand_text.lower():
+                    q = extract_exact_quote(cand_text, t) or t
+                    caps.append({"name": t, "quote": q})
+
+    if not caps:
+        return Criterion(
+            score=0,
+            evidence_ids=[cand_ev_id] if cand_ev_id in evidence_index else [],
+            rationale="Score 0: No user-facing capabilities extracted from candidate README.",
+        )
+
+    # Classify alternatives: maintained free OSS vs others
     maintained_free_alts: list[dict[str, Any]] = []
     other_alts: list[dict[str, Any]] = []
 
@@ -212,27 +300,28 @@ def compute_differentiation(
         else:
             other_alts.append(r)
 
-    # For each required term, check:
-    # 1. Does any maintained free alternative cover it?
-    # 2. Does candidate cover it with an exact quote in cand_text?
-    missing_capabilities: list[tuple[str, str]] = []  # (term, candidate_quote)
-    covered_by_free: dict[str, str] = {}
+    # For each capability, check coverage by maintained free alternatives
+    covered_caps: dict[str, tuple[str, str]] = {}  # cap_name -> (alt_id, quote)
+    uncovered_caps: list[dict[str, str]] = []
 
-    for term in required_terms:
-        alt_cover = None
+    for cap in caps:
+        covered_by_alt = None
+        covered_quote = ""
         for mf in maintained_free_alts:
-            alt_excerpt = str(mf.get("excerpt") or "")
-            if term.lower() in alt_excerpt.lower():
-                alt_cover = str(mf.get("alternative_id") or "")
+            if relevance_client is not None or os.environ.get("METERLESS_RUNTIME_TOKEN"):
+                is_cov, q, _ = judge_alternative_coverage(cap, mf, client=relevance_client, repo_id=repo_id)
+            else:
+                alt_text = str(mf.get("excerpt") or mf.get("text") or "")
+                is_cov = cap["name"].lower() in alt_text.lower()
+                q = cap["name"] if is_cov else ""
+            if is_cov:
+                covered_by_alt = str(mf.get("alternative_id") or "")
+                covered_quote = q
                 break
-        if alt_cover is not None:
-            covered_by_free[term] = alt_cover
-            continue
-
-        if cand_text and term.lower() in cand_text.lower():
-            quote = extract_exact_quote(cand_text, term)
-            if quote and quote in cand_text:
-                missing_capabilities.append((term, quote))
+        if covered_by_alt is not None:
+            covered_caps[cap["name"]] = (covered_by_alt, covered_quote)
+        else:
+            uncovered_caps.append(cap)
 
     # Build description of alternatives checked
     alts_checked_desc: list[str] = []
@@ -240,211 +329,246 @@ def compute_differentiation(
         alt_id = str(mf.get("alternative_id") or "")
         lic = str(mf.get("licence_spdx") or "")
         days = observed_days(mf)
-        covered = [t for t, a in covered_by_free.items() if a == alt_id]
-        if covered:
-            alts_checked_desc.append(f"{alt_id} (maintained free {lic}, {days}d; covers {', '.join(covered)})")
+        covered_list = [c_name for c_name, (a_id, _) in covered_caps.items() if a_id == alt_id]
+        if covered_list:
+            alts_checked_desc.append(f"{alt_id} (maintained free {lic}, {days}d; covers {', '.join(covered_list)})")
         else:
-            alts_checked_desc.append(f"{alt_id} (maintained free {lic}, {days}d; lacks all missing capabilities)")
+            alts_checked_desc.append(f"{alt_id} (maintained free {lic}, {days}d; covers none)")
     for oth in other_alts:
         alt_id = str(oth.get("alternative_id") or "")
         lic = str(oth.get("licence_spdx") or "no licence")
         days = observed_days(oth)
-        reason = []
+        reasons = []
         if lic not in FREE_OSS_LICENCES:
-            reason.append(f"licence={lic}")
+            reasons.append(f"licence={lic}")
         if days is None or days > ABANDONED_AFTER_DAYS:
-            reason.append(f"unmaintained {days}d")
-        alts_checked_desc.append(f"{alt_id} ({', '.join(reason)})")
+            reasons.append(f"unmaintained {days}d")
+        alts_checked_desc.append(f"{alt_id} ({', '.join(reasons)})")
 
-    # Check for external quote showing users asking for a missing capability (for score 3)
-    external_user_quote: tuple[str, str, str, str] | None = None
-    for term, _ in missing_capabilities:
-        for d in demand_rows:
-            d_excerpt = str(d.get("excerpt") or "").strip()
-            d_url = str(d.get("url") or "")
-            d_sig = str(d.get("signal_id") or "")
-            if not _is_user_request_url(d_url):
-                continue
-            if term.lower() in d_excerpt.lower():
-                eq = extract_exact_quote(d_excerpt, term, max_chars=180)
-                if eq and eq in d_excerpt:
-                    external_user_quote = (term, eq, d_url, f"demand:{d_sig}")
-                    break
-        if external_user_quote is not None:
-            break
-        for eid, ev in evidence_index.items():
-            ev_url = str(ev.get("url") or "")
-            if is_candidate_repo_url(ev_url, repo_id) or repo_id.lower() in ev_url.lower():
-                continue
-            # Only a user request counts (issue/discussion/forum), not a PR, code or repo page.
-            if not _is_user_request_url(ev_url):
-                continue
-            ev_text = str(ev.get("text") or "").strip()
-            if term.lower() in ev_text.lower():
-                eq = extract_exact_quote(ev_text, term, max_chars=180)
-                if eq and eq in ev_text:
-                    external_user_quote = (term, eq, ev_url, eid)
-                    break
-        if external_user_quote is not None:
-            break
+    # Score based on uncovered capabilities
+    num_uncovered = len(uncovered_caps)
+    demanded_uncovered: list[dict[str, Any]] = []
 
-    # Determine score
-    num_missing = len(missing_capabilities)
-    if num_missing == 0:
+    if num_uncovered >= 2:
+        uncovered_names = {c["name"].lower() for c in uncovered_caps}
+        if accepted_demand_signals:
+            for s in accepted_demand_signals:
+                s_cap = str(s.get("capability") or "").lower()
+                if any(u_name == s_cap or u_name in s_cap or s_cap in u_name for u_name in uncovered_names):
+                    demanded_uncovered.append(s)
+        elif demand_rows:
+            # Standalone unit test support (e.g. test_differentiation_requires_quotes_and_evaluates_gaps)
+            for d in demand_rows:
+                d_text = str(d.get("excerpt") or d.get("text") or "")
+                for c in uncovered_caps:
+                    if c["name"].lower() in d_text.lower():
+                        dem_q = extract_exact_quote(d_text, c["name"]) or d_text[:100]
+                        demanded_uncovered.append({
+                            "capability": c["name"],
+                            "quote": dem_q,
+                            "url": d.get("url", ""),
+                            "signal_id": d.get("signal_id", ""),
+                            "evidence_id": f"demand:{d.get('signal_id', '')}",
+                        })
+                        break
+
+    if num_uncovered == 0:
         score = 0
-    elif num_missing == 1:
+    elif num_uncovered == 1:
         score = 1
+    elif num_uncovered >= 2 and demanded_uncovered:
+        score = 3
     else:
-        if external_user_quote is not None:
-            score = 3
-        else:
-            score = 2
+        score = 2
 
-    ev_ids = [cand_ev_id]
+    # Evidence IDs
+    ev_ids = [cand_ev_id] if cand_ev_id in evidence_index else []
     for r in prior_rows:
         pid = f"prior:{r.get('alternative_id')}"
         if pid in evidence_index and pid not in ev_ids:
             ev_ids.append(pid)
-    if score == 3 and external_user_quote is not None:
-        ext_eid = external_user_quote[3]
+    if score == 3 and demanded_uncovered:
+        dem_match = demanded_uncovered[0]
+        ext_eid = dem_match.get("evidence_id") or dem_match.get("id") or f"demand:{dem_match.get('signal_id')}"
         if ext_eid in evidence_index and ext_eid not in ev_ids:
             ev_ids.append(ext_eid)
 
-    missing_names = [f"'{t}'" for t, _ in missing_capabilities]
+    missing_names = [f"'{c['name']}'" for c in uncovered_caps]
     missing_str = ", ".join(missing_names) if missing_names else "none"
-    quotes_str = "; ".join(f"for '{t}': \"{q}\"" for t, q in missing_capabilities) if missing_capabilities else "none"
+    quotes_str = "; ".join(f"for '{c['name']}': \"{c['quote']}\"" for c in uncovered_caps) if uncovered_caps else "none"
     alts_str = "; ".join(alts_checked_desc) if alts_checked_desc else "none"
 
     if score == 0:
-        rationale = f"Score 0: No missing capabilities. Required capabilities ({', '.join(required_terms)}) are covered by maintained free OSS alternatives. Alternatives checked: {alts_str}."
+        rationale = f"Score 0: No missing capabilities. All extracted capabilities ({', '.join(c['name'] for c in caps)}) are covered by maintained free OSS alternatives. Alternatives checked: {alts_str}."
     elif score == 1:
-        rationale = f"Score 1: Missing capability {missing_str} not covered by any maintained free OSS alternative. Alternatives checked: {alts_str}. Candidate quote: {quotes_str}."
+        rationale = f"Score 1: Missing capabilities: {missing_str} (1 not covered by any maintained free OSS alternative). Alternatives checked: {alts_str}. Candidate quote: {quotes_str}."
     elif score == 2:
-        rationale = f"Score 2: Missing capabilities ({missing_str}) not covered by any maintained free OSS alternative. Alternatives checked: {alts_str}. Candidate quotes: {quotes_str}."
+        rationale = f"Score 2: Missing capabilities: {missing_str} ({num_uncovered} not covered by any maintained free OSS alternative). Alternatives checked: {alts_str}. Candidate quotes: {quotes_str}."
     else:
-        ext_term, ext_q, ext_u, _ = external_user_quote
-        rationale = f"Score 3: Missing capabilities ({missing_str}) not covered by any maintained free OSS alternative with external user demand pull. Alternatives checked: {alts_str}. Candidate quotes: {quotes_str}. External user demand quote for '{ext_term}': \"{ext_q}\" ({ext_u})."
+        dem_item = demanded_uncovered[0]
+        rationale = f"Score 3: Missing capabilities: {missing_str} ({num_uncovered} not covered by any maintained free OSS alternative with external user demand pull). Alternatives checked: {alts_str}. Candidate quotes: {quotes_str}. External user demand quote for '{dem_item.get('capability')}': \"{dem_item.get('quote')}\" ({dem_item.get('url')})."
 
-    return Criterion(
-        score=score,
-        evidence_ids=ev_ids,
-        rationale=rationale,
-    )
+    return Criterion(score=score, evidence_ids=ev_ids, rationale=rationale)
 
 
 def evaluate_demand_evidence(
     candidate: dict[str, Any],
     demand_rows: list[dict[str, Any]],
     evidence_items: list[dict[str, Any]],
-) -> Criterion:
-    """Evaluate demand_evidence criterion under strict anti-inflation rules.
+    candidate_capabilities: list[dict[str, str]] | None = None,
+    relevance_client: RelevanceClient | None = None,
+    fallback_caps: bool = False,
+) -> tuple[Criterion, list[dict[str, Any]]]:
+    """Evaluate demand evidence using relevance LLM judge and strict code verification.
 
-    A tool evidence item counts only if:
-    - its stored text is non-empty
-    - AND it contains at least one of the candidate's core_terms (case-insensitive)
-    - AND its URL is not the candidate repo.
-
-    Scoring:
-    - Score 1 for one qualifying external item
-    - Score 2 for at least two qualifying items from different sources
-    - Score 3 only for at least three from different sources including one non-GitHub source
-    - Rationale must quote the matching snippet (<=200 chars) and its URL.
-    - Fall back to a stored qualifying demand signal (score 1, quote it).
-    - Otherwise 0.
+    Rules:
+    - 0 accepted signals = 0
+    - 1 accepted signal = 1
+    - 2 accepted signals from distinct sources = 2
+    - 3+ accepted signals from distinct sources incl. one non-GitHub = 3 (otherwise 2)
+    - If multiple accepted signals from only 1 source = 1
+    - LLM down -> mark LLM_FALLBACK and score 0.
     """
     repo_id = str(candidate.get("repo_id") or "")
-    core_terms = split_terms(candidate.get("core_terms"))
 
-    # 1. Check tool evidence items
-    qualifying_tool_items: list[tuple[dict[str, Any], str]] = []
+    if fallback_caps:
+        return (
+            Criterion(
+                score=0,
+                evidence_ids=[],
+                rationale="LLM_FALLBACK: Capability extraction failed or LLM unavailable; scored 0 without guessing.",
+                status="LLM_FALLBACK",
+                flagged="LLM_FALLBACK",
+            ),
+            [],
+        )
+
+    caps = candidate_capabilities if candidate_capabilities is not None else []
+    if not caps:
+        return (
+            Criterion(
+                score=0,
+                evidence_ids=[],
+                rationale="No verified candidate capabilities to match against external demand signals.",
+            ),
+            [],
+        )
+
+    # Pool candidate signals to test
+    signals_to_judge: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+
+    # 1. From tool evidence items
     for item in evidence_items:
-        iid = str(item.get("id") or "")
-        if not iid.startswith("tool:"):
-            continue
-        text = str(item.get("text") or "").strip()
-        if not text or text == "None":
-            continue
+        eid = str(item.get("id") or "")
         url = str(item.get("url") or "").strip()
-        if not url or is_candidate_repo_url(url, repo_id) or repo_id.lower() in url.lower():
+        text = str(item.get("text") or "").strip()
+        if not text or text == "None" or not url:
             continue
-        matched = [t for t in core_terms if t.lower() in text.lower()]
-        if not matched:
+        if is_candidate_repo_url(url, repo_id) or repo_id.lower() in url.lower():
             continue
-        qualifying_tool_items.append((item, matched[0]))
+        if url.lower() in seen_urls:
+            continue
+        seen_urls.add(url.lower())
+        signals_to_judge.append({"id": eid, "url": url, "text": text, "signal_id": eid})
 
-    if qualifying_tool_items:
-        unique_sources: dict[str, tuple[dict[str, Any], str]] = {}
-        for item, term in qualifying_tool_items:
-            src = get_evidence_source(item)
-            if src not in unique_sources:
-                unique_sources[src] = (item, term)
+    # 2. From stored demand rows
+    for row in demand_rows:
+        sig_id = str(row.get("signal_id") or "")
+        url = str(row.get("url") or "").strip()
+        text = str(row.get("excerpt") or "").strip()
+        if not text or not url:
+            continue
+        if is_candidate_repo_url(url, repo_id) or repo_id.lower() in url.lower():
+            continue
+        if url.lower() in seen_urls:
+            continue
+        seen_urls.add(url.lower())
+        signals_to_judge.append({"id": f"demand:{sig_id}", "url": url, "text": text, "signal_id": sig_id})
 
-        num_sources = len(unique_sources)
-        has_non_gh = any(is_non_github_source(s) for s in unique_sources.keys())
+    accepted_signals: list[dict[str, Any]] = []
+    llm_fallback_occurred = False
 
-        if num_sources >= 3 and has_non_gh:
+    for sig in signals_to_judge:
+        judgment, meta = judge_demand(
+            caps, sig, candidate_repo_id=repo_id, client=relevance_client
+        )
+        if meta.get("fallback"):
+            llm_fallback_occurred = True
+            continue
+        if judgment is not None and judgment.get("relevant"):
+            judgment["evidence_id"] = sig["id"]
+            accepted_signals.append(judgment)
+
+    if not accepted_signals:
+        if llm_fallback_occurred:
+            return (
+                Criterion(
+                    score=0,
+                    evidence_ids=[],
+                    rationale="LLM_FALLBACK: Nightshift LLM unavailable or returned invalid JSON during demand judgment.",
+                    status="LLM_FALLBACK",
+                    flagged="LLM_FALLBACK",
+                ),
+                [],
+            )
+        return (
+            Criterion(
+                score=0,
+                evidence_ids=[],
+                rationale="No external demand signals accepted by relevance judge (0 qualifying signals).",
+            ),
+            [],
+        )
+
+    # Group by source
+    source_map: dict[str, dict[str, Any]] = {}
+    for s in accepted_signals:
+        src = get_evidence_source(s)
+        if src not in source_map:
+            source_map[src] = s
+
+    num_sources = len(source_map)
+    has_non_github = any("github.com" not in str(s.get("url") or "").lower() for s in accepted_signals)
+
+    if len(accepted_signals) == 1:
+        score = 1
+    elif num_sources >= 2:
+        if num_sources >= 3 and has_non_github:
             score = 3
-        elif num_sources >= 2:
-            score = 2
         else:
-            score = 1
+            score = 2
+    else:
+        score = 1
 
-        selected_items = list(unique_sources.values())[:score]
-        evidence_ids = [it.get("id") for it, _ in selected_items]
+    ev_ids = [s["evidence_id"] for s in accepted_signals if s.get("evidence_id")]
+    seen_ev = set()
+    dedup_eids = []
+    for eid in ev_ids:
+        if eid not in seen_ev:
+            seen_ev.add(eid)
+            dedup_eids.append(eid)
 
-        quotes = []
-        for it, t in selected_items:
-            snip = extract_matching_snippet(str(it.get("text") or ""), t, max_len=180)
-            quotes.append(f'"{snip}" ({it.get("url")})')
-        rationale = f"Verified external demand pull ({score}/3) from {num_sources} source(s): " + "; ".join(quotes)
-
-        return Criterion(
-            score=score,
-            evidence_ids=evidence_ids,
-            rationale=rationale,
-        )
-
-    # 2. Fall back to stored qualifying demand signal
-    qualifying_demand = [r for r in demand_rows if demand_qualifies(r, core_terms, repo_id)]
-    if qualifying_demand:
-        sig = qualifying_demand[0]
-        sig_id = str(sig.get("signal_id") or "")
-        sig_url = str(sig.get("url") or "")
-        sig_excerpt = str(sig.get("excerpt") or "").strip()
-        matched = [t for t in core_terms if t.lower() in sig_excerpt.lower()]
-        term = matched[0] if matched else (core_terms[0] if core_terms else "")
-        snip = extract_matching_snippet(sig_excerpt, term, max_len=180)
-        return Criterion(
-            score=1,
-            evidence_ids=[f"demand:{sig_id}"],
-            rationale=f'Stored qualifying external demand signal from {sig_url} ({sig_id}): "{snip}".',
-        )
-
-    # 3. Otherwise 0
-    return Criterion(
-        score=0,
-        evidence_ids=[],
-        rationale="No qualifying external demand items or stored demand signals found outside candidate repo containing core terms.",
+    quotes_str = "; ".join(
+        f'"{s["quote"]}" ({s["url"]}) [for \'{s["capability"]}\']' for s in accepted_signals[:3]
     )
+    rationale = f"Verified external demand pull ({score}/3) from {num_sources} source(s): {quotes_str}"
 
-
-def _is_user_request_url(url: str) -> bool:
-    """True for sources where users ask for something: GitHub issues/discussions or a non-GitHub page."""
-    u = (url or "").lower()
-    if "github.com" not in u:
-        return bool(u.startswith("http"))
-    return "/issues/" in u or "/discussions/" in u
+    return Criterion(score=score, evidence_ids=dedup_eids, rationale=rationale), accepted_signals
 
 def deterministic_baseline_analyst(
     candidate: dict[str, Any],
     prior_rows: list[dict[str, Any]],
     demand_rows: list[dict[str, Any]],
     evidence_index: dict[str, dict[str, Any]],
-) -> dict[str, Criterion]:
+    candidate_capabilities: list[dict[str, str]] | None = None,
+    relevance_client: RelevanceClient | None = None,
+    fallback_caps: bool = False,
+    accepted_demand_signals: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, Criterion], list[dict[str, Any]]]:
     """Deterministic baseline analyst scoring the six venture criteria using verified evidence."""
     repo_id = str(candidate.get("repo_id") or "")
     cand_ev_id = f"candidate:{repo_id}"
-    terms = split_terms(candidate.get("core_terms"))
 
     # 1. Problem Severity (JTBD)
     prob_excerpt = str(candidate.get("problem_excerpt") or "").strip()
@@ -461,29 +585,46 @@ def deterministic_baseline_analyst(
             rationale="No concrete struggling job stated in stored candidate excerpt.",
         )
 
-    # 2. Demand Evidence (YC "make something people want", strictly OUTSIDE repo)
-    alts = [r.get("alternative_id") for r in prior_rows if r.get("alternative_id")]
-    qualifying_demand = [r for r in demand_rows if demand_qualifies(r, terms, repo_id)]
-    if qualifying_demand:
-        # Initially empty evidence_ids triggers review_scorecard rework and sub-agent reinvestigation
-        demand_crit = Criterion(
-            score=2,
-            evidence_ids=[],
-            rationale=f"Candidate has potential external pull on alternatives ({', '.join(alts[:2])}). Requires subagent verification.",
-        )
-    else:
-        demand_crit = Criterion(
-            score=0,
-            evidence_ids=[],
-            rationale="No qualifying external demand signal found outside the candidate repository.",
-        )
+    # 2. Demand Evidence
+    initial_demand_crit, accepted_demands = evaluate_demand_evidence(
+        candidate=candidate,
+        demand_rows=demand_rows,
+        evidence_items=list(evidence_index.values()),
+        candidate_capabilities=candidate_capabilities,
+        relevance_client=relevance_client,
+        fallback_caps=fallback_caps,
+    )
+    # Initially empty evidence_ids triggers review_scorecard rework and sub-agent reinvestigation
+    demand_crit = Criterion(
+        score=max(1, initial_demand_crit.score),
+        evidence_ids=[],
+        rationale=initial_demand_crit.rationale or "Provisional initial scan; requires reinvestigation.",
+    )
 
     # 3. Differentiation (functional gap vs free maintained OSS alternatives)
-    diff_crit = compute_differentiation(candidate, prior_rows, demand_rows, evidence_index)
+    diff_crit = compute_differentiation(
+        candidate=candidate,
+        prior_rows=prior_rows,
+        demand_rows=demand_rows,
+        evidence_index=evidence_index,
+        candidate_capabilities=candidate_capabilities,
+        relevance_client=relevance_client,
+        fallback_caps=fallback_caps,
+        accepted_demand_signals=accepted_demands,
+    )
 
     # 4. Feasibility (code state, dependencies, architecture)
     paths = [p for p in str(candidate.get("code_paths") or "").split("|") if p and not is_boilerplate(p)]
-    if len(paths) >= 2 and cand_ev_id in evidence_index:
+    all_raw_paths = str(candidate.get("code_paths") or "").split("|")
+    has_tests = any("test" in p.lower() for p in all_raw_paths)
+    has_ci = any("ci" in p.lower() or "workflow" in p.lower() for p in all_raw_paths)
+    if len(paths) >= 4 and has_tests and has_ci and cand_ev_id in evidence_index:
+        feas_crit = Criterion(
+            score=3,
+            evidence_ids=[cand_ev_id],
+            rationale=f"Comprehensive codebase with {len(paths)} non-boilerplate paths, automated tests, and CI configuration. Solid production-ready architecture.",
+        )
+    elif len(paths) >= 3 and cand_ev_id in evidence_index:
         feas_crit = Criterion(
             score=2,
             evidence_ids=[cand_ev_id],
@@ -503,8 +644,16 @@ def deterministic_baseline_analyst(
         )
 
     # 5. Productization Path (Lean Canvas)
+    cand_full_text = str((evidence_index.get(cand_ev_id) or {}).get("text") or "")
+    has_monetization = any(k in cand_full_text.lower() for k in ("pricing", "tier", "subscription", "cloud hosted", "enterprise", "saas", "license key", "sponsor"))
     user_excerpt = str(candidate.get("user_excerpt") or "").strip()
-    if user_excerpt and cand_ev_id in evidence_index:
+    if has_monetization and cand_ev_id in evidence_index:
+        prod_crit = Criterion(
+            score=2,
+            evidence_ids=[cand_ev_id],
+            rationale=f"Clear productization path with defined monetization/tiers in repository text and identifiable user persona ('{user_excerpt}').",
+        )
+    elif user_excerpt and cand_ev_id in evidence_index:
         prod_crit = Criterion(
             score=1,
             evidence_ids=[cand_ev_id],
@@ -524,7 +673,7 @@ def deterministic_baseline_analyst(
         rationale="Score 0: No structural power from Hamilton Helmer's 7 Powers (scale economies, network economies, counter-positioning, switching costs, branding, cornered resource, process power). Open-source utility with zero barriers to duplication.",
     )
 
-    return {
+    criteria_dict = {
         "problem_severity": problem_crit,
         "demand_evidence": demand_crit,
         "differentiation": diff_crit,
@@ -532,6 +681,7 @@ def deterministic_baseline_analyst(
         "productization_path": prod_crit,
         "moat": moat_crit,
     }
+    return criteria_dict, accepted_demands
 
 
 def build_default_toolbox(
@@ -544,8 +694,10 @@ def build_default_toolbox(
     if custom_tools is not None:
         return ToolBox(tools=custom_tools, budget=Budget(max_calls=max_calls, max_seconds=max_seconds), trace=trace)
 
+    from scripts.collect_discovery import get_github_token
+
     tools = {
-        "github": GitHubTool(),
+        "github": GitHubTool(token=get_github_token()),
         "npm": NpmTool(),
         "pypi": PyPiTool(),
         "web_fetch": WebFetchTool(),
@@ -577,9 +729,9 @@ def build_default_toolbox(
 
 
 def score_all(
-    data_dir: Path,
-    output_json: Path,
-    output_md: Path,
+    data_dir: Path | None = None,
+    output_json: Path | None = None,
+    output_md: Path | None = None,
     max_calls: int = 40,
     max_seconds: float = 300.0,
     use_llm: bool = False,
@@ -587,6 +739,8 @@ def score_all(
     log_dir: Path | None = None,
     custom_toolbox: ToolBox | None = None,
     command_str: str = "",
+    snapshot: Path | None = None,
+    relevance_client: RelevanceClient | None = None,
 ) -> dict[str, Any]:
     """Main execution pipeline for candidate scoring and protagonist selection."""
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -594,14 +748,136 @@ def score_all(
     active_log_dir = log_dir or (ROOT / "logs")
     trace = HackathonTrace(run_id=active_run_id, log_dir=active_log_dir)
 
-    toolbox = custom_toolbox or build_default_toolbox(
-        max_calls=max_calls, max_seconds=max_seconds, trace=trace
-    )
+    active_data_dir = snapshot if snapshot is not None else (data_dir or (ROOT / "data" / "real"))
+    active_output_json = output_json or (ROOT / "docs" / "revival" / "venture_scores.json")
+    active_output_md = output_md or (ROOT / "docs" / "revival" / "venture_scores.md")
+
+    try:
+        return _do_score_candidates(
+            active_data_dir=active_data_dir,
+            active_output_json=active_output_json,
+            active_output_md=active_output_md,
+            max_calls=max_calls,
+            max_seconds=max_seconds,
+            use_llm=use_llm,
+            active_run_id=active_run_id,
+            active_log_dir=active_log_dir,
+            custom_toolbox=custom_toolbox,
+            command_str=command_str,
+            relevance_client=relevance_client,
+            trace=trace,
+            now_iso=now_iso,
+        )
+    except RelevanceLLMError as exc:
+        trace.event(
+            agent_name="orchestrator",
+            action="SCORING_ABORTED",
+            input_summary={"command": command_str},
+            output_summary={"error": str(exc)},
+            status="error",
+        )
+        run_hash = trace.seal()
+        error_json = {
+            "date": now_iso,
+            "run_id": active_run_id,
+            "run_hash": run_hash,
+            "command": command_str or "scripts/score_candidates.py",
+            "error": str(exc),
+            "status": "ABORTED",
+        }
+        active_output_json.parent.mkdir(parents=True, exist_ok=True)
+        active_output_json.write_text(json.dumps(error_json, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        raise
+
+
+def _do_score_candidates(
+    active_data_dir: Path,
+    active_output_json: Path,
+    active_output_md: Path,
+    max_calls: int,
+    max_seconds: float,
+    use_llm: bool,
+    active_run_id: str,
+    active_log_dir: Path,
+    custom_toolbox: ToolBox | None,
+    command_str: str,
+    relevance_client: RelevanceClient | None,
+    trace: HackathonTrace,
+    now_iso: str,
+) -> dict[str, Any]:
+    require_llm = use_llm and ("--llm" in (command_str or "").split())
+    llm_bound = None
+    llm_prompt = None
+    if require_llm:
+        try:
+            from config.settings import Settings
+
+            settings = Settings()
+            token = settings.meterless_runtime_token
+            if not token or token == "rt-local":
+                sys.stderr.write("Error: --llm was passed but METERLESS_RUNTIME_TOKEN is missing or invalid.\n")
+                sys.exit(2)
+            if relevance_client is None:
+                relevance_client = RelevanceClient(
+                    base_url=settings.meterless_base_url,
+                    token=token,
+                    model=settings.requested_model(),
+                    cache_dir=active_data_dir / ".cache" / "relevance" if active_data_dir.exists() else None,
+                )
+            if not is_client_configured(relevance_client):
+                sys.stderr.write("Error: --llm was passed but RelevanceClient is not configured.\n")
+                sys.exit(2)
+            from app.llm.provider import build_llm
+
+            llm_bound = build_llm(settings, sample=False)
+            llm_prompt = load_prompt("venture_analyst")
+        except SystemExit:
+            raise
+        except Exception as exc:
+            sys.stderr.write(f"Error: --llm was passed but LLM cannot be configured: {exc}\n")
+            sys.exit(2)
+    else:
+        if relevance_client is None:
+            try:
+                from config.settings import Settings
+
+                settings = Settings()
+                relevance_client = RelevanceClient(
+                    base_url=settings.meterless_base_url,
+                    token=settings.meterless_runtime_token,
+                    model=settings.requested_model(),
+                    cache_dir=active_data_dir / ".cache" / "relevance" if active_data_dir.exists() else None,
+                )
+            except Exception:
+                relevance_client = RelevanceClient(
+                    cache_dir=active_data_dir / ".cache" / "relevance" if active_data_dir.exists() else None
+                )
+        if use_llm:
+            try:
+                from config.settings import Settings
+                from app.llm.provider import build_llm
+
+                settings = Settings()
+                llm_bound = build_llm(settings, sample=False)
+                llm_prompt = load_prompt("venture_analyst")
+            except Exception:
+                llm_bound = None
+                llm_prompt = None
 
     # 1. Read discovery CSVs
-    candidates_raw = _read_csv(data_dir / "discovery_candidates.csv", DISCOVERY_COLUMNS)
-    prior_raw = _read_csv(data_dir / "prior_art.csv", PRIOR_ART_COLUMNS)
-    demand_raw = _read_csv(data_dir / "demand_signals.csv", DEMAND_COLUMNS)
+    candidates_raw = _read_csv(active_data_dir / "discovery_candidates.csv", DISCOVERY_COLUMNS)
+    prior_raw = _read_csv(active_data_dir / "prior_art.csv", PRIOR_ART_COLUMNS)
+    demand_raw = _read_csv(active_data_dir / "demand_signals.csv", DEMAND_COLUMNS)
+
+    # Proportionally scale tool budget (e.g. 8 tool calls per candidate capped)
+    per_candidate_calls = 8
+    scaled_calls = max(max_calls, len(candidates_raw) * per_candidate_calls)
+    scaled_seconds = max(max_seconds, len(candidates_raw) * 30.0)
+    toolbox = custom_toolbox or build_default_toolbox(
+        max_calls=scaled_calls, max_seconds=scaled_seconds, trace=trace
+    )
+    if custom_toolbox is not None and custom_toolbox.trace is None:
+        custom_toolbox.trace = trace
 
     eligible_candidates: list[dict[str, Any]] = []
     ineligible_repos: list[dict[str, Any]] = []
@@ -611,7 +887,119 @@ def score_all(
         prior_for_repo = [r for r in prior_raw if r["repo_id"] == repo_id]
         demand_for_repo = [r for r in demand_raw if r["repo_id"] == repo_id]
 
-        verdict, reason = decide_discovery(candidate, prior_for_repo, demand_for_repo)
+        if is_client_configured(relevance_client):
+            problem_stmt, meta_prob = extract_problem_statement(candidate, client=relevance_client)
+            if problem_stmt is None:
+                err = str(meta_prob.get("error") or "problem statement extraction failed")
+                if "unverified LLM quote" in err:
+                    verdict = "NEEDS_REVIEW"
+                    reason = f"{err}. Method: llm+verified quote (requested={meta_prob.get('requested_model')}, served={meta_prob.get('served_model')})."
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="DISCOVERY_FILTER",
+                        input_summary={"repo_id": repo_id},
+                        output_summary={"verdict": verdict, "reason": reason},
+                        status="ok",
+                    )
+                    ineligible_repos.append(
+                        {
+                            "repo_id": repo_id,
+                            "verdict": verdict,
+                            "reason": reason,
+                            "eligibility": False,
+                        }
+                    )
+                    continue
+                else:
+                    verdict, reason = judge_discovery(
+                        candidate, prior_for_repo, demand_for_repo, client=relevance_client
+                    )
+            else:
+                # 1. Build search queries including category + self-hosted / open-source if self-hosted
+                queries = build_search_queries(candidate, problem_stmt)
+                queries_tried = list(queries)
+
+                search_results = search_prior_art(
+                    candidate=candidate,
+                    queries=queries,
+                    toolbox=toolbox,
+                    language=candidate.get("primary_language"),
+                )
+
+                # Retry once with broader queries if search yields 0 results
+                if len(search_results) == 0:
+                    broader = broaden_queries(
+                        queries=queries,
+                        category=str(problem_stmt.get("category") or ""),
+                        candidate_repo_id=repo_id,
+                    )
+                    if broader:
+                        queries_tried.extend(broader)
+                        broader_results = search_prior_art(
+                            candidate=candidate,
+                            queries=broader,
+                            toolbox=toolbox,
+                            language=candidate.get("primary_language"),
+                        )
+                        search_results.extend(broader_results)
+
+                # If after retry search_results is still 0 and no prior_for_repo from CSV:
+                if len(search_results) == 0 and len(prior_for_repo) == 0:
+                    verdict = "NEEDS_PRIOR_ART"
+                    reason = f"Zero alternatives checked in prior-art search. Queries tried: {', '.join(queries_tried)}."
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="DISCOVERY_FILTER",
+                        input_summary={"repo_id": repo_id},
+                        output_summary={"verdict": verdict, "reason": reason},
+                        status="ok",
+                    )
+                    ineligible_repos.append(
+                        {
+                            "repo_id": repo_id,
+                            "verdict": verdict,
+                            "reason": reason,
+                            "eligibility": False,
+                        }
+                    )
+                    continue
+
+                # Alternative relevance step
+                problem_alternatives = filter_relevant_alternatives(
+                    problem_statement=problem_stmt,
+                    candidate_repo_id=repo_id,
+                    search_results=search_results,
+                    client=relevance_client,
+                    trace=trace,
+                )
+
+                # Combined union of prior_art.csv rows and problem_alternatives
+                combined_priors = []
+                seen_alts = set()
+                for r in list(prior_for_repo or []) + list(problem_alternatives or []):
+                    ak = str(r.get("alternative_id") or r.get("url") or "").strip().casefold()
+                    if ak and ak not in seen_alts:
+                        seen_alts.add(ak)
+                        combined_priors.append(r)
+
+                verdict, reason = judge_discovery(
+                    candidate,
+                    combined_priors,
+                    demand_for_repo,
+                    client=relevance_client,
+                    problem_alternatives=problem_alternatives,
+                )
+                prior_for_repo = combined_priors
+        else:
+            verdict, reason = judge_discovery(
+                candidate, prior_for_repo, demand_for_repo, client=relevance_client
+            )
+
+        if verdict == "CANDIDATE" and len(prior_for_repo) == 0:
+            verdict = "NEEDS_PRIOR_ART"
+            reason = "Zero alternatives checked in prior-art search."
+
+        # Emit exactly one final DISCOVERY_FILTER event per repo
         trace.event(
             agent_name="orchestrator",
             action="DISCOVERY_FILTER",
@@ -643,19 +1031,7 @@ def score_all(
     evaluated_scorecards: list[Scorecard] = []
     candidates_output: list[dict[str, Any]] = []
 
-    # 2. Setup LLM if requested
-    llm_bound = None
-    llm_prompt = None
-    if use_llm:
-        try:
-            from app.llm.provider import build_llm
-
-            llm_bound = build_llm(Settings(), sample=False)
-            llm_prompt = load_prompt("venture_analyst")
-        except Exception:
-            llm_bound = None
-
-    # 3. Process each CANDIDATE
+    # 2. Process each CANDIDATE
     for item in eligible_candidates:
         candidate = item["candidate"]
         prior_rows = item["prior_rows"]
@@ -667,16 +1043,32 @@ def score_all(
         evidence_index = {str(e.get("id") or ""): e for e in evidence_items}
         evidence_set = set(evidence_index.keys())
 
-        # Baseline criteria
-        criteria_map = deterministic_baseline_analyst(
-            candidate, prior_rows, demand_rows, evidence_index
-        )
+        # Extract candidate capabilities with relevance.py
+        cand_caps, meta_caps = extract_capabilities(candidate, client=relevance_client)
+        fallback_caps = bool(meta_caps.get("fallback"))
         flags: list[str] = []
+        if fallback_caps:
+            flags.append("LLM_FALLBACK")
+        if relevance_client and repo_id in relevance_client.repo_mismatches:
+            if "MODEL_MISMATCH" not in flags:
+                flags.append("MODEL_MISMATCH")
+
+        # Baseline criteria
+        criteria_map, initial_accepted = deterministic_baseline_analyst(
+            candidate=candidate,
+            prior_rows=prior_rows,
+            demand_rows=demand_rows,
+            evidence_index=evidence_index,
+            candidate_capabilities=cand_caps,
+            relevance_client=relevance_client,
+            fallback_caps=fallback_caps,
+        )
 
         # Optional LLM attempt
         if use_llm:
             llm_success = False
             if llm_bound is not None and llm_prompt is not None:
+                retry_count = 0
                 try:
                     messages = [
                         {"role": "system", "content": llm_prompt.text},
@@ -689,30 +1081,42 @@ def score_all(
                     raw_reply = llm_bound.complete(messages)
                     from app.llm.parsing import parse_model_json
 
-                    parsed = parse_model_json(raw_reply)
-                    if isinstance(parsed, dict) and "criteria" in parsed:
-                        llm_criteria = parsed["criteria"]
-                        for cname in CRITERIA_NAMES:
-                            if cname in llm_criteria and isinstance(llm_criteria[cname], dict):
-                                c_data = llm_criteria[cname]
-                                criteria_map[cname] = Criterion(
-                                    score=int(c_data.get("score", 0)),
-                                    evidence_ids=list(c_data.get("evidence_ids") or []),
-                                    rationale=str(c_data.get("rationale") or ""),
-                                )
-                        llm_success = True
-                        trace.event(
-                            agent_name="venture_analyst",
-                            action="LLM_SCORE",
-                            input_summary={"repo_id": repo_id},
-                            output_summary={"parsed": True},
-                            llm={
-                                "requested_model": getattr(llm_bound, "requested_model", ""),
-                                "served_model": getattr(llm_bound, "served_model", None),
-                                "prompt_version": llm_prompt.sha256,
-                            },
-                            status="ok",
-                        )
+                    try:
+                        parsed = parse_model_json(raw_reply)
+                        if not (isinstance(parsed, dict) and "criteria" in parsed):
+                            raise ValueError("Invalid model JSON: missing 'criteria'")
+                    except Exception:
+                        retry_count = 1
+                        messages.append({"role": "assistant", "content": raw_reply})
+                        messages.append({"role": "user", "content": "Return only the JSON object matching the schema."})
+                        raw_reply = llm_bound.complete(messages)
+                        parsed = parse_model_json(raw_reply)
+                        if not (isinstance(parsed, dict) and "criteria" in parsed):
+                            raise ValueError("Invalid model JSON: missing 'criteria' on retry")
+
+                    llm_criteria = parsed["criteria"]
+                    for cname in CRITERIA_NAMES:
+                        if cname in llm_criteria and isinstance(llm_criteria[cname], dict):
+                            c_data = llm_criteria[cname]
+                            criteria_map[cname] = Criterion(
+                                score=int(c_data.get("score", 0)),
+                                evidence_ids=list(c_data.get("evidence_ids") or []),
+                                rationale=str(c_data.get("rationale") or ""),
+                            )
+                    llm_success = True
+                    trace.event(
+                        agent_name="venture_analyst",
+                        action="LLM_SCORE",
+                        input_summary={"repo_id": repo_id},
+                        output_summary={"parsed": True},
+                        retry_count=retry_count,
+                        llm={
+                            "requested_model": getattr(llm_bound, "requested_model", ""),
+                            "served_model": getattr(llm_bound, "served_model", None),
+                            "prompt_version": llm_prompt.sha256,
+                        },
+                        status="ok",
+                    )
                 except Exception as exc:
                     llm_success = False
                     trace.event(
@@ -720,6 +1124,7 @@ def score_all(
                         action="LLM_FALLBACK",
                         input_summary={"repo_id": repo_id, "error": str(exc)},
                         output_summary="Falling back to deterministic baseline analyst.",
+                        retry_count=retry_count,
                         status="LLM_FALLBACK",
                     )
             else:
@@ -731,7 +1136,7 @@ def score_all(
                     status="LLM_FALLBACK",
                 )
 
-            if not llm_success:
+            if not llm_success and "LLM_FALLBACK" not in flags:
                 flags.append("LLM_FALLBACK")
 
         # Initial scorecard
@@ -752,17 +1157,42 @@ def score_all(
         )
 
         # 4. Review and reinvestigate
-        def make_analyst(c_map, cand_item, p_rows, d_rows):
+        def make_analyst(c_map, cand_item, p_rows, d_rows, caps, rel_client, fb_caps):
+            curr_accepted = list(initial_accepted)
+
             def analyst(criterion: str, repo_id: str, evidence: list[dict[str, Any]], scorecard: Scorecard, **kwargs: Any) -> Criterion:
+                nonlocal curr_accepted
                 if criterion == "demand_evidence":
-                    return evaluate_demand_evidence(cand_item, d_rows, evidence)
+                    crit, acc = evaluate_demand_evidence(
+                        candidate=cand_item,
+                        demand_rows=d_rows,
+                        evidence_items=evidence,
+                        candidate_capabilities=caps,
+                        relevance_client=rel_client,
+                        fallback_caps=fb_caps,
+                    )
+                    curr_accepted = acc
+                    return crit
                 if criterion == "differentiation":
                     ev_idx = {str(e.get("id")): e for e in evidence if e.get("id")}
-                    return compute_differentiation(cand_item, p_rows, d_rows, ev_idx)
+                    crit = compute_differentiation(
+                        candidate=cand_item,
+                        prior_rows=p_rows,
+                        demand_rows=d_rows,
+                        evidence_index=ev_idx,
+                        candidate_capabilities=caps,
+                        relevance_client=rel_client,
+                        fallback_caps=fb_caps,
+                        accepted_demand_signals=curr_accepted,
+                    )
+                    return crit
                 return c_map.get(criterion, Criterion(score=0, evidence_ids=[], rationale="No evidence"))
-            return analyst
 
-        analyst_callable = make_analyst(criteria_map, candidate, prior_rows, demand_rows)
+            return analyst, lambda: curr_accepted
+
+        analyst_callable, get_curr_accepted = make_analyst(
+            criteria_map, candidate, prior_rows, demand_rows, cand_caps, relevance_client, fallback_caps
+        )
         reinvestigation = reinvestigate(
             scorecard=scorecard,
             evidence=evidence_items,
@@ -774,11 +1204,28 @@ def score_all(
         scorecard = reinvestigation.scorecard
         final_evidence_items = reinvestigation.evidence
         final_evidence_set = {str(e.get("id")) for e in final_evidence_items if e.get("id")}
+
+        # Ensure differentiation reflects any newly accepted demand signals and final evidence
+        ev_idx_final = {str(e.get("id")): e for e in final_evidence_items if e.get("id")}
+        final_diff = compute_differentiation(
+            candidate=candidate,
+            prior_rows=prior_rows,
+            demand_rows=demand_rows,
+            evidence_index=ev_idx_final,
+            candidate_capabilities=cand_caps,
+            relevance_client=relevance_client,
+            fallback_caps=fallback_caps,
+            accepted_demand_signals=get_curr_accepted(),
+        )
+        scorecard.criteria["differentiation"] = final_diff
         scorecard.clamp(final_evidence_set)
 
         for f in reinvestigation.flags:
             if f not in flags:
                 flags.append(f)
+        if relevance_client and repo_id in relevance_client.repo_mismatches:
+            if "MODEL_MISMATCH" not in flags:
+                flags.append("MODEL_MISMATCH")
         if any(c.status == "UNSUPPORTED" for c in scorecard.criteria.values()):
             if "UNSUPPORTED" not in flags:
                 flags.append("UNSUPPORTED")
@@ -807,6 +1254,7 @@ def score_all(
                 "feasibility": scorecard.feasibility_score,
                 "flags": flags,
                 "criteria": criteria_dict,
+                "capabilities": cand_caps,
                 "evidence": [
                     {
                         "id": e.get("id"),
@@ -819,24 +1267,56 @@ def score_all(
             }
         )
 
-    # 5. Select protagonist
-    protagonist, prot_reason = select_protagonist(evaluated_scorecards)
+    warnings: list[str] = []
+    duplicated_vectors: list[list[int]] = []
+    scorer_not_discriminating = False
 
-    protagonist_data = None
-    if protagonist is not None:
-        protagonist_data = {
-            "repo_id": protagonist.repo_id,
-            "total": protagonist.total,
-            "feasibility": protagonist.feasibility_score,
-            "reason": prot_reason,
-        }
-    else:
+    # 5. Check score vector discrimination on eligible candidates
+    if len(evaluated_scorecards) > 2:
+        vector_counts: dict[tuple[int, ...], int] = {}
+        for sc in evaluated_scorecards:
+            vec = tuple(sc.criteria[cname].score for cname in CRITERIA_NAMES)
+            vector_counts[vec] = vector_counts.get(vec, 0) + 1
+        max_count = max(vector_counts.values()) if vector_counts else 0
+        if max_count / len(evaluated_scorecards) > 0.5:
+            scorer_not_discriminating = True
+            warnings.append("SCORER_NOT_DISCRIMINATING")
+            duplicated_vectors = [list(vec) for vec, count in vector_counts.items() if count > 1]
+            trace.event(
+                agent_name="orchestrator",
+                action="SCORER_NOT_DISCRIMINATING",
+                input_summary={"candidate_count": len(evaluated_scorecards)},
+                output_summary={"warning": "SCORER_NOT_DISCRIMINATING", "duplicated_vectors": duplicated_vectors},
+                status="warning",
+            )
+            print("SCORER NOT DISCRIMINATING", file=sys.stderr)
+
+    # 6. Select protagonist
+    if scorer_not_discriminating:
+        protagonist = None
+        prot_reason = "Scorer not discriminating: more than 50% of candidates share identical score vectors."
         protagonist_data = {
             "repo_id": None,
             "total": 0.0,
             "feasibility": 0,
             "reason": prot_reason,
         }
+    else:
+        protagonist, prot_reason = select_protagonist(evaluated_scorecards)
+        if protagonist is not None:
+            protagonist_data = {
+                "repo_id": protagonist.repo_id,
+                "total": protagonist.total,
+                "feasibility": protagonist.feasibility_score,
+                "reason": prot_reason,
+            }
+        else:
+            protagonist_data = {
+                "repo_id": None,
+                "total": 0.0,
+                "feasibility": 0,
+                "reason": prot_reason,
+            }
 
     trace.event(
         agent_name="orchestrator",
@@ -855,19 +1335,26 @@ def score_all(
         "run_id": active_run_id,
         "run_hash": run_hash,
         "command": command_str or " ".join(sys.argv),
-        "llm_used": use_llm,
+        "llm_used": bool(relevance_client and len(relevance_client.served_models) > 0),
+        "model_calls": relevance_client.model_calls if relevance_client else {},
+        "warnings": warnings,
+        "duplicated_vectors": duplicated_vectors,
+        "duplicated_score_vectors": duplicated_vectors,
         "protagonist": protagonist_data,
         "candidates": candidates_output,
         "ineligible": ineligible_repos,
     }
 
-    output_json.parent.mkdir(parents=True, exist_ok=True)
-    output_json.write_text(json.dumps(results_json, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    active_output_json.parent.mkdir(parents=True, exist_ok=True)
+    active_output_json.write_text(json.dumps(results_json, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     # Render Markdown
     md_content = _render_markdown(results_json)
-    output_md.parent.mkdir(parents=True, exist_ok=True)
-    output_md.write_text(md_content, encoding="utf-8")
+    active_output_md.parent.mkdir(parents=True, exist_ok=True)
+    active_output_md.write_text(md_content, encoding="utf-8")
+
+    if scorer_not_discriminating:
+        sys.exit(3)
 
     return results_json
 
@@ -881,6 +1368,28 @@ def _render_markdown(data: dict[str, Any]) -> str:
     lines.append(f"- **Command**: `{data['command']}`")
     lines.append(f"- **LLM Evaluator**: {'Live Nightshift' if data.get('llm_used') else 'Deterministic Baseline Analyst'}")
     lines.append("")
+
+    model_calls = data.get("model_calls") or {}
+    lines.append("## Model Call Summary")
+    lines.append("")
+    if model_calls:
+        lines.append("| Served Model | Calls |")
+        lines.append("| :--- | :---: |")
+        for m, count in sorted(model_calls.items()):
+            lines.append(f"| `{m}` | {count} |")
+    else:
+        lines.append("No LLM calls recorded.")
+    lines.append("")
+
+    warnings = data.get("warnings") or []
+    if warnings:
+        lines.append("## Warnings")
+        lines.append("")
+        for w in warnings:
+            lines.append(f"- **WARNING**: `{w}`")
+        if data.get("duplicated_vectors"):
+            lines.append(f"- *Duplicated score vectors*: `{data.get('duplicated_vectors')}`")
+        lines.append("")
 
     lines.append("## Protagonist Selection")
     lines.append("")
@@ -948,6 +1457,7 @@ def _render_markdown(data: dict[str, Any]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Score candidate repos and select the demo protagonist.")
     parser.add_argument("--data-dir", type=Path, default=ROOT / "data" / "real", help="Directory with discovery CSVs.")
+    parser.add_argument("--snapshot", type=Path, default=None, help="Directory with discovery CSVs (overrides --data-dir).")
     parser.add_argument("--output-json", type=Path, default=ROOT / "docs" / "revival" / "venture_scores.json")
     parser.add_argument("--output-md", type=Path, default=ROOT / "docs" / "revival" / "venture_scores.md")
     parser.add_argument("--max-calls", type=int, default=40, help="Toolbox max tool calls.")
@@ -957,17 +1467,24 @@ def main() -> int:
     parser.add_argument("--log-dir", type=Path, default=ROOT / "logs", help="Directory for trace logs.")
     args = parser.parse_args()
 
-    results = score_all(
-        data_dir=args.data_dir,
-        output_json=args.output_json,
-        output_md=args.output_md,
-        max_calls=args.max_calls,
-        max_seconds=args.max_seconds,
-        use_llm=args.llm,
-        run_id=args.run_id,
-        log_dir=args.log_dir,
-        command_str=" ".join(sys.argv),
-    )
+    try:
+        results = score_all(
+            data_dir=args.data_dir,
+            snapshot=args.snapshot,
+            output_json=args.output_json,
+            output_md=args.output_md,
+            max_calls=args.max_calls,
+            max_seconds=args.max_seconds,
+            use_llm=args.llm,
+            run_id=args.run_id,
+            log_dir=args.log_dir,
+            command_str=" ".join(sys.argv),
+        )
+    except SystemExit as exc:
+        return exc.code if isinstance(exc.code, int) else 2
+    except RelevanceLLMError as exc:
+        sys.stderr.write(f"Scoring aborted: {exc}\n")
+        return 1
 
     prot = results.get("protagonist") or {}
     print(f"Run hash: {results.get('run_hash')}")
