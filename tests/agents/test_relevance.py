@@ -1084,3 +1084,55 @@ def test_search_prior_art_web_runs_every_query_and_keeps_web_quota():
     assert sorted(web_queries) == sorted(queries)
     assert results.source_counts["web"] >= 6
     assert len(results) <= 15
+
+
+
+# --- Batched alternative judging and Markdown-tolerant quotes ---------------
+
+from app.agents.relevance import filter_relevant_alternatives, quote_in_text
+
+
+def test_quote_in_text_ignores_markdown_bold_but_not_word_changes():
+    readme = "# Rammingen\n\n**Rammingen** is a self-hosted file synchronization and backup system."
+    assert quote_in_text("Rammingen is a self-hosted file synchronization and backup system.", readme)
+    assert not quote_in_text("Rammingen is a cloud file synchronization and backup system.", readme)
+
+
+_ALTS = [
+    {"alternative_id": "a/one", "url": "https://github.com/a/one", "description": "Sync YouTrack articles to markdown files.", "source": "github"},
+    {"alternative_id": "web:https://vendor.example/export", "url": "https://vendor.example/export", "description": "Export articles as Markdown files.", "source": "web"},
+    {"alternative_id": "b/two", "url": "https://github.com/b/two", "description": "A weather app.", "source": "github"},
+]
+_PROB = {"problem": "Sync YouTrack KB with markdown", "target_user": "devs", "category": "developer-tools"}
+
+
+def test_batch_one_call_and_quotes_verified_per_item(tmp_path: Path):
+    calls = []
+
+    def llm(prompt: str, sys: str) -> str:
+        calls.append(sys)
+        return json.dumps({"results": [
+            {"index": 0, "same_problem": True, "overlap": "full", "reason": "same", "quotes": ["Sync YouTrack articles to markdown files"]},
+            {"index": 1, "same_problem": True, "overlap": "partial", "reason": "export only", "quotes": ["made up quote"]},
+            {"index": 2, "same_problem": False, "overlap": "none", "reason": "unrelated", "quotes": []},
+        ]})
+
+    client = RelevanceClient(cache_dir=tmp_path, mock_handler=llm)
+    rows = filter_relevant_alternatives(_PROB, "me/cand", _ALTS, client=client)
+    assert len(calls) == 1 and "BATCH MODE" in calls[0]
+    assert [r["alternative_id"] for r in rows] == ["a/one"]
+
+
+def test_batch_missing_index_falls_back_to_per_item_calls(tmp_path: Path):
+    calls = []
+
+    def llm(prompt: str, sys: str) -> str:
+        calls.append("batch" if "BATCH MODE" in sys else "single")
+        if "BATCH MODE" in sys:
+            return json.dumps({"results": [{"index": 0, "same_problem": False, "overlap": "none", "reason": "", "quotes": []}]})
+        return json.dumps({"same_problem": False, "overlap": "none", "reason": "no", "quotes": []})
+
+    client = RelevanceClient(cache_dir=tmp_path, mock_handler=llm)
+    rows = filter_relevant_alternatives(_PROB, "me/cand", _ALTS, client=client)
+    assert rows == []
+    assert calls[0] == "batch" and calls.count("single") == 3

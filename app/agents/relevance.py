@@ -628,11 +628,30 @@ def normalize_whitespace(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
+_MARKUP_TRANS = str.maketrans({
+    "*": " ", "_": " ", "`": " ", "#": " ", ">": " ",
+    "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-",
+})
+
+
+def _normalize_for_quote(text: str) -> str:
+    """Strip Markdown emphasis/heading marks and typographic quotes, then collapse whitespace.
+
+    Deterministic: the words and their order must still match exactly. This only stops
+    "**Rammingen** is ..." in a README from failing against the quote "Rammingen is ...".
+    """
+    return normalize_whitespace(str(text or "").translate(_MARKUP_TRANS)).casefold()
+
+
 def quote_in_text(quote: str, text: str) -> bool:
-    """Deterministic quote verification: whitespace-normalised, case-insensitive substring check."""
+    """Deterministic quote verification: case-insensitive substring check after normalising
+    whitespace, Markdown emphasis marks and typographic quotes."""
     if not quote or not text:
         return False
-    return normalize_whitespace(quote).casefold() in normalize_whitespace(text).casefold()
+    if normalize_whitespace(quote).casefold() in normalize_whitespace(text).casefold():
+        return True
+    nq = _normalize_for_quote(quote)
+    return bool(nq) and nq in _normalize_for_quote(text)
 
 
 def build_search_queries(candidate: dict[str, Any], problem_statement: dict[str, Any]) -> list[str]:
@@ -1474,6 +1493,121 @@ def judge_alternative_relevance(
     }
 
 
+BATCH_INSTRUCTION = (
+    "\n\nBATCH MODE: you will receive several numbered alternatives. Judge EACH one independently "
+    "with the rules above. Output strict JSON only, in the form "
+    '{"results": [{"index": <number>, "same_problem": true|false, "overlap": "full"|"partial"|"none", '
+    '"reason": "...", "quotes": ["verbatim quote from THAT alternative\'s text"]}]} '
+    "with exactly one entry per alternative index."
+)
+
+
+def judge_alternatives_batch(
+    problem_statement: dict[str, Any],
+    candidate_repo_id: str,
+    search_results: list[dict[str, Any]],
+    client: RelevanceClient | None = None,
+    trace: Any | None = None,
+    max_chars_per_item: int = 900,
+) -> list[dict[str, Any]] | None:
+    """Judge all alternatives in ONE LLM call (step="alternative_batch").
+
+    Same deterministic rules as judge_alternative_relevance: a same_problem verdict is kept
+    only if every quote is found verbatim in that alternative's own text. Returns the list
+    of verified same-problem rows, or None when the batch answer is unusable (exception,
+    invalid JSON, missing indexes) so the caller can fall back to one call per alternative.
+    """
+    if client is None:
+        client = RelevanceClient()
+    items: list[tuple[int, dict[str, Any], str]] = []
+    for i, res in enumerate(search_results):
+        text = f"{str(res.get('description') or '').strip()}\n{str(res.get('readme') or '').strip()}".strip()
+        if text:
+            items.append((i, res, text))
+    if not items:
+        return []
+
+    prompt_record = load_prompt("relevance_alternative")
+    blocks = []
+    for i, res, text in items:
+        blocks.append(
+            f"[{i}] Alternative: {res.get('alternative_id', '')}\nURL: {res.get('url', '')}\n"
+            f"Description and README Excerpt:\n```\n{text[:max_chars_per_item]}\n```"
+        )
+    user_prompt = (
+        f"Candidate Problem: {problem_statement.get('problem', '')}\n"
+        f"Target User: {problem_statement.get('target_user', '')}\n"
+        f"Category: {problem_statement.get('category', '')}\n\n"
+        + "\n\n".join(blocks)
+        + "\n\nFor every alternative index, judge whether it solves the same core user problem, the overlap "
+        "degree (full, partial, none), and give verbatim supporting quotes. Output strict JSON."
+    )
+    try:
+        text, req_m, srv_m = client.complete(
+            user_prompt, prompt_record.text + BATCH_INSTRUCTION, repo_id=candidate_repo_id, step="alternative_batch"
+        )
+    except Exception as exc:
+        if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
+            raise
+        return None
+    obj = extract_json_object(text)
+    if not isinstance(obj, dict) or not isinstance(obj.get("results"), list):
+        return None
+    by_index: dict[int, dict[str, Any]] = {}
+    for entry in obj["results"]:
+        if isinstance(entry, dict):
+            try:
+                by_index[int(entry.get("index"))] = entry
+            except (TypeError, ValueError):
+                continue
+    if any(i not in by_index for i, _, _ in items):
+        return None
+
+    verified: list[dict[str, Any]] = []
+    for i, res, rtext in items:
+        entry = by_index[i]
+        if not bool(entry.get("same_problem")):
+            continue
+        alt_id = str(res.get("alternative_id") or "").strip()
+        quotes = entry.get("quotes") or []
+        bad = None
+        if not isinstance(quotes, list) or not quotes:
+            bad = "no quotes provided for same_problem alternative"
+        else:
+            for q in quotes:
+                q_str = str(q or "").strip()
+                if not q_str or not quote_in_text(q_str, rtext):
+                    bad = f"unverified quote '{q_str}' not found in alternative text"
+                    break
+        if bad:
+            if trace is not None:
+                trace.event(
+                    agent_name="orchestrator",
+                    action="UNVERIFIED_ALTERNATIVE_QUOTE",
+                    input_summary={"alternative": alt_id, "mode": "batch"},
+                    output_summary={"error": bad},
+                    status="error",
+                )
+            continue
+        verified.append({
+            "repo_id": candidate_repo_id,
+            "alternative_id": alt_id,
+            "url": str(res.get("url") or f"https://github.com/{alt_id}"),
+            "licence_spdx": str(res.get("licence_spdx") or ""),
+            "stars": res.get("stars", 0),
+            "pushed_at": str(res.get("pushed_at") or ""),
+            "excerpt": rtext[:1000],
+            "candidate_excerpt": str(problem_statement.get("problem") or ""),
+            "required_terms": "",
+            "same_problem": True,
+            "overlap": str(entry.get("overlap") or "none").strip().lower(),
+            "reason": str(entry.get("reason") or "").strip(),
+            "quotes": [str(q).strip() for q in quotes if str(q).strip()],
+            "source": str(res.get("source") or ""),
+        })
+    return verified
+
+
 def filter_relevant_alternatives(
     problem_statement: dict[str, Any],
     candidate_repo_id: str,
@@ -1481,7 +1615,15 @@ def filter_relevant_alternatives(
     client: RelevanceClient | None = None,
     trace: Any | None = None,
 ) -> list[dict[str, Any]]:
-    """Evaluate candidate search results and return only those with same_problem=true and verified quotes."""
+    """Evaluate candidate search results and return only those with same_problem=true and verified quotes.
+
+    Tries one batched LLM call first; falls back to one call per alternative when the batch
+    answer is unusable.
+    """
+    if len(search_results) > 1:
+        batch = judge_alternatives_batch(problem_statement, candidate_repo_id, search_results, client=client, trace=trace)
+        if batch is not None:
+            return batch
     verified_alts = []
     for res in search_results:
         alt_row, meta = judge_alternative_relevance(
