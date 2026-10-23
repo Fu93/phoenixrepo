@@ -721,7 +721,21 @@ def build_search_queries(candidate: dict[str, Any], problem_statement: dict[str,
         extra_queries.append(f"self-hosted {category}")
         extra_queries.append(f"open source {category}")
 
-    all_queries = pattern_queries + llm_queries + extra_queries
+    stack_components = {
+        "postgres", "sqlite", "mysql", "redis", "mongodb", "elastic", "docker", "kubernetes",
+        "aws", "gcp", "azure", "kafka", "rabbitmq", "developer",
+    }
+    if platform in stack_components:
+        # A database/infra word is how the repo is built, not the job it does.
+        pattern_queries = []
+    # Interleave so both the user's job (LLM) and platform patterns get searched early.
+    interleaved: list[str] = []
+    for i in range(max(len(llm_queries), len(pattern_queries))):
+        if i < len(llm_queries):
+            interleaved.append(llm_queries[i])
+        if i < len(pattern_queries):
+            interleaved.append(pattern_queries[i])
+    all_queries = interleaved + extra_queries
 
     # Deduplicate preserving order
     seen = set()
@@ -734,7 +748,12 @@ def build_search_queries(candidate: dict[str, Any], problem_statement: dict[str,
 
     # Ensure 4 to 8 queries
     if len(dedup_queries) < 4:
-        for fallback in [f"{platform} tool", f"{platform} open source", f"{category} tool"]:
+        if platform in stack_components:
+            cat_words = category.replace("-", " ").strip()
+            fallbacks = [f for f in [f"{cat_words} open source" if cat_words else "", f"{llm_queries[0]} alternative" if llm_queries else "", f"{cat_words} saas" if cat_words else ""] if f]
+        else:
+            fallbacks = [f"{platform} tool", f"{platform} open source", f"{category} tool"]
+        for fallback in fallbacks:
             if fallback.lower() not in seen:
                 seen.add(fallback.lower())
                 dedup_queries.append(fallback)
@@ -1133,179 +1152,142 @@ def search_prior_art(
         if s in active_sources or (s == "web" and "web_search" in active_sources):
             source_status[s] = "ok"
 
+    # Collect one bucket per query, then merge round-robin so the first query
+    # cannot fill every slot (e.g. a tech-stack query crowding out the job query).
+    max_results = 15
+    buckets: list[list[tuple[str, dict[str, Any]]]] = []
+    if "pypi" in source_status:
+        # PyPI's search page is behind a bot challenge; package metadata lookups still work,
+        # but search is not a reliable source, so it is not counted as a search source.
+        source_status.pop("pypi", None)
+
     for idx, q in enumerate(queries):
         if toolbox is None or toolbox.budget.is_exhausted():
             break
-        if len(results) >= 15:
-            break
+        bucket: list[tuple[str, dict[str, Any]]] = []
 
-        # 1. Search GitHub repositories (runs every generated query)
+        # 1. GitHub repositories (every query; README fetched later for selected rows only)
         if "github" in source_status:
             gh_res = toolbox.call("github", {"action": "repositories", "query": q, "per_page": 5})
             if gh_res.ok and isinstance(gh_res.data, dict):
-                items = gh_res.data.get("items") or []
-                for it in items:
-                    if len(results) >= 15:
-                        break
+                for it in gh_res.data.get("items") or []:
                     full_name = str(it.get("full_name") or it.get("name") or "").strip()
                     if not full_name:
                         continue
                     fn_lower = full_name.casefold()
-                    if fn_lower in seen_ids or fn_lower == cand_id.casefold():
+                    if fn_lower == cand_id.casefold():
                         continue
-
-                    # Exclude candidate forks
                     is_fork = bool(it.get("fork")) or bool(it.get("is_fork"))
-                    parent_fn = str(it.get("parent", {}).get("full_name") or "").casefold()
-                    source_fn = str(it.get("source", {}).get("full_name") or "").casefold()
+                    parent_fn = str((it.get("parent") or {}).get("full_name") or "").casefold()
+                    source_fn = str((it.get("source") or {}).get("full_name") or "").casefold()
                     it_name = str(it.get("name") or "").casefold()
                     it_desc = str(it.get("description") or "").casefold()
-
                     if parent_fn == cand_id.casefold() or source_fn == cand_id.casefold():
                         continue
                     if is_fork and (it_name == cand_name or f"forked from {cand_id.casefold()}" in it_desc):
                         continue
                     if it.get("is_fork_of_candidate"):
                         continue
-
-                    seen_ids.add(fn_lower)
-
-                    desc = str(it.get("description") or "").strip()
-                    url = str(it.get("html_url") or it.get("url") or f"https://github.com/{full_name}").strip()
                     lic = it.get("license") or {}
                     spdx = str(lic.get("spdx_id") or "") if isinstance(lic, dict) else str(lic or "")
-                    stars = it.get("stargazers_count", 0)
-                    pushed_at = str(it.get("pushed_at") or "")
-
-                    # Fetch README excerpt if available and budget permits
-                    readme_text = str(it.get("readme") or "")
-                    if not readme_text and not toolbox.budget.is_exhausted() and toolbox.budget.remaining_calls > 1:
-                        rm_res = toolbox.call("github", {"action": "readme", "repo": full_name})
-                        if rm_res.ok and isinstance(rm_res.data, dict):
-                            readme_text = str(rm_res.data.get("decoded_text") or "")[:2000]
-
-                    results.append(
-                        {
-                            "alternative_id": full_name,
-                            "url": url,
-                            "description": desc,
-                            "readme": readme_text,
-                            "licence_spdx": spdx,
-                            "stars": stars,
-                            "pushed_at": pushed_at,
-                            "source": "github",
-                        }
-                    )
-                    source_counts["github"] += 1
+                    bucket.append((fn_lower, {
+                        "alternative_id": full_name,
+                        "url": str(it.get("html_url") or it.get("url") or f"https://github.com/{full_name}").strip(),
+                        "description": str(it.get("description") or "").strip(),
+                        "readme": str(it.get("readme") or ""),
+                        "licence_spdx": spdx,
+                        "stars": it.get("stargazers_count", 0),
+                        "pushed_at": str(it.get("pushed_at") or ""),
+                        "source": "github",
+                        "query": q,
+                    }))
             elif not gh_res.ok:
                 err_str = str(gh_res.error or "")
-                if "RATE_LIMITED" in err_str:
-                    pass
-                elif "SOURCE_ERROR" in err_str:
+                if "SOURCE_ERROR" in err_str:
                     source_status["github"] = "SOURCE_ERROR"
 
-        # 2. Search npm registry (primary query)
-        if "npm" in source_status and idx == 0 and len(results) < 15 and not toolbox.budget.is_exhausted():
+        # 2. npm registry (first 3 queries)
+        if "npm" in source_status and idx < 3 and not toolbox.budget.is_exhausted():
             npm_res = toolbox.call("npm", {"action": "search", "query": q})
             if npm_res.ok and isinstance(npm_res.data, dict):
-                items = npm_res.data.get("items") or []
-                for it in items:
-                    if len(results) >= 15:
-                        break
+                for it in (npm_res.data.get("items") or [])[:5]:
                     pkg_name = str(it.get("name") or "").strip()
-                    if not pkg_name:
+                    if not pkg_name or pkg_name.casefold() == cand_name:
                         continue
                     alt_id = f"npm:{pkg_name}"
-                    if alt_id.casefold() in seen_ids or pkg_name.casefold() == cand_name:
-                        continue
-                    seen_ids.add(alt_id.casefold())
-                    results.append(
-                        {
-                            "alternative_id": alt_id,
-                            "url": it.get("url") or f"https://www.npmjs.com/package/{pkg_name}",
-                            "description": str(it.get("description") or ""),
-                            "readme": "",
-                            "licence_spdx": str(it.get("license") or ""),
-                            "stars": 0,
-                            "pushed_at": "",
-                            "source": "npm",
-                        }
-                    )
-                    source_counts["npm"] += 1
+                    bucket.append((alt_id.casefold(), {
+                        "alternative_id": alt_id,
+                        "url": it.get("url") or f"https://www.npmjs.com/package/{pkg_name}",
+                        "description": str(it.get("description") or ""),
+                        "readme": "",
+                        "licence_spdx": str(it.get("license") or ""),
+                        "stars": 0,
+                        "pushed_at": "",
+                        "source": "npm",
+                        "query": q,
+                    }))
             elif not npm_res.ok:
                 source_status["npm"] = "SOURCE_ERROR"
 
-        # 3. Search PyPI (primary query)
-        if "pypi" in source_status and idx == 0 and len(results) < 15 and not toolbox.budget.is_exhausted():
-            pypi_res = toolbox.call("pypi", {"action": "search", "query": q})
-            if pypi_res.ok and isinstance(pypi_res.data, dict):
-                items = pypi_res.data.get("items") or []
-                for it in items:
-                    if len(results) >= 15:
-                        break
-                    pkg_name = str(it.get("name") or "").strip()
-                    if not pkg_name:
-                        continue
-                    alt_id = f"pypi:{pkg_name}"
-                    if alt_id.casefold() in seen_ids or pkg_name.casefold() == cand_name:
-                        continue
-                    seen_ids.add(alt_id.casefold())
-                    results.append(
-                        {
-                            "alternative_id": alt_id,
-                            "url": it.get("url") or f"https://pypi.org/project/{pkg_name}/",
-                            "description": str(it.get("description") or ""),
-                            "readme": "",
-                            "licence_spdx": "",
-                            "stars": 0,
-                            "pushed_at": "",
-                            "source": "pypi",
-                        }
-                    )
-                    source_counts["pypi"] += 1
-            elif not pypi_res.ok:
-                source_status["pypi"] = "SOURCE_ERROR"
-
-        # 4. Search Web (DuckDuckGo) (top 2 queries)
-        if "web" in source_status and idx < 2 and len(results) < 15 and not toolbox.budget.is_exhausted():
+        # 3. Web (DuckDuckGo, first 3 queries) - also surfaces PyPI pages, docs and products
+        if "web" in source_status and idx < 3 and not toolbox.budget.is_exhausted():
             tool_name = "web_search" if (hasattr(toolbox, "has") and toolbox.has("web_search")) or (hasattr(toolbox, "tools") and "web_search" in toolbox.tools) else "web"
             web_res = toolbox.call(tool_name, {"query": q})
             if web_res.ok and isinstance(web_res.data, dict):
-                items = web_res.data.get("items") or []
-                for it in items:
-                    if len(results) >= 15:
-                        break
+                for it in (web_res.data.get("items") or [])[:6]:
                     url = str(it.get("url") or "").strip()
                     title = str(it.get("title") or "").strip()
                     snippet = str(it.get("snippet") or "").strip()
                     if not url:
                         continue
                     url_lower = url.casefold().rstrip("/")
-                    if cand_url and cand_url in url_lower:
+                    if (cand_url and cand_url in url_lower) or cand_id.casefold() in url_lower:
                         continue
-                    if cand_id.casefold() in url_lower:
-                        continue
-                    if url_lower in seen_ids:
-                        continue
-                    seen_ids.add(url_lower)
-
                     desc = f"{title} - {snippet}" if title and snippet else (title or snippet)
-                    alt_id = f"web:{url}"
-                    results.append(
-                        {
-                            "alternative_id": alt_id,
-                            "url": url,
-                            "description": desc,
-                            "readme": snippet,
-                            "licence_spdx": "",
-                            "stars": 0,
-                            "pushed_at": "",
-                            "source": "web",
-                        }
-                    )
-                    source_counts["web"] += 1
+                    bucket.append((url_lower, {
+                        "alternative_id": f"web:{url}",
+                        "url": url,
+                        "description": desc,
+                        "readme": snippet,
+                        "licence_spdx": "",
+                        "stars": 0,
+                        "pushed_at": "",
+                        "source": "web",
+                        "query": q,
+                    }))
             elif not web_res.ok:
                 source_status["web"] = "SOURCE_ERROR"
+
+        buckets.append(bucket)
+
+    # Round-robin merge across queries
+    cursors = [0] * len(buckets)
+    progressed = True
+    while len(results) < max_results and progressed:
+        progressed = False
+        for bi, bucket in enumerate(buckets):
+            while cursors[bi] < len(bucket):
+                key, row = bucket[cursors[bi]]
+                cursors[bi] += 1
+                if key in seen_ids:
+                    continue
+                seen_ids.add(key)
+                results.append(row)
+                source_counts[row["source"]] = source_counts.get(row["source"], 0) + 1
+                progressed = True
+                break
+            if len(results) >= max_results:
+                break
+
+    # README excerpts for selected GitHub rows only
+    for row in results:
+        if row["source"] != "github" or row["readme"] or toolbox is None:
+            continue
+        if toolbox.budget.is_exhausted() or toolbox.budget.remaining_calls <= 1:
+            break
+        rm_res = toolbox.call("github", {"action": "readme", "repo": row["alternative_id"]})
+        if rm_res.ok and isinstance(rm_res.data, dict):
+            row["readme"] = str(rm_res.data.get("decoded_text") or "")[:2000]
 
     # Compute coverage status
     successful_sources = sum(1 for st in source_status.values() if st == "ok")

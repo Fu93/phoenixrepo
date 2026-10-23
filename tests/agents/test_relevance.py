@@ -953,3 +953,56 @@ def test_verified_already_exists_survives_one_source_error(tmp_path: Path):
         source_status={"github": "ok", "npm": "ok", "pypi": "ok", "web": "SOURCE_ERROR"},
     )
     assert verdict == "ALREADY_EXISTS", reason
+
+def test_stack_component_is_not_treated_as_platform():
+    """An invoice app built on MongoDB must be searched as an invoice tool, not a MongoDB tool."""
+    candidate = {
+        "repo_id": "someone/invoice-app",
+        "description": "Invoice generator web app built with Express and MongoDB",
+        "readme_excerpt": "Create professional invoices. Data stored in MongoDB.",
+    }
+    problem_statement = {
+        "problem": "Freelancers need to create professional invoices quickly.",
+        "category": "finance-tools",
+        "search_queries": ["invoice generator web app", "freelance invoice manager"],
+    }
+    queries = build_search_queries(candidate, problem_statement)
+    assert queries[0] == "invoice generator web app"
+    assert not any(q.startswith("mongodb") for q in queries)
+
+
+def test_round_robin_merge_keeps_later_queries():
+    """The first query must not fill every slot; later (job) queries still contribute rows."""
+    def mock_transport_fn(request: httpx.Request) -> httpx.Response:
+        url_str = str(request.url)
+        if "api.github.com/search/repositories" in url_str:
+            q = request.url.params.get("q", "")
+            prefix = "first" if q.startswith("first") else "second"
+            return httpx.Response(200, json={"items": [
+                {"full_name": f"{prefix}/repo{i}", "html_url": f"https://github.com/{prefix}/repo{i}", "description": prefix}
+                for i in range(5)
+            ]})
+        if "/readme" in url_str:
+            return httpx.Response(404)
+        if "registry.npmjs.org" in url_str:
+            return httpx.Response(200, json={"objects": [{"package": {"name": f"first-pkg{i}", "description": "first"}} for i in range(10)], "total": 10})
+        if "duckduckgo.com" in url_str:
+            return httpx.Response(200, text="<html><body></body></html>")
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(mock_transport_fn)
+    toolbox = ToolBox(
+        tools={
+            "github": GitHubTool(transport=transport),
+            "npm": NpmTool(transport=transport),
+            "web_search": WebSearchTool(transport=transport),
+        },
+        budget=Budget(max_calls=40, max_seconds=30.0),
+    )
+    results = search_prior_art(
+        candidate={"repo_id": "me/candidate"},
+        queries=["first query", "second query"],
+        toolbox=toolbox,
+    )
+    ids = [r["alternative_id"] for r in results]
+    assert any(i.startswith("second/") for i in ids), ids
