@@ -355,6 +355,13 @@ def test_empty_text_tool_item_scores_zero_or_fallback(tmp_path):
 
     def mock_transport_fn(request: httpx.Request) -> httpx.Response:
         url_str = str(request.url)
+        if "/search/repositories" in url_str:
+            # Prior-art search succeeds and finds one unrelated repo, so coverage is adequate
+            return httpx.Response(200, json={"items": [{"full_name": "someone/unrelated-tool", "html_url": "https://github.com/someone/unrelated-tool", "description": "Unrelated tool"}]})
+        if "registry.npmjs.org" in url_str:
+            return httpx.Response(200, json={"objects": [], "total": 0})
+        if "pypi.org/search" in url_str:
+            return httpx.Response(200, text="<html><body><div>There were no results</div></body></html>")
         if "api.github.com" in url_str:
             if "/search/issues" in url_str:
                 # Empty text / empty items: does not qualify
@@ -402,6 +409,13 @@ def test_unrelated_text_tool_item_is_ignored_and_falls_back(tmp_path):
 
     def mock_transport_fn(request: httpx.Request) -> httpx.Response:
         url_str = str(request.url)
+        if "/search/repositories" in url_str:
+            # Prior-art search succeeds and finds one unrelated repo, so coverage is adequate
+            return httpx.Response(200, json={"items": [{"full_name": "someone/unrelated-tool", "html_url": "https://github.com/someone/unrelated-tool", "description": "Unrelated tool"}]})
+        if "registry.npmjs.org" in url_str:
+            return httpx.Response(200, json={"objects": [], "total": 0})
+        if "pypi.org/search" in url_str:
+            return httpx.Response(200, text="<html><body><div>There were no results</div></body></html>")
         if "api.github.com" in url_str:
             if "/search/issues" in url_str:
                 # Non-empty text, but completely unrelated to candidate core_terms

@@ -76,6 +76,7 @@ from app.tools import (  # noqa: E402
     PyPiTool,
     ToolBox,
     WebFetchTool,
+    WebSearchTool,
     ZetarisSqlTool,
 )
 from app.trace_log import HackathonTrace  # noqa: E402
@@ -701,6 +702,7 @@ def build_default_toolbox(
         "npm": NpmTool(),
         "pypi": PyPiTool(),
         "web_fetch": WebFetchTool(),
+        "web_search": WebSearchTool(),
     }
     # Zetaris SQL tool
     try:
@@ -919,11 +921,31 @@ def _do_score_candidates(
                 queries = build_search_queries(candidate, problem_stmt)
                 queries_tried = list(queries)
 
+                trace.event(
+                    agent_name="orchestrator",
+                    action="QUERY_GENERATION",
+                    input_summary={"repo_id": repo_id},
+                    output_summary={"queries": queries},
+                    status="ok",
+                )
+
                 search_results = search_prior_art(
                     candidate=candidate,
                     queries=queries,
                     toolbox=toolbox,
                     language=candidate.get("primary_language"),
+                )
+
+                trace.event(
+                    agent_name="orchestrator",
+                    action="PRIOR_ART_SEARCH",
+                    input_summary={"repo_id": repo_id, "queries": queries},
+                    output_summary={
+                        "total_results": len(search_results),
+                        "source_counts": getattr(search_results, "source_counts", {}),
+                        "source_status": getattr(search_results, "source_status", {}),
+                    },
+                    status="ok",
                 )
 
                 # Retry once with broader queries if search yields 0 results
@@ -935,6 +957,13 @@ def _do_score_candidates(
                     )
                     if broader:
                         queries_tried.extend(broader)
+                        trace.event(
+                            agent_name="orchestrator",
+                            action="QUERY_GENERATION",
+                            input_summary={"repo_id": repo_id, "retry": True},
+                            output_summary={"queries": broader},
+                            status="ok",
+                        )
                         broader_results = search_prior_art(
                             candidate=candidate,
                             queries=broader,
@@ -942,11 +971,22 @@ def _do_score_candidates(
                             language=candidate.get("primary_language"),
                         )
                         search_results.extend(broader_results)
+                        trace.event(
+                            agent_name="orchestrator",
+                            action="PRIOR_ART_SEARCH",
+                            input_summary={"repo_id": repo_id, "queries": broader, "retry": True},
+                            output_summary={
+                                "total_results": len(broader_results),
+                                "source_counts": getattr(broader_results, "source_counts", {}),
+                                "source_status": getattr(broader_results, "source_status", {}),
+                            },
+                            status="ok",
+                        )
 
                 # If after retry search_results is still 0 and no prior_for_repo from CSV:
                 if len(search_results) == 0 and len(prior_for_repo) == 0:
                     verdict = "NEEDS_PRIOR_ART"
-                    reason = f"Zero alternatives checked in prior-art search. Queries tried: {', '.join(queries_tried)}."
+                    reason = f"Zero alternatives checked in prior-art search. Queries tried: {', '.join(queries_tried[:3])}."
                     trace.event(
                         agent_name="orchestrator",
                         action="DISCOVERY_FILTER",
@@ -988,7 +1028,13 @@ def _do_score_candidates(
                     demand_for_repo,
                     client=relevance_client,
                     problem_alternatives=problem_alternatives,
+                    source_status=getattr(search_results, "source_status", None),
+                    source_counts=getattr(search_results, "source_counts", None),
+                    insufficient_coverage=getattr(search_results, "insufficient_coverage", False),
                 )
+                if verdict == "CANDIDATE" and getattr(search_results, "insufficient_coverage", False) and len(combined_priors) == 0:
+                    verdict = "NEEDS_REVIEW"
+                    reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: absence of alternatives is not evidence of no competition"
                 prior_for_repo = combined_priors
         else:
             verdict, reason = judge_discovery(

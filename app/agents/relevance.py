@@ -123,12 +123,15 @@ class RelevanceClient:
         self.base_url = self.base_url.rstrip("/")
         if self.token is None:
             self.token = os.environ.get("METERLESS_RUNTIME_TOKEN") or ""
+        if self.cache_dir is None and os.environ.get("PHOENIX_LLM_CACHE_DIR"):
+            self.cache_dir = Path(os.environ["PHOENIX_LLM_CACHE_DIR"])
         if self.cache_dir is None:
             self.cache_dir = ROOT / ".cache" / "relevance"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.served_models: set[str] = set()
         self.model_calls: dict[str, int] = {}
         self.repo_mismatches: set[str] = set()
+        self.last_cache_hit: bool = False
 
     def complete(
         self,
@@ -158,6 +161,7 @@ class RelevanceClient:
                 if req_m and served and req_m != served:
                     if repo_id:
                         self.repo_mismatches.add(repo_id)
+                self.last_cache_hit = True
                 elapsed = time.monotonic() - call_start
                 sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} cache_hit served={served} {elapsed:.2f}s\n")
                 sys.stderr.flush()
@@ -190,6 +194,7 @@ class RelevanceClient:
             if self.model and served and self.model != served:
                 if repo_id:
                     self.repo_mismatches.add(repo_id)
+            self.last_cache_hit = False
             elapsed = time.monotonic() - call_start
             sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} served={served} {elapsed:.2f}s\n")
             sys.stderr.flush()
@@ -291,8 +296,9 @@ class RelevanceClient:
                 if self.model and served and self.model != served:
                     if repo_id:
                         self.repo_mismatches.add(repo_id)
+                self.last_cache_hit = False
                 elapsed = time.monotonic() - call_start
-                sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} cache_hit served={served} {elapsed:.2f}s\n")
+                sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} served={served} {elapsed:.2f}s\n")
                 sys.stderr.flush()
                 return text, self.model, served
 
@@ -630,34 +636,112 @@ def quote_in_text(quote: str, text: str) -> bool:
 
 
 def build_search_queries(candidate: dict[str, Any], problem_statement: dict[str, Any]) -> list[str]:
-    """Build problem-oriented search queries, ensuring category + self-hosted/open-source is included when appropriate."""
-    raw_queries = problem_statement.get("search_queries") or []
-    queries = [str(q).strip() for q in raw_queries if str(q).strip()]
+    """Build 4-8 problem-oriented search queries describing the job, not repo words.
+
+    Must include at least:
+    - <platform> cli
+    - <platform> <job> tool (e.g. 'youtrack export markdown')
+    - <platform> api client
+    - official-feature query (<platform> export <format> / <platform> built-in <job>)
+    """
+    known_platforms = [
+        "youtrack", "jira", "github", "gitlab", "notion", "confluence", "slack",
+        "discord", "obsidian", "trello", "linear", "clickup", "airtable", "salesforce",
+        "zendesk", "shopify", "stripe", "docker", "kubernetes", "aws", "gcp",
+        "azure", "postgres", "sqlite", "mysql", "redis", "mongodb", "elastic",
+        "grafana", "prometheus", "sentry", "bitbucket", "jenkins", "circleci",
+        "ansible", "terraform", "vault", "kafka", "rabbitmq",
+    ]
+    known_formats = ["markdown", "json", "csv", "pdf", "html", "yaml", "xml", "text", "excel"]
+    known_jobs = ["export", "sync", "import", "backup", "edit", "fetch", "generate", "publish", "migrate", "archive"]
 
     category = str(problem_statement.get("category") or "").strip().lower()
     desc = str(candidate.get("description") or "").lower()
     readme = str(candidate.get("readme_excerpt") or "").lower()
-    cand_text = f"{desc} {readme}"
+    prob = str(problem_statement.get("problem") or "").lower()
+    user = str(problem_statement.get("target_user") or "").lower()
+    cand_id = str(candidate.get("repo_id") or "").lower()
+    cand_text = f"{cand_id} {desc} {readme} {prob} {user} {category}"
 
+    # 1. Identify platform
+    platform = ""
+    for p in known_platforms:
+        if re.search(r"\b" + re.escape(p) + r"\b", cand_text):
+            platform = p
+            break
+    if not platform:
+        m = re.search(r"(?:using|for|with|in)\s+([a-zA-Z0-9_-]+)", f"{user} {prob}", re.I)
+        if m and m.group(1).lower() not in {"the", "a", "an", "all", "our", "their", "your", "my", "this", "that"}:
+            platform = m.group(1).lower()
+    if not platform and candidate.get("core_terms"):
+        terms = [t.strip().lower() for t in str(candidate.get("core_terms")).split(",") if t.strip()]
+        generic = {"tool", "cli", "app", "sync", "export", "generator", "manager", "service", "system", "client", "library", "markdown", "python", "javascript", "workflow", "workflows"}
+        for t in terms:
+            if t not in generic and len(t) > 2:
+                platform = t
+                break
+    if not platform:
+        platform = category.split("-")[0].lower() if category else "developer"
+
+    # 2. Identify format
+    format_str = ""
+    for f in known_formats:
+        if re.search(r"\b" + re.escape(f) + r"\b", cand_text) or (f == "markdown" and re.search(r"\bmd\b", cand_text)):
+            format_str = f
+            break
+    if not format_str:
+        format_str = "markdown" if "markdown" in cand_text else "json"
+
+    # 3. Identify job
+    job_word = ""
+    for j in known_jobs:
+        if re.search(r"\b" + re.escape(j) + r"\b", cand_text):
+            job_word = j
+            break
+    if not job_word:
+        job_word = "export" if "export" in cand_text else "sync"
+
+    # Required patterns
+    pattern_queries: list[str] = [
+        f"{platform} cli",
+        f"{platform} {job_word} {format_str}" if format_str in cand_text else f"{platform} {job_word} tool",
+        f"{platform} api client",
+        f"{platform} export {format_str}",
+        f"{platform} built-in {job_word}",
+    ]
+
+    # Raw search queries from LLM
+    raw_queries = problem_statement.get("search_queries") or []
+    llm_queries = [str(q).strip() for q in raw_queries if str(q).strip()]
+
+    # Self-hosted / open-source queries
+    extra_queries: list[str] = []
     is_self_hosted = any(k in cand_text for k in ("self-hosted", "self hosted", "selfhosted"))
-
     if is_self_hosted and category:
-        sh_q = f"self-hosted {category}"
-        os_q = f"open source {category}"
-        if not any("self-hosted" in q.lower() and category in q.lower() for q in queries):
-            queries.append(sh_q)
-        if not any("open source" in q.lower() and category in q.lower() for q in queries):
-            queries.append(os_q)
+        extra_queries.append(f"self-hosted {category}")
+        extra_queries.append(f"open source {category}")
 
-    # Deduplicate while preserving order
+    all_queries = pattern_queries + llm_queries + extra_queries
+
+    # Deduplicate preserving order
     seen = set()
     dedup_queries: list[str] = []
-    for q in queries:
+    for q in all_queries:
         qk = q.lower()
         if qk not in seen:
             seen.add(qk)
             dedup_queries.append(q)
-    return dedup_queries
+
+    # Ensure 4 to 8 queries
+    if len(dedup_queries) < 4:
+        for fallback in [f"{platform} tool", f"{platform} open source", f"{category} tool"]:
+            if fallback.lower() not in seen:
+                seen.add(fallback.lower())
+                dedup_queries.append(fallback)
+            if len(dedup_queries) >= 4:
+                break
+
+    return dedup_queries[:8]
 
 
 def broaden_queries(queries: list[str], category: str = "", candidate_repo_id: str = "") -> list[str]:
@@ -714,12 +798,16 @@ def judge_discovery(
     demand_rows: list[dict[str, Any]],
     client: RelevanceClient | None = None,
     problem_alternatives: list[dict[str, Any]] | None = None,
+    source_status: dict[str, str] | None = None,
+    source_counts: dict[str, int] | None = None,
+    insufficient_coverage: bool = False,
 ) -> tuple[str, str]:
     """Judge whether candidate is CANDIDATE, ALREADY_EXISTS, or NO_GO using LLM with deterministic quote verification.
 
     Never uses repository stars or forks.
     Verifies alternative_repo against the union of prior_rows and problem_alternatives.
     Falls back to phrase/keyword decide_discovery when no RelevanceClient is configured.
+    Enforces that absence is not evidence: insufficient coverage blocks CANDIDATE verdict.
     """
     from app.agents.market_filter import decide_discovery
 
@@ -747,6 +835,22 @@ def judge_discovery(
             continue
         seen_ids[alt_key] = r
         combined_priors.append(r)
+
+    # Check multi-source coverage guards
+    has_source_error = source_status is not None and any(st == "SOURCE_ERROR" for st in source_status.values())
+    zero_results = source_counts is not None and sum(source_counts.values()) == 0 and len(combined_priors) == 0
+    fewer_than_two = source_status is not None and len(source_status) >= 2 and sum(1 for st in source_status.values() if st == "ok") < 2 and len(combined_priors) == 0
+    coverage_blocked = (insufficient_coverage and len(combined_priors) == 0) or has_source_error or zero_results or fewer_than_two
+
+    if has_source_error:
+        err_sources = [s for s, st in source_status.items() if st == "SOURCE_ERROR"]
+        coverage_reason = f"INSUFFICIENT_PRIOR_ART_COVERAGE: source error in {', '.join(err_sources)}"
+    elif zero_results:
+        coverage_reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: zero alternatives found across all sources"
+    elif fewer_than_two:
+        coverage_reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: fewer than 2 sources succeeded"
+    else:
+        coverage_reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: insufficient prior art coverage"
 
     if not is_client_configured(client):
         verdict, reason = decide_discovery(candidate, combined_priors, demand_rows)
@@ -815,8 +919,17 @@ def judge_discovery(
     alt_quote = str(obj.get("alternative_quote") or "").strip() if obj.get("alternative_quote") else None
 
     # Deterministic verification
-    if raw_verdict == "CANDIDATE":
-        if not problem_quote or not quote_in_text(problem_quote, cand_text):
+    if has_source_error and raw_verdict != "ALREADY_EXISTS":
+        verdict = "NEEDS_REVIEW"
+        reason = coverage_reason
+    elif zero_results:
+        verdict = "NEEDS_REVIEW"
+        reason = coverage_reason
+    elif raw_verdict == "CANDIDATE":
+        if coverage_blocked:
+            verdict = "NEEDS_REVIEW"
+            reason = coverage_reason
+        elif not problem_quote or not quote_in_text(problem_quote, cand_text):
             verdict = "NEEDS_REVIEW"
             reason = f"unverified LLM quote: problem_quote '{problem_quote}' not found in candidate README or description"
         else:
@@ -829,12 +942,14 @@ def judge_discovery(
                 r_id = str(r.get("alternative_id") or "").strip()
                 r_name = r_id.split("/")[-1] if "/" in r_id else r_id
                 r_url = str(r.get("url") or "").strip()
+                r_desc = str(r.get("description") or "").strip()
                 if (
                     alt_repo.casefold() == r_id.casefold()
                     or alt_repo.casefold() == r_name.casefold()
                     or alt_repo.casefold() in r_id.casefold()
                     or r_id.casefold() in alt_repo.casefold()
                     or (r_url and alt_repo.casefold() in r_url.casefold())
+                    or (r_desc and alt_repo.casefold() in r_desc.casefold())
                 ):
                     matched_row = r
                     break
@@ -959,134 +1074,255 @@ def extract_problem_statement(
     return problem_data, {"requested_model": req_m, "served_model": srv_m, "fallback": False}
 
 
+class SearchResultsList(list):
+    """List of candidate alternative dicts with multi-source coverage metadata."""
+
+    def __init__(
+        self,
+        items: list[dict[str, Any]] | None = None,
+        source_counts: dict[str, int] | None = None,
+        source_status: dict[str, str] | None = None,
+        insufficient_coverage: bool = False,
+    ) -> None:
+        super().__init__(items or [])
+        self.source_counts: dict[str, int] = source_counts or {}
+        self.source_status: dict[str, str] = source_status or {}
+        self.insufficient_coverage: bool = insufficient_coverage
+
+
 def search_prior_art(
     candidate: dict[str, Any],
     queries: list[str],
     toolbox: Any,
     language: str | None = None,
-) -> list[dict[str, Any]]:
+) -> SearchResultsList:
     """Search for potential prior-art alternatives across queries via the existing toolbox.
 
-    Deduplicates results, excludes candidate itself and its forks, keeps at most 10 results.
+    Queries multi-sources (GitHub, npm, PyPI, and Web/DuckDuckGo).
+    Deduplicates results, excludes candidate itself and its forks, keeps at most 15 results.
     Never uses candidate's own stars or forks anywhere.
+    Tracks per-source counts and status.
     """
     cand_id = str(candidate.get("repo_id") or "").strip()
     cand_name = cand_id.split("/")[-1].casefold() if "/" in cand_id else cand_id.casefold()
+    cand_url = str(candidate.get("html_url") or "").strip().casefold().rstrip("/")
     lang = (language or candidate.get("primary_language") or candidate.get("language") or "").strip()
 
     results: list[dict[str, Any]] = []
     seen_ids: set[str] = {cand_id.casefold()}
+    if cand_url:
+        seen_ids.add(cand_url)
 
-    for q in queries:
+    # Detect active sources in toolbox
+    active_sources: set[str] = set()
+    if toolbox is not None:
+        if hasattr(toolbox, "has"):
+            for s in ["github", "npm", "pypi", "web_search", "web"]:
+                if toolbox.has(s):
+                    active_sources.add(s)
+        if hasattr(toolbox, "tools") and isinstance(toolbox.tools, dict):
+            for s in ["github", "npm", "pypi", "web_search", "web"]:
+                if s in toolbox.tools:
+                    active_sources.add(s)
+    if not active_sources:
+        active_sources = {"github", "npm", "pypi", "web"}
+
+    source_counts: dict[str, int] = {"github": 0, "npm": 0, "pypi": 0, "web": 0}
+    source_status: dict[str, str] = {}
+    for s in ["github", "npm", "pypi", "web"]:
+        if s in active_sources or (s == "web" and "web_search" in active_sources):
+            source_status[s] = "ok"
+
+    for idx, q in enumerate(queries):
         if toolbox is None or toolbox.budget.is_exhausted():
             break
-        if len(results) >= 10:
+        if len(results) >= 15:
             break
 
-        # 1. Search GitHub repositories
-        gh_res = toolbox.call("github", {"action": "repositories", "query": q, "per_page": 5})
-        if gh_res.ok and isinstance(gh_res.data, dict):
-            items = gh_res.data.get("items") or []
-            for it in items:
-                if len(results) >= 10:
-                    break
-                full_name = str(it.get("full_name") or it.get("name") or "").strip()
-                if not full_name:
-                    continue
-                fn_lower = full_name.casefold()
-                if fn_lower in seen_ids:
-                    continue
+        # 1. Search GitHub repositories (runs every generated query)
+        if "github" in source_status:
+            gh_res = toolbox.call("github", {"action": "repositories", "query": q, "per_page": 5})
+            if gh_res.ok and isinstance(gh_res.data, dict):
+                items = gh_res.data.get("items") or []
+                for it in items:
+                    if len(results) >= 15:
+                        break
+                    full_name = str(it.get("full_name") or it.get("name") or "").strip()
+                    if not full_name:
+                        continue
+                    fn_lower = full_name.casefold()
+                    if fn_lower in seen_ids or fn_lower == cand_id.casefold():
+                        continue
 
-                # Exclude candidate itself
-                if fn_lower == cand_id.casefold():
-                    continue
+                    # Exclude candidate forks
+                    is_fork = bool(it.get("fork")) or bool(it.get("is_fork"))
+                    parent_fn = str(it.get("parent", {}).get("full_name") or "").casefold()
+                    source_fn = str(it.get("source", {}).get("full_name") or "").casefold()
+                    it_name = str(it.get("name") or "").casefold()
+                    it_desc = str(it.get("description") or "").casefold()
 
-                # Exclude candidate forks
-                is_fork = bool(it.get("fork")) or bool(it.get("is_fork"))
-                parent_fn = str(it.get("parent", {}).get("full_name") or "").casefold()
-                source_fn = str(it.get("source", {}).get("full_name") or "").casefold()
-                it_name = str(it.get("name") or "").casefold()
-                it_desc = str(it.get("description") or "").casefold()
+                    if parent_fn == cand_id.casefold() or source_fn == cand_id.casefold():
+                        continue
+                    if is_fork and (it_name == cand_name or f"forked from {cand_id.casefold()}" in it_desc):
+                        continue
+                    if it.get("is_fork_of_candidate"):
+                        continue
 
-                if parent_fn == cand_id.casefold() or source_fn == cand_id.casefold():
-                    continue
-                if is_fork and (it_name == cand_name or f"forked from {cand_id.casefold()}" in it_desc):
-                    continue
-                if it.get("is_fork_of_candidate"):
-                    continue
+                    seen_ids.add(fn_lower)
 
-                seen_ids.add(fn_lower)
+                    desc = str(it.get("description") or "").strip()
+                    url = str(it.get("html_url") or it.get("url") or f"https://github.com/{full_name}").strip()
+                    lic = it.get("license") or {}
+                    spdx = str(lic.get("spdx_id") or "") if isinstance(lic, dict) else str(lic or "")
+                    stars = it.get("stargazers_count", 0)
+                    pushed_at = str(it.get("pushed_at") or "")
 
-                desc = str(it.get("description") or "").strip()
-                url = str(it.get("html_url") or it.get("url") or f"https://github.com/{full_name}").strip()
-                lic = it.get("license") or {}
-                spdx = str(lic.get("spdx_id") or "") if isinstance(lic, dict) else str(lic or "")
-                stars = it.get("stargazers_count", 0)
-                pushed_at = str(it.get("pushed_at") or "")
+                    # Fetch README excerpt if available and budget permits
+                    readme_text = str(it.get("readme") or "")
+                    if not readme_text and not toolbox.budget.is_exhausted() and toolbox.budget.remaining_calls > 1:
+                        rm_res = toolbox.call("github", {"action": "readme", "repo": full_name})
+                        if rm_res.ok and isinstance(rm_res.data, dict):
+                            readme_text = str(rm_res.data.get("decoded_text") or "")[:2000]
 
-                # Fetch README excerpt if available and budget permits
-                readme_text = str(it.get("readme") or "")
-                if not readme_text and not toolbox.budget.is_exhausted() and toolbox.budget.remaining_calls > 1:
-                    rm_res = toolbox.call("github", {"action": "readme", "repo": full_name})
-                    if rm_res.ok and isinstance(rm_res.data, dict):
-                        readme_text = str(rm_res.data.get("decoded_text") or "")[:2000]
+                    results.append(
+                        {
+                            "alternative_id": full_name,
+                            "url": url,
+                            "description": desc,
+                            "readme": readme_text,
+                            "licence_spdx": spdx,
+                            "stars": stars,
+                            "pushed_at": pushed_at,
+                            "source": "github",
+                        }
+                    )
+                    source_counts["github"] += 1
+            elif not gh_res.ok:
+                err_str = str(gh_res.error or "")
+                if "RATE_LIMITED" in err_str:
+                    pass
+                elif "SOURCE_ERROR" in err_str:
+                    source_status["github"] = "SOURCE_ERROR"
 
-                results.append(
-                    {
-                        "alternative_id": full_name,
-                        "url": url,
-                        "description": desc,
-                        "readme": readme_text,
-                        "licence_spdx": spdx,
-                        "stars": stars,
-                        "pushed_at": pushed_at,
-                        "source": "github",
-                    }
-                )
+        # 2. Search npm registry (primary query)
+        if "npm" in source_status and idx == 0 and len(results) < 15 and not toolbox.budget.is_exhausted():
+            npm_res = toolbox.call("npm", {"action": "search", "query": q})
+            if npm_res.ok and isinstance(npm_res.data, dict):
+                items = npm_res.data.get("items") or []
+                for it in items:
+                    if len(results) >= 15:
+                        break
+                    pkg_name = str(it.get("name") or "").strip()
+                    if not pkg_name:
+                        continue
+                    alt_id = f"npm:{pkg_name}"
+                    if alt_id.casefold() in seen_ids or pkg_name.casefold() == cand_name:
+                        continue
+                    seen_ids.add(alt_id.casefold())
+                    results.append(
+                        {
+                            "alternative_id": alt_id,
+                            "url": it.get("url") or f"https://www.npmjs.com/package/{pkg_name}",
+                            "description": str(it.get("description") or ""),
+                            "readme": "",
+                            "licence_spdx": str(it.get("license") or ""),
+                            "stars": 0,
+                            "pushed_at": "",
+                            "source": "npm",
+                        }
+                    )
+                    source_counts["npm"] += 1
+            elif not npm_res.ok:
+                source_status["npm"] = "SOURCE_ERROR"
 
-        # 2. Search npm / PyPI when language fits
-        if len(results) < 10 and not toolbox.budget.is_exhausted():
-            clean_q = re.sub(r"[^a-zA-Z0-9_-]+", "-", q).strip("-").lower()
-            if clean_q and len(clean_q) > 2:
-                if lang in {"JavaScript", "TypeScript", "Node"} and clean_q not in seen_ids:
-                    npm_res = toolbox.call("npm", {"package": clean_q})
-                    if npm_res.ok and isinstance(npm_res.data, dict):
-                        pkg_name = str(npm_res.data.get("name") or clean_q)
-                        if pkg_name.casefold() not in seen_ids and pkg_name.casefold() != cand_id.casefold():
-                            seen_ids.add(pkg_name.casefold())
-                            results.append(
-                                {
-                                    "alternative_id": f"npm:{pkg_name}",
-                                    "url": npm_res.source_url or f"https://www.npmjs.com/package/{pkg_name}",
-                                    "description": str(npm_res.data.get("description") or ""),
-                                    "readme": "",
-                                    "licence_spdx": str(npm_res.data.get("license") or ""),
-                                    "stars": 0,
-                                    "pushed_at": "",
-                                    "source": "npm",
-                                }
-                            )
-                elif lang in {"Python"} and clean_q not in seen_ids:
-                    pypi_res = toolbox.call("pypi", {"package": clean_q})
-                    if pypi_res.ok and isinstance(pypi_res.data, dict):
-                        info = pypi_res.data.get("info") or pypi_res.data
-                        pkg_name = str(info.get("name") or clean_q)
-                        if pkg_name.casefold() not in seen_ids and pkg_name.casefold() != cand_id.casefold():
-                            seen_ids.add(pkg_name.casefold())
-                            results.append(
-                                {
-                                    "alternative_id": f"pypi:{pkg_name}",
-                                    "url": pypi_res.source_url or f"https://pypi.org/project/{pkg_name}",
-                                    "description": str(info.get("summary") or info.get("description") or "")[:500],
-                                    "readme": "",
-                                    "licence_spdx": str(info.get("license") or ""),
-                                    "stars": 0,
-                                    "pushed_at": "",
-                                    "source": "pypi",
-                                }
-                            )
+        # 3. Search PyPI (primary query)
+        if "pypi" in source_status and idx == 0 and len(results) < 15 and not toolbox.budget.is_exhausted():
+            pypi_res = toolbox.call("pypi", {"action": "search", "query": q})
+            if pypi_res.ok and isinstance(pypi_res.data, dict):
+                items = pypi_res.data.get("items") or []
+                for it in items:
+                    if len(results) >= 15:
+                        break
+                    pkg_name = str(it.get("name") or "").strip()
+                    if not pkg_name:
+                        continue
+                    alt_id = f"pypi:{pkg_name}"
+                    if alt_id.casefold() in seen_ids or pkg_name.casefold() == cand_name:
+                        continue
+                    seen_ids.add(alt_id.casefold())
+                    results.append(
+                        {
+                            "alternative_id": alt_id,
+                            "url": it.get("url") or f"https://pypi.org/project/{pkg_name}/",
+                            "description": str(it.get("description") or ""),
+                            "readme": "",
+                            "licence_spdx": "",
+                            "stars": 0,
+                            "pushed_at": "",
+                            "source": "pypi",
+                        }
+                    )
+                    source_counts["pypi"] += 1
+            elif not pypi_res.ok:
+                source_status["pypi"] = "SOURCE_ERROR"
 
-    return results[:10]
+        # 4. Search Web (DuckDuckGo) (top 2 queries)
+        if "web" in source_status and idx < 2 and len(results) < 15 and not toolbox.budget.is_exhausted():
+            tool_name = "web_search" if (hasattr(toolbox, "has") and toolbox.has("web_search")) or (hasattr(toolbox, "tools") and "web_search" in toolbox.tools) else "web"
+            web_res = toolbox.call(tool_name, {"query": q})
+            if web_res.ok and isinstance(web_res.data, dict):
+                items = web_res.data.get("items") or []
+                for it in items:
+                    if len(results) >= 15:
+                        break
+                    url = str(it.get("url") or "").strip()
+                    title = str(it.get("title") or "").strip()
+                    snippet = str(it.get("snippet") or "").strip()
+                    if not url:
+                        continue
+                    url_lower = url.casefold().rstrip("/")
+                    if cand_url and cand_url in url_lower:
+                        continue
+                    if cand_id.casefold() in url_lower:
+                        continue
+                    if url_lower in seen_ids:
+                        continue
+                    seen_ids.add(url_lower)
+
+                    desc = f"{title} - {snippet}" if title and snippet else (title or snippet)
+                    alt_id = f"web:{url}"
+                    results.append(
+                        {
+                            "alternative_id": alt_id,
+                            "url": url,
+                            "description": desc,
+                            "readme": snippet,
+                            "licence_spdx": "",
+                            "stars": 0,
+                            "pushed_at": "",
+                            "source": "web",
+                        }
+                    )
+                    source_counts["web"] += 1
+            elif not web_res.ok:
+                source_status["web"] = "SOURCE_ERROR"
+
+    # Compute coverage status
+    successful_sources = sum(1 for st in source_status.values() if st == "ok")
+    has_source_error = any(st == "SOURCE_ERROR" for st in source_status.values())
+    zero_found = len(results) == 0
+
+    if len(source_status) >= 2:
+        insufficient_coverage = zero_found or has_source_error or (successful_sources < 2)
+    else:
+        insufficient_coverage = zero_found or has_source_error
+
+    return SearchResultsList(
+        results[:15],
+        source_counts=source_counts,
+        source_status=source_status,
+        insufficient_coverage=insufficient_coverage,
+    )
 
 
 def judge_alternative_relevance(

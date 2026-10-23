@@ -21,6 +21,7 @@ import pytest
 from app.agents.relevance import (
     RelevanceClient,
     RelevanceLLMError,
+    build_search_queries,
     extract_capabilities,
     extract_problem_statement,
     filter_relevant_alternatives,
@@ -31,7 +32,7 @@ from app.agents.relevance import (
     judge_discovery,
     search_prior_art,
 )
-from app.tools import Budget, GitHubTool, ToolBox
+from app.tools import Budget, GitHubTool, NpmTool, PyPiTool, ToolBox, WebSearchTool
 
 
 def test_hallucinated_quote_rejected(tmp_path: Path):
@@ -650,5 +651,305 @@ def test_relevance_cache_hit_logs_cache_hit_label(tmp_path: Path, capsys):
     assert "cache_hit served=gemini-3.1-pro-preview" in err2
 
 
+def test_mocked_live_call_with_latency_is_not_cache_hit_until_second_call(tmp_path: Path, capsys):
+    """Task 5: Mocked live call with latency has cache_hit=false, second call has cache_hit=true."""
+    def live_handler(request: httpx.Request) -> httpx.Response:
+        time.sleep(0.02)
+        body = {
+            "model": "nvidia/nemotron-3-super-120b-a12b",
+            "choices": [{"message": {"content": '{"result": "live_ok"}'}}],
+        }
+        return httpx.Response(200, json=body)
+
+    client = RelevanceClient(
+        token="test-token",
+        model="nvidia/nemotron-3-super-120b-a12b",
+        cache_dir=tmp_path / "cache",
+        transport=httpx.MockTransport(live_handler),
+    )
+
+    # First call: live network call
+    text1, _, _ = client.complete("prompt1", "system1", repo_id="live/repo", step="problem")
+    assert text1 == '{"result": "live_ok"}'
+    assert client.last_cache_hit is False
+    _, err1 = capsys.readouterr()
+    assert "cache_hit" not in err1
+    assert "served=nvidia/nemotron-3-super-120b-a12b" in err1
+
+    # Second call: served from local cache
+    text2, _, _ = client.complete("prompt1", "system1", repo_id="live/repo", step="problem")
+    assert text2 == '{"result": "live_ok"}'
+    assert client.last_cache_hit is True
+    _, err2 = capsys.readouterr()
+    assert "cache_hit served=nvidia/nemotron-3-super-120b-a12b" in err2
 
 
+def test_ytkb_regression_with_fixtures_becomes_already_exists(tmp_path: Path):
+    """Task 6: ytkb regression: fixtures containing yt-cli snippet -> ytkb must become ALREADY_EXISTS."""
+    fixtures_dir = Path(__file__).resolve().parent.parent / "fixtures" / "prior_art"
+    ddg_html = (fixtures_dir / "ddg_search_results.html").read_text(encoding="utf-8")
+    npm_json = (fixtures_dir / "npm_search_results.json").read_text(encoding="utf-8")
+    pypi_html = (fixtures_dir / "pypi_search_results.html").read_text(encoding="utf-8")
+
+    candidate = {
+        "repo_id": "SergioMendolia/ytkb",
+        "html_url": "https://github.com/SergioMendolia/ytkb",
+        "description": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+        "readme_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+        "core_terms": "youtrack, markdown, knowledge base",
+    }
+    problem_statement = {
+        "problem": "Developers and technical writers cannot easily edit and sync YouTrack knowledge base articles offline in their local markdown editor.",
+        "target_user": "Developers and technical writers using YouTrack knowledge base",
+        "category": "developer-tools",
+        "search_queries": ["youtrack cli", "youtrack markdown export"],
+    }
+
+    def mock_transport_fn(request: httpx.Request) -> httpx.Response:
+        url_str = str(request.url)
+        if "duckduckgo.com" in url_str:
+            return httpx.Response(200, text=ddg_html)
+        if "registry.npmjs.org" in url_str:
+            return httpx.Response(200, text=npm_json)
+        if "pypi.org" in url_str:
+            return httpx.Response(200, text=pypi_html)
+        if "api.github.com/search/repositories" in url_str:
+            return httpx.Response(200, json={"items": []})
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(mock_transport_fn)
+    toolbox = ToolBox(
+        tools={
+            "github": GitHubTool(transport=transport),
+            "npm": NpmTool(transport=transport),
+            "pypi": PyPiTool(transport=transport),
+            "web_search": WebSearchTool(transport=transport),
+        },
+        budget=Budget(max_calls=20, max_seconds=30.0),
+    )
+
+    search_results = search_prior_art(
+        candidate=candidate,
+        queries=["youtrack cli"],
+        toolbox=toolbox,
+    )
+    assert len(search_results) > 0
+    # Must have found yt-cli in DuckDuckGo search results
+    assert any("yt-cli" in r["alternative_id"] or "yt-cli" in r["url"] for r in search_results)
+
+    def fake_llm(prompt: str, sys_prompt: str) -> str:
+        if "relevance_alternative" in sys_prompt or "Alternative Repository" in prompt:
+            return json.dumps({
+                "same_problem": True,
+                "overlap": "full",
+                "reason": "yt-cli provides full round trip markdown editing and sync for YouTrack articles.",
+                "quotes": [
+                    "save it to a local markdown file"
+                ],
+            })
+        if "relevance_discovery" in sys_prompt or "Candidate Repository: SergioMendolia/ytkb" in prompt:
+            return json.dumps({
+                "verdict": "ALREADY_EXISTS",
+                "reason": "yt-cli already exists and covers full markdown round trip for YouTrack articles.",
+                "problem_quote": "syncing YouTrack knowledge base articles to local markdown files",
+                "alternative_repo": "yt-cli",
+                "alternative_quote": "save it to a local markdown file",
+            })
+        return json.dumps({"verdict": "NO_GO", "reason": "unknown"})
+
+    client = RelevanceClient(cache_dir=tmp_path / "cache", mock_handler=fake_llm)
+
+    problem_alts = filter_relevant_alternatives(
+        problem_statement=problem_statement,
+        candidate_repo_id=candidate["repo_id"],
+        search_results=search_results,
+        client=client,
+    )
+    assert len(problem_alts) > 0
+
+    verdict, reason = judge_discovery(
+        candidate=candidate,
+        prior_rows=[],
+        demand_rows=[],
+        client=client,
+        problem_alternatives=problem_alts,
+        source_status=search_results.source_status,
+        source_counts=search_results.source_counts,
+        insufficient_coverage=search_results.insufficient_coverage,
+    )
+    assert verdict == "ALREADY_EXISTS"
+    assert "yt-cli" in reason
+
+
+def test_zero_results_across_all_sources_yields_needs_review_insufficient_coverage(tmp_path: Path):
+    """Task 6: zero results across all sources -> NEEDS_REVIEW / INSUFFICIENT_PRIOR_ART_COVERAGE."""
+    candidate = {
+        "repo_id": "niche/obscure-idea",
+        "description": "Obscure tool with no competition found.",
+        "readme_excerpt": "Obscure tool with no competition found anywhere.",
+    }
+    client = RelevanceClient(
+        cache_dir=tmp_path / "cache",
+        mock_handler=lambda p, s: json.dumps({
+            "verdict": "CANDIDATE",
+            "reason": "No competition found, looks good",
+            "problem_quote": "Obscure tool with no competition found",
+        }),
+    )
+
+    verdict, reason = judge_discovery(
+        candidate=candidate,
+        prior_rows=[],
+        demand_rows=[],
+        client=client,
+        source_counts={"github": 0, "npm": 0, "pypi": 0, "web": 0},
+        source_status={"github": "ok", "npm": "ok", "pypi": "ok", "web": "ok"},
+    )
+    assert verdict == "NEEDS_REVIEW"
+    assert "INSUFFICIENT_PRIOR_ART_COVERAGE" in reason
+
+
+def test_source_error_in_one_source_yields_needs_review(tmp_path: Path):
+    """Task 6: one source SOURCE_ERROR -> NEEDS_REVIEW."""
+    candidate = {
+        "repo_id": "test/tool",
+        "description": "A developer tool.",
+        "readme_excerpt": "A developer tool solving friction.",
+    }
+    client = RelevanceClient(
+        cache_dir=tmp_path / "cache",
+        mock_handler=lambda p, s: json.dumps({
+            "verdict": "CANDIDATE",
+            "reason": "Good candidate",
+            "problem_quote": "A developer tool solving friction",
+        }),
+    )
+
+    verdict, reason = judge_discovery(
+        candidate=candidate,
+        prior_rows=[],
+        demand_rows=[],
+        client=client,
+        source_counts={"github": 3, "npm": 1, "pypi": 0, "web": 2},
+        source_status={"github": "ok", "npm": "ok", "pypi": "SOURCE_ERROR", "web": "ok"},
+    )
+    assert verdict == "NEEDS_REVIEW"
+    assert "INSUFFICIENT_PRIOR_ART_COVERAGE" in reason
+
+
+def test_fabricated_quote_in_alternative_snippet_is_rejected_needs_review(tmp_path: Path):
+    """Task 6: fabricated quote not present in snippet -> rejected, NEEDS_REVIEW."""
+    candidate = {
+        "repo_id": "SergioMendolia/ytkb",
+        "description": "CLI to sync YouTrack knowledge base articles to local markdown files",
+        "readme_excerpt": "CLI to sync YouTrack knowledge base articles to local markdown files",
+    }
+    problem_alternatives = [
+        {
+            "alternative_id": "yt-cli",
+            "url": "https://yt-cli.readthedocs.io/en/latest/commands/articles.html",
+            "description": "yt-cli: YouTrack CLI Articles Commands",
+            "readme": "yt articles fetch ID --file x.md and yt articles edit --file x.md",
+            "overlap": "full",
+            "same_problem": True,
+        }
+    ]
+
+    # LLM hallucinates an alternative quote not present anywhere in the alternative's text
+    def fake_llm(p: str, s: str) -> str:
+        return json.dumps({
+            "verdict": "ALREADY_EXISTS",
+            "reason": "yt-cli already exists",
+            "problem_quote": "sync YouTrack knowledge base articles to local markdown files",
+            "alternative_repo": "yt-cli",
+            "alternative_quote": "This quote was hallucinated and is not present in yt-cli snippet or readme.",
+        })
+
+    client = RelevanceClient(cache_dir=tmp_path / "cache", mock_handler=fake_llm)
+    verdict, reason = judge_discovery(
+        candidate=candidate,
+        prior_rows=[],
+        demand_rows=[],
+        client=client,
+        problem_alternatives=problem_alternatives,
+    )
+    assert verdict == "NEEDS_REVIEW"
+    assert "unverified LLM quote" in reason
+
+
+def test_query_generation_includes_cli_api_client_and_official_feature_patterns():
+    """Task 6: query generation includes the cli / api client / official-feature patterns."""
+    candidate = {
+        "repo_id": "SergioMendolia/ytkb",
+        "description": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+        "readme_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+        "core_terms": "youtrack, markdown, knowledge base",
+    }
+    problem_statement = {
+        "problem": "Developers and technical writers cannot easily edit and sync YouTrack knowledge base articles offline in their local markdown editor.",
+        "target_user": "Developers and technical writers using YouTrack knowledge base",
+        "category": "developer-tools",
+        "search_queries": [
+            "youtrack knowledge base sync",
+            "youtrack markdown export",
+            "sync knowledge base markdown",
+            "youtrack cli editor",
+        ],
+    }
+    queries = build_search_queries(candidate, problem_statement)
+    queries_lower = [q.lower() for q in queries]
+
+    assert 4 <= len(queries) <= 8
+    # Must include <platform> cli
+    assert any("youtrack cli" in q for q in queries_lower)
+    # Must include <platform> api client
+    assert any("youtrack api client" in q for q in queries_lower)
+    # Must include <platform> <job> tool or export format
+    assert any("youtrack" in q and ("export" in q or "sync" in q) for q in queries_lower)
+    # Must include official-feature query pattern
+    assert any("export" in q and "markdown" in q for q in queries_lower) or any("built-in" in q for q in queries_lower)
+
+
+
+
+
+
+
+def test_verified_already_exists_survives_one_source_error(tmp_path: Path):
+    """Positive verified evidence (full overlap + verbatim quotes) must not be downgraded by an unrelated source error."""
+    candidate = {
+        "repo_id": "SergioMendolia/ytkb",
+        "description": "CLI to sync YouTrack knowledge base articles to local markdown files",
+        "readme_excerpt": "CLI to sync YouTrack knowledge base articles to local markdown files",
+    }
+    problem_alternatives = [
+        {
+            "alternative_id": "yt-cli",
+            "url": "https://yt-cli.readthedocs.io/en/latest/commands/articles.html",
+            "description": "Fetch an article's content from YouTrack and save it to a local markdown file.",
+            "readme": "Fetch an article's content from YouTrack and save it to a local markdown file.",
+            "overlap": "full",
+            "same_problem": True,
+        }
+    ]
+
+    def fake_llm(p: str, s: str) -> str:
+        return json.dumps({
+            "verdict": "ALREADY_EXISTS",
+            "reason": "yt-cli covers the same markdown round trip.",
+            "problem_quote": "sync YouTrack knowledge base articles to local markdown files",
+            "alternative_repo": "yt-cli",
+            "alternative_quote": "save it to a local markdown file",
+        })
+
+    client = RelevanceClient(cache_dir=tmp_path / "cache", mock_handler=fake_llm)
+    verdict, reason = judge_discovery(
+        candidate=candidate,
+        prior_rows=[],
+        demand_rows=[],
+        client=client,
+        problem_alternatives=problem_alternatives,
+        source_counts={"github": 0, "npm": 0, "pypi": 2, "web": 0},
+        source_status={"github": "ok", "npm": "ok", "pypi": "ok", "web": "SOURCE_ERROR"},
+    )
+    assert verdict == "ALREADY_EXISTS", reason

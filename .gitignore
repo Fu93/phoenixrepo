@@ -13,3 +13,5 @@ output_examples/*.tmp
 *.key
 secrets/
 credentials/
+
+.cache/

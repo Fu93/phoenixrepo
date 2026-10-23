@@ -7,7 +7,15 @@ from app.tools.builtin import (
     NpmTool,
     PyPiTool,
     WebFetchTool,
+    WebSearchTool,
     ZetarisSqlTool,
+    parse_ddg_html,
+    parse_npm_json,
+    parse_pypi_html,
+    search_github,
+    search_npm,
+    search_pypi,
+    search_web,
 )
 
 __all__ = [
@@ -21,5 +29,13 @@ __all__ = [
     "ToolBox",
     "ToolResult",
     "WebFetchTool",
+    "WebSearchTool",
     "ZetarisSqlTool",
+    "parse_ddg_html",
+    "parse_npm_json",
+    "parse_pypi_html",
+    "search_github",
+    "search_npm",
+    "search_pypi",
+    "search_web",
 ]

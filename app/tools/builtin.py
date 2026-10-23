@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
 import os
+import urllib.parse
 from datetime import datetime, timezone
+from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -14,6 +19,381 @@ from app.tools.base import ToolResult
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _tool_cache_path(tool_name: str, query: str, cache_dir: Path | str | None = None) -> Path:
+    if cache_dir is None and os.environ.get("PHOENIX_TOOL_CACHE_DIR"):
+        cache_dir = Path(os.environ["PHOENIX_TOOL_CACHE_DIR"]) / tool_name
+    if cache_dir is None:
+        cache_dir = Path(__file__).resolve().parent.parent.parent / ".cache" / "tools" / tool_name
+    else:
+        cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    q_hash = hashlib.sha256(query.strip().lower().encode("utf-8")).hexdigest()
+    return cache_dir / f"{q_hash}.json"
+
+
+class PyPiParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.results: list[dict[str, str]] = []
+        self._cur: dict[str, str] | None = None
+        self._active_class: str = ""
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attr_dict = dict(attrs)
+        cls = str(attr_dict.get("class") or "")
+        if tag == "a" and "package-snippet" in cls:
+            href = str(attr_dict.get("href") or "")
+            if href.startswith("/"):
+                href = f"https://pypi.org{href}"
+            self._cur = {"url": href, "name": "", "description": "", "version": ""}
+        if "package-snippet__name" in cls:
+            self._active_class = "name"
+        elif "package-snippet__description" in cls:
+            self._active_class = "desc"
+        elif "package-snippet__version" in cls:
+            self._active_class = "ver"
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self._cur:
+            if self._cur.get("name"):
+                self.results.append(self._cur)
+            self._cur = None
+        self._active_class = ""
+
+    def handle_data(self, data: str) -> None:
+        if self._cur and self._active_class:
+            val = data.strip()
+            if self._active_class == "name":
+                self._cur["name"] += (" " + val if self._cur["name"] and val else val)
+            elif self._active_class == "desc":
+                self._cur["description"] += (" " + val if self._cur["description"] and val else val)
+            elif self._active_class == "ver":
+                self._cur["version"] += val
+
+
+class DDGParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.results: list[dict[str, str]] = []
+        self._cur: dict[str, str] | None = None
+        self._active: str = ""
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attr_dict = dict(attrs)
+        cls = str(attr_dict.get("class") or "")
+        if "result__title" in cls or "result__a" in cls:
+            if tag == "a":
+                href = str(attr_dict.get("href") or "")
+                if "uddg=" in href:
+                    parsed = urllib.parse.urlparse(href)
+                    qs = urllib.parse.parse_qs(parsed.query)
+                    if "uddg" in qs:
+                        href = urllib.parse.unquote(qs["uddg"][0])
+                if href.startswith("//"):
+                    href = f"https:{href}"
+                if self._cur is None:
+                    self._cur = {"url": href, "title": "", "snippet": ""}
+                else:
+                    self._cur["url"] = href
+                self._active = "title"
+        elif "result__snippet" in cls:
+            self._active = "snippet"
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self._active == "title":
+            self._active = ""
+        elif self._active == "snippet" and (tag == "a" or tag == "div"):
+            self._active = ""
+            if self._cur and self._cur.get("url") and (self._cur.get("title") or self._cur.get("snippet")):
+                self.results.append(self._cur)
+                self._cur = None
+
+    def handle_data(self, data: str) -> None:
+        if self._cur:
+            val = data.strip()
+            if not val:
+                return
+            if self._active == "title":
+                self._cur["title"] = (self._cur["title"] + " " + val).strip()
+            elif self._active == "snippet":
+                self._cur["snippet"] = (self._cur["snippet"] + " " + val).strip()
+
+
+def parse_npm_json(data: dict[str, Any] | str) -> list[dict[str, Any]]:
+    if isinstance(data, str):
+        data = json.loads(data)
+    if not isinstance(data, dict):
+        raise ValueError("Invalid npm JSON: expected dict")
+
+    if "objects" not in data:
+        if "name" in data:
+            return [
+                {
+                    "name": str(data.get("name")),
+                    "description": str(data.get("description") or ""),
+                    "url": f"https://www.npmjs.com/package/{data.get('name')}",
+                    "license": str(data.get("license") or ""),
+                    "version": str(data.get("version") or ""),
+                }
+            ]
+        raise ValueError("Invalid npm JSON: 'objects' missing and not single package")
+
+    results: list[dict[str, Any]] = []
+    for obj in data.get("objects") or []:
+        pkg = obj.get("package") or {}
+        name = pkg.get("name")
+        if not name:
+            continue
+        links = pkg.get("links") or {}
+        url = links.get("npm") or f"https://www.npmjs.com/package/{name}"
+        desc = pkg.get("description") or ""
+        lic = pkg.get("license") or ""
+        ver = pkg.get("version") or ""
+        results.append(
+            {
+                "name": name,
+                "description": desc,
+                "url": url,
+                "license": lic,
+                "version": ver,
+            }
+        )
+    return results
+
+
+def parse_pypi_html(html_text: str) -> list[dict[str, Any]]:
+    text = html_text.strip()
+    if not text:
+        raise ValueError("SOURCE_ERROR: empty PyPI response")
+
+    if text.startswith("{"):
+        try:
+            data = json.loads(text)
+            info = data.get("info") or data
+            name = info.get("name")
+            if name:
+                return [
+                    {
+                        "name": name,
+                        "description": info.get("summary") or info.get("description") or "",
+                        "url": f"https://pypi.org/project/{name}/",
+                        "version": info.get("version") or "",
+                    }
+                ]
+        except Exception:
+            pass
+
+    if "<html" not in text.lower() and "<body" not in text.lower() and "<!doctype" not in text.lower():
+        raise ValueError("SOURCE_ERROR: response is not valid HTML")
+
+    parser = PyPiParser()
+    try:
+        parser.feed(text)
+    except Exception as exc:
+        raise ValueError(f"SOURCE_ERROR: PyPI HTML parse failed: {exc}") from exc
+
+    return parser.results
+
+
+def parse_ddg_html(html_text: str) -> list[dict[str, Any]]:
+    text = html_text.strip()
+    if not text:
+        raise ValueError("SOURCE_ERROR: empty DuckDuckGo response")
+
+    if "<html" not in text.lower() and "<body" not in text.lower() and "<!doctype" not in text.lower():
+        raise ValueError("SOURCE_ERROR: response is not valid HTML")
+
+    parser = DDGParser()
+    try:
+        parser.feed(text)
+    except Exception as exc:
+        raise ValueError(f"SOURCE_ERROR: DuckDuckGo HTML parse failed: {exc}") from exc
+
+    return parser.results
+
+
+def search_github(
+    query: str,
+    token: str | None = None,
+    transport: httpx.BaseTransport | None = None,
+    timeout_seconds: float = 10.0,
+    cache_dir: Path | str | None = None,
+    per_page: int = 10,
+) -> tuple[list[dict[str, Any]], str]:
+    q = query.strip()
+    if not q:
+        return [], "ok"
+    cache_file = _tool_cache_path("github", q, cache_dir)
+    if cache_file.exists():
+        try:
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            return cached.get("items", []), cached.get("status", "ok")
+        except Exception:
+            pass
+
+    url = f"https://api.github.com/search/repositories?q={urllib.parse.quote_plus(q)}&per_page={per_page}"
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "PhoenixRepo-Toolbox/1.0",
+    }
+    tok = token or os.environ.get("GITHUB_TOKEN") or ""
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
+
+    try:
+        with httpx.Client(transport=transport, timeout=timeout_seconds) as client:
+            resp = client.get(url, headers=headers)
+            if resp.status_code in {403, 429} or resp.status_code >= 400:
+                return [], "SOURCE_ERROR"
+            data = resp.json()
+            items = data.get("items") or []
+            cache_file.write_text(json.dumps({"items": items, "status": "ok"}, indent=2), encoding="utf-8")
+            return items, "ok"
+    except Exception:
+        return [], "SOURCE_ERROR"
+
+
+def search_npm(
+    query: str,
+    transport: httpx.BaseTransport | None = None,
+    timeout_seconds: float = 10.0,
+    cache_dir: Path | str | None = None,
+    size: int = 10,
+) -> tuple[list[dict[str, Any]], str]:
+    q = query.strip()
+    if not q:
+        return [], "ok"
+    cache_file = _tool_cache_path("npm", q, cache_dir)
+    if cache_file.exists():
+        try:
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            return cached.get("items", []), cached.get("status", "ok")
+        except Exception:
+            pass
+
+    url = f"https://registry.npmjs.org/-/v1/search?text={urllib.parse.quote_plus(q)}&size={size}"
+    try:
+        with httpx.Client(transport=transport, timeout=timeout_seconds) as client:
+            resp = client.get(url)
+            if resp.status_code >= 400:
+                return [], "SOURCE_ERROR"
+            items = parse_npm_json(resp.json())
+            cache_file.write_text(json.dumps({"items": items, "status": "ok"}, indent=2), encoding="utf-8")
+            return items, "ok"
+    except Exception:
+        return [], "SOURCE_ERROR"
+
+
+def search_pypi(
+    query: str,
+    transport: httpx.BaseTransport | None = None,
+    timeout_seconds: float = 10.0,
+    cache_dir: Path | str | None = None,
+) -> tuple[list[dict[str, Any]], str]:
+    q = query.strip()
+    if not q:
+        return [], "ok"
+    cache_file = _tool_cache_path("pypi", q, cache_dir)
+    if cache_file.exists():
+        try:
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            return cached.get("items", []), cached.get("status", "ok")
+        except Exception:
+            pass
+
+    url = f"https://pypi.org/search/?q={urllib.parse.quote_plus(q)}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+    try:
+        with httpx.Client(transport=transport, timeout=timeout_seconds) as client:
+            resp = client.get(url, headers=headers)
+            if resp.status_code >= 400:
+                return [], "SOURCE_ERROR"
+            items = parse_pypi_html(resp.text)
+            cache_file.write_text(json.dumps({"items": items, "status": "ok"}, indent=2), encoding="utf-8")
+            return items, "ok"
+    except Exception:
+        return [], "SOURCE_ERROR"
+
+
+def search_web(
+    query: str,
+    transport: httpx.BaseTransport | None = None,
+    timeout_seconds: float = 10.0,
+    cache_dir: Path | str | None = None,
+) -> tuple[list[dict[str, Any]], str]:
+    q = query.strip()
+    if not q:
+        return [], "ok"
+    cache_file = _tool_cache_path("web", q, cache_dir)
+    if cache_file.exists():
+        try:
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            return cached.get("items", []), cached.get("status", "ok")
+        except Exception:
+            pass
+
+    url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(q)}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+    try:
+        with httpx.Client(transport=transport, timeout=timeout_seconds) as client:
+            resp = client.get(url, headers=headers)
+            if resp.status_code >= 400:
+                return [], "SOURCE_ERROR"
+            items = parse_ddg_html(resp.text)
+            cache_file.write_text(json.dumps({"items": items, "status": "ok"}, indent=2), encoding="utf-8")
+            return items, "ok"
+    except Exception:
+        return [], "SOURCE_ERROR"
+
+
+class WebSearchTool:
+    """Web search tool querying DuckDuckGo HTML with normal User-Agent."""
+
+    name = "web_search"
+
+    def __init__(
+        self,
+        transport: httpx.BaseTransport | None = None,
+        timeout_seconds: float = 10.0,
+        cache_dir: Path | str | None = None,
+    ) -> None:
+        self.transport = transport
+        self.timeout_seconds = timeout_seconds
+        self.cache_dir = cache_dir
+
+    def call(self, args: dict[str, Any]) -> ToolResult:
+        now = _utc_now()
+        query = str(args.get("query") or args.get("q") or "").strip()
+        if not query:
+            return ToolResult(ok=False, data="", error="query required", source_url="", fetched_at=now)
+        items, status = search_web(
+            query=query,
+            transport=self.transport,
+            timeout_seconds=self.timeout_seconds,
+            cache_dir=self.cache_dir,
+        )
+        url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}"
+        if status == "SOURCE_ERROR":
+            return ToolResult(
+                ok=False,
+                data="",
+                error="SOURCE_ERROR: DuckDuckGo search failed",
+                source_url=url,
+                fetched_at=now,
+            )
+        return ToolResult(
+            ok=True,
+            data={"items": items},
+            error="",
+            source_url=url,
+            fetched_at=now,
+        )
 
 
 class GitHubTool:
@@ -124,6 +504,31 @@ class NpmTool:
 
     def call(self, args: dict[str, Any]) -> ToolResult:
         now = _utc_now()
+        action = str(args.get("action") or "").lower()
+        query = str(args.get("query") or args.get("q") or "").strip()
+        if action == "search" or (query and not args.get("package") and not args.get("name")):
+            items, status = search_npm(
+                query=query,
+                transport=self.transport,
+                timeout_seconds=self.timeout_seconds,
+            )
+            url = f"https://registry.npmjs.org/-/v1/search?text={urllib.parse.quote_plus(query)}"
+            if status == "SOURCE_ERROR":
+                return ToolResult(
+                    ok=False,
+                    data="",
+                    error="SOURCE_ERROR: npm search failed",
+                    source_url=url,
+                    fetched_at=now,
+                )
+            return ToolResult(
+                ok=True,
+                data={"items": items},
+                error="",
+                source_url=url,
+                fetched_at=now,
+            )
+
         package = str(args.get("package") or args.get("name") or "").strip()
         if not package:
             return ToolResult(ok=False, data="", error="package name required", source_url="", fetched_at=now)
@@ -188,6 +593,31 @@ class PyPiTool:
 
     def call(self, args: dict[str, Any]) -> ToolResult:
         now = _utc_now()
+        action = str(args.get("action") or "").lower()
+        query = str(args.get("query") or args.get("q") or "").strip()
+        if action == "search" or (query and not args.get("package") and not args.get("name")):
+            items, status = search_pypi(
+                query=query,
+                transport=self.transport,
+                timeout_seconds=self.timeout_seconds,
+            )
+            url = f"https://pypi.org/search/?q={urllib.parse.quote_plus(query)}"
+            if status == "SOURCE_ERROR":
+                return ToolResult(
+                    ok=False,
+                    data="",
+                    error="SOURCE_ERROR: PyPI search failed",
+                    source_url=url,
+                    fetched_at=now,
+                )
+            return ToolResult(
+                ok=True,
+                data={"items": items},
+                error="",
+                source_url=url,
+                fetched_at=now,
+            )
+
         package = str(args.get("package") or args.get("name") or "").strip()
         if not package:
             return ToolResult(ok=False, data="", error="package name required", source_url="", fetched_at=now)

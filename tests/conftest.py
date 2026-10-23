@@ -30,3 +30,10 @@ def isolate_provider_credentials(monkeypatch):
         return Settings(_env_file=None)
 
     monkeypatch.setattr(api_run, "get_settings", offline_settings)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_tool_cache(tmp_path, monkeypatch):
+    """Keep search-tool caches out of the repo so stale results can't make tests pass."""
+    monkeypatch.setenv("PHOENIX_TOOL_CACHE_DIR", str(tmp_path / "tool_cache"))
+    monkeypatch.setenv("PHOENIX_LLM_CACHE_DIR", str(tmp_path / "llm_cache"))
