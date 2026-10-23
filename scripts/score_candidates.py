@@ -893,29 +893,27 @@ def _do_score_candidates(
             problem_stmt, meta_prob = extract_problem_statement(candidate, client=relevance_client)
             if problem_stmt is None:
                 err = str(meta_prob.get("error") or "problem statement extraction failed")
-                if "unverified LLM quote" in err:
-                    verdict = "NEEDS_REVIEW"
-                    reason = f"{err}. Method: llm+verified quote (requested={meta_prob.get('requested_model')}, served={meta_prob.get('served_model')})."
-                    trace.event(
-                        agent_name="orchestrator",
-                        action="DISCOVERY_FILTER",
-                        input_summary={"repo_id": repo_id},
-                        output_summary={"verdict": verdict, "reason": reason},
-                        status="ok",
-                    )
-                    ineligible_repos.append(
-                        {
-                            "repo_id": repo_id,
-                            "verdict": verdict,
-                            "reason": reason,
-                            "eligibility": False,
-                        }
-                    )
-                    continue
-                else:
-                    verdict, reason = judge_discovery(
-                        candidate, prior_for_repo, demand_for_repo, client=relevance_client
-                    )
+                # Fail loud: if the problem statement could not be extracted (LLM error,
+                # timeout, invalid JSON or unverified quote) the prior-art search never ran,
+                # so a verdict here would be judged without evidence. Always NEEDS_REVIEW.
+                verdict = "NEEDS_REVIEW"
+                reason = f"PROBLEM_EXTRACTION_FAILED: {err}. Prior-art search was not run. Method: llm+verified quote (requested={meta_prob.get('requested_model')}, served={meta_prob.get('served_model')})."
+                trace.event(
+                    agent_name="orchestrator",
+                    action="DISCOVERY_FILTER",
+                    input_summary={"repo_id": repo_id},
+                    output_summary={"verdict": verdict, "reason": reason},
+                    status="ok",
+                )
+                ineligible_repos.append(
+                    {
+                        "repo_id": repo_id,
+                        "verdict": verdict,
+                        "reason": reason,
+                        "eligibility": False,
+                    }
+                )
+                continue
             else:
                 # 1. Build search queries including category + self-hosted / open-source if self-hosted
                 queries = build_search_queries(candidate, problem_stmt)
