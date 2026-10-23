@@ -873,6 +873,16 @@ def judge_discovery(
     else:
         coverage_reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: insufficient prior art coverage"
 
+    def _is_web_row(r: dict[str, Any]) -> bool:
+        return str(r.get("source") or "") == "web" or str(r.get("alternative_id") or "").startswith("web:")
+
+    mainstream_overlap = [
+        r for r in combined_priors
+        if _is_web_row(r) and r.get("same_problem") is True and str(r.get("overlap") or "") in {"partial", "full"}
+    ]
+    # Show same-problem alternatives (web first) to the judge before unrelated rows.
+    combined_priors.sort(key=lambda r: (r.get("same_problem") is not True, not _is_web_row(r)))
+
     if not is_client_configured(client):
         verdict, reason = decide_discovery(candidate, combined_priors, demand_rows)
         clean_reason = reason.replace("Method: phrase/keyword.", "").rstrip().rstrip(".")
@@ -953,6 +963,16 @@ def judge_discovery(
         elif not problem_quote or not quote_in_text(problem_quote, cand_text):
             verdict = "NEEDS_REVIEW"
             reason = f"unverified LLM quote: problem_quote '{problem_quote}' not found in candidate README or description"
+        elif mainstream_overlap:
+            # An official feature, doc page or commercial product on the web solves the
+            # same problem. A unique feature mix is not proof of novelty: a human must
+            # confirm the remaining gap before this repo can be a CANDIDATE.
+            m = mainstream_overlap[0]
+            verdict = "NEEDS_REVIEW"
+            reason = (
+                f"MAINSTREAM_OVERLAP: web result {m.get('url') or m.get('alternative_id')} solves the same problem "
+                f"(overlap {m.get('overlap')}); a human must confirm the remaining gap before CANDIDATE"
+            )
         else:
             verdict = "CANDIDATE"
     elif raw_verdict == "ALREADY_EXISTS":
@@ -1231,8 +1251,8 @@ def search_prior_art(
             elif not npm_res.ok:
                 source_status["npm"] = "SOURCE_ERROR"
 
-        # 3. Web (DuckDuckGo, first 3 queries) - also surfaces PyPI pages, docs and products
-        if "web" in source_status and idx < 3 and not toolbox.budget.is_exhausted():
+        # 3. Web (Exa first, every query) - surfaces official features, docs and commercial products
+        if "web" in source_status and not toolbox.budget.is_exhausted():
             tool_name = "web_search" if (hasattr(toolbox, "has") and toolbox.has("web_search")) or (hasattr(toolbox, "tools") and "web_search" in toolbox.tools) else "web"
             web_res = toolbox.call(tool_name, {"query": q})
             if web_res.ok and isinstance(web_res.data, dict):
@@ -1264,24 +1284,43 @@ def search_prior_art(
         for src in ("github", "npm", "web"):
             buckets.append([x for x in bucket if x[1]["source"] == src])
 
-    # Round-robin merge across queries
-    cursors = [0] * len(buckets)
-    progressed = True
-    while len(results) < max_results and progressed:
-        progressed = False
-        for bi, bucket in enumerate(buckets):
-            while cursors[bi] < len(bucket):
-                key, row = bucket[cursors[bi]]
-                cursors[bi] += 1
-                if key in seen_ids:
-                    continue
+    # Merge: round-robin across queries within each source, then per-source quotas
+    # so GitHub/npm rows cannot crowd out web rows (official features and commercial
+    # products), then fill any unused slots from what is left.
+    quotas = {"web": 6, "github": 6, "npm": 3}
+    per_source: dict[str, list[tuple[str, dict[str, Any]]]] = {"github": [], "npm": [], "web": []}
+    for src in ("github", "npm", "web"):
+        src_buckets = [bk for bk in buckets if bk and bk[0][1]["source"] == src]
+        cur = [0] * len(src_buckets)
+        moved = True
+        while moved:
+            moved = False
+            for bi, bk in enumerate(src_buckets):
+                if cur[bi] < len(bk):
+                    per_source[src].append(bk[cur[bi]])
+                    cur[bi] += 1
+                    moved = True
+    leftovers: list[tuple[str, dict[str, Any]]] = []
+    for src in ("web", "github", "npm"):
+        taken = 0
+        for key, row in per_source[src]:
+            if key in seen_ids:
+                continue
+            if taken < quotas[src] and len(results) < max_results:
                 seen_ids.add(key)
                 results.append(row)
                 source_counts[row["source"]] = source_counts.get(row["source"], 0) + 1
-                progressed = True
-                break
-            if len(results) >= max_results:
-                break
+                taken += 1
+            else:
+                leftovers.append((key, row))
+    for key, row in leftovers:
+        if len(results) >= max_results:
+            break
+        if key in seen_ids:
+            continue
+        seen_ids.add(key)
+        results.append(row)
+        source_counts[row["source"]] = source_counts.get(row["source"], 0) + 1
 
     # README excerpts for selected GitHub rows only
     for row in results:

@@ -1006,3 +1006,81 @@ def test_round_robin_merge_keeps_later_queries():
     )
     ids = [r["alternative_id"] for r in results]
     assert any(i.startswith("second/") for i in ids), ids
+
+
+
+# --- Mainstream overlap and web quotas (trial5g: ytkb passed with only 3 web rows) ---
+
+def _cand_llm(prompt: str, sys: str) -> str:
+    return json.dumps({
+        "verdict": "CANDIDATE",
+        "reason": "Unique feature mix.",
+        "problem_quote": "automates invoice processing for small businesses",
+        "alternative_repo": None,
+        "alternative_quote": None,
+    })
+
+
+_CAND = {
+    "repo_id": "test/valid-tool",
+    "description": "Invoice processor for freelancers.",
+    "readme_excerpt": "This tool automates invoice processing for small businesses.",
+}
+
+
+def test_web_same_problem_partial_overlap_blocks_candidate(tmp_path: Path):
+    web_alt = {
+        "alternative_id": "web:https://vendor.example/help/invoices",
+        "url": "https://vendor.example/help/invoices",
+        "same_problem": True,
+        "overlap": "partial",
+        "excerpt": "Built-in invoice automation.",
+    }
+    client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
+    verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[web_alt])
+    assert verdict == "NEEDS_REVIEW"
+    assert "MAINSTREAM_OVERLAP" in reason and "vendor.example" in reason
+
+
+def test_github_partial_overlap_alone_does_not_trigger_mainstream_rule(tmp_path: Path):
+    gh_alt = {"alternative_id": "someone/tool", "url": "https://github.com/someone/tool", "same_problem": True, "overlap": "partial"}
+    client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
+    verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[gh_alt])
+    assert "MAINSTREAM_OVERLAP" not in reason
+
+
+def test_search_prior_art_web_runs_every_query_and_keeps_web_quota():
+    web_queries = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        u = str(request.url)
+        if "mcp.exa.ai" in u:
+            q = json.loads(request.content)["params"]["arguments"]["query"]
+            web_queries.append(q)
+            text = "".join(f"Title: {q} doc {i}\nURL: https://docs.example/{q.replace(' ', '-')}/{i}\nHighlights:\nabout {q}\n\n" for i in range(3))
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": text}]}})
+        if "hn.algolia.com" in u:
+            return httpx.Response(200, json={"hits": []})
+        if "api.github.com/search/repositories" in u:
+            q = request.url.params.get("q", "").replace(" ", "")
+            return httpx.Response(200, json={"items": [
+                {"full_name": f"{q}/repo{i}", "html_url": f"https://github.com/{q}/repo{i}", "description": q} for i in range(5)
+            ]})
+        if "registry.npmjs.org" in u:
+            return httpx.Response(200, json={"objects": [{"package": {"name": f"pkg{i}", "description": "x"}} for i in range(5)], "total": 5})
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    toolbox = ToolBox(
+        tools={
+            "github": GitHubTool(transport=transport),
+            "npm": NpmTool(transport=transport),
+            "web_search": WebSearchTool(transport=transport),
+        },
+        budget=Budget(max_calls=80, max_seconds=60.0),
+    )
+    queries = [f"query {i}" for i in range(6)]
+    results = search_prior_art(candidate={"repo_id": "me/candidate"}, queries=queries, toolbox=toolbox)
+    assert sorted(web_queries) == sorted(queries)
+    assert results.source_counts["web"] >= 6
+    assert len(results) <= 15
