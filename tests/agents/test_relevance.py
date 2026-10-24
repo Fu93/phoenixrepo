@@ -1241,3 +1241,18 @@ def test_batch_gives_up_after_two_transient_errors(tmp_path):
 
     client = RelevanceClient(mock_handler=llm, cache_dir=tmp_path / "c")
     assert judge_alternatives_batch(_PROB, "cand/x", _ALTS[:2], client=client) is None
+
+
+def test_build_search_queries_adds_product_discovery_queries_early():
+    from app.agents.relevance import build_search_queries
+
+    ps = {
+        "problem": "Developers repeat boilerplate",
+        "target_user": "developers",
+        "category": "developer-tools",
+        "search_queries": ["automate boilerplate code", "project scaffolding tool"],
+    }
+    qs = build_search_queries({"repo_id": "me/gen", "description": "a code generator"}, ps)
+    assert "best automate boilerplate code tools" in qs[:4]
+    assert "automate boilerplate code alternatives comparison" in qs[:4]
+    assert len(qs) <= 8

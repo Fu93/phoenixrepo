@@ -823,6 +823,17 @@ def build_search_queries(candidate: dict[str, Any], problem_statement: dict[str,
             seen.add(qk)
             dedup_queries.append(q)
 
+    # Product-discovery queries: the way a person looks for an existing solution ("best X tools",
+    # "X alternatives"). They surface mainstream products and comparison pages that keyword
+    # queries about the job miss. Placed early so the 8-query cap never drops them.
+    if llm_queries:
+        job = re.sub(r"\s+", " ", llm_queries[0]).strip()
+        product_queries = [f"best {job} tools", f"{job} alternatives comparison"]
+        for pq in reversed(product_queries):
+            if pq.lower() not in seen:
+                seen.add(pq.lower())
+                dedup_queries.insert(min(2, len(dedup_queries)), pq)
+
     # Ensure 4 to 8 queries
     if len(dedup_queries) < 4:
         if platform in stack_components:
