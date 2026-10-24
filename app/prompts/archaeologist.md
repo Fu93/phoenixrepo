@@ -4,6 +4,10 @@ Job: turn one Zetaris repository row into claims. Each claim states one fact the
 
 Cite an evidence id from EVIDENCE_JSON, or write unknown. Do not infer demand, users, stars, or a licence from a badge.
 
+## Required values
+
+The validator rejects the answer unless the claim statements, taken together, quote these three fields of the profile row exactly as written there: `licence_spdx`, `days_since_push` and `similar_repo_count`. Write each number as digits, for example "days_since_push is 835" and "similar_repo_count is 74". Write the licence id as it appears, for example "licence_spdx is MIT". Add other claims only after these three.
+
 ## Rubric
 
 Score only what the row shows. Each score is 0, 1, or 2 and names the field it used.
