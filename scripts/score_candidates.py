@@ -83,6 +83,9 @@ from app.trace_log import HackathonTrace  # noqa: E402
 from config.settings import Settings  # noqa: E402
 
 
+# Events that carry verified quotes must not be cut mid-JSON (the default trace summary limit is 500).
+EVIDENCE_SUMMARY_LIMIT = 20000
+
 def _read_csv(path: Path, expected_columns: tuple[str, ...]) -> list[dict[str, str]]:
     if not path.exists():
         return []
@@ -933,6 +936,7 @@ def _do_score_candidates(
                         "served_model": meta_prob.get("served_model"),
                     },
                     status="ok",
+                    summary_limit=EVIDENCE_SUMMARY_LIMIT,
                 )
                 # 1. Build search queries including category + self-hosted / open-source if self-hosted
                 queries = build_search_queries(candidate, problem_stmt)
@@ -1048,6 +1052,7 @@ def _do_score_candidates(
                             ]
                         },
                         status="ok",
+                        summary_limit=EVIDENCE_SUMMARY_LIMIT,
                     )
 
                     # Combined union of prior_art.csv rows and problem_alternatives

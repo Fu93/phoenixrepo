@@ -24,6 +24,8 @@ class PhoenixState(str, Enum):
     NO_GO = "NO_GO"
     ALREADY_EXISTS = "ALREADY_EXISTS"
     RESURRECTION_FAILED = "RESURRECTION_FAILED"
+    REVIVED_NOT_RECOMMENDED = "REVIVED_NOT_RECOMMENDED"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
 
 
 ALLOWED_TRANSITIONS = {
@@ -46,6 +48,8 @@ ALLOWED_TRANSITIONS = {
         PhoenixState.CANDIDATE,
         PhoenixState.DIAGNOSING,
         PhoenixState.RESURRECTION_FAILED,
+        PhoenixState.REVIVED_NOT_RECOMMENDED,
+        PhoenixState.NEEDS_REVIEW,
     },
     PhoenixState.DIAGNOSING: {PhoenixState.REPAIRING},
     PhoenixState.REPAIRING: {

@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from app.first_gate import GATED_DECISIONS, NEEDS_REVIEW, REVIVED_NOT_RECOMMENDED, GateFn, apply_first_gate, judge_first_gate
 from app.adapters.sample_zetaris import SampleZetaris
 from app.adapters.zetaris import ZetarisClient, ZetarisResult
 from app.agents.discovery_planner import build_discovery_prd, render_discovery_markdown
@@ -88,7 +89,9 @@ class InvestigationOrchestrator:
         zetaris: SampleZetaris | ZetarisClient | None = None,
         llm: BoundLLM | None = None,
         hmem_path: Path | None = None,
+        first_gate: GateFn | None = None,
     ) -> None:
+        self._first_gate_fn = first_gate
         self.repository = require_repo_id(repository)
         self.mode = mode
         self.max_repair_iterations = max_repair_iterations
@@ -208,15 +211,23 @@ class InvestigationOrchestrator:
                 repairs_used += 1
                 self._advance(PhoenixState.REPAIRING, "Signals re-queried from Zetaris.", list(known))
                 self._advance(PhoenixState.VALIDATING, policy_reason, list(known))
+            if decision in GATED_DECISIONS and not self.discovery_rows:
+                decision, policy_reason = self._first_gate_check(decision, policy_reason)
             if decision == "RESURRECTION_FAILED":
                 self._advance(PhoenixState.RESURRECTION_FAILED, policy_reason, list(known))
+            elif decision == REVIVED_NOT_RECOMMENDED:
+                self._advance(PhoenixState.REVIVED_NOT_RECOMMENDED, policy_reason, list(known))
+            elif decision == NEEDS_REVIEW:
+                self._advance(PhoenixState.NEEDS_REVIEW, policy_reason, list(known))
             elif decision == "RESURRECTED":
                 self._advance(PhoenixState.RESURRECTED, policy_reason, list(known))
             elif decision == "CANDIDATE":
                 self._advance(PhoenixState.CANDIDATE, policy_reason, list(known))
             else:
                 self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
-            if self.discovery_rows and decision == "CANDIDATE":
+            if decision in (REVIVED_NOT_RECOMMENDED, NEEDS_REVIEW):
+                pass  # no PRD: the first gate did not clear this repository
+            elif self.discovery_rows and decision == "CANDIDATE":
                 self._discovery_planner()
             else:
                 self._planner(row, signals, attempts, sources, known)
@@ -728,6 +739,43 @@ class InvestigationOrchestrator:
         )
         result = self._query(signals_sql(row["repo_id"]))
         return result, [normalize_signal(item) for item in result.rows]
+
+    def _first_gate_check(self, decision: str, reason: str) -> tuple[str, str]:
+        """A revival result only stands if the prior-art judgement agrees the repository is worth saving."""
+
+        gate = self._first_gate_fn
+        if gate is None:
+            if self.sample:
+                self.trace.event(
+                    agent_name="orchestrator",
+                    action="FIRST_GATE_SKIPPED",
+                    input_summary={"repo_id": self.repository},
+                    output_summary="Sample mode has no live web search, so the first gate is not applied.",
+                    status="ok",
+                )
+                return decision, reason
+            gate = judge_first_gate
+        outcome: dict[str, Any] | None = None
+        error = ""
+        try:
+            outcome = gate(self.repository, f"{self.run_id}-gate1")
+        except Exception as exc:  # any failure must end in NEEDS_REVIEW, never in a pass
+            error = f"{type(exc).__name__}: {str(exc)[:300]}"
+        final, final_reason = apply_first_gate(decision, reason, outcome, error)
+        self.trace.event(
+            agent_name="orchestrator",
+            action="FIRST_GATE",
+            input_summary={"repo_id": self.repository, "revival_decision": decision},
+            output_summary={
+                "gate_verdict": (outcome or {}).get("verdict"),
+                "gate_run_id": (outcome or {}).get("run_id"),
+                "final_decision": final,
+                "error": error,
+            },
+            target_agent="validator",
+            status="error" if error else "ok",
+        )
+        return final, final_reason
 
     def _discovery_equivalence(self, decision: str, reason: str) -> tuple[str, str]:
         """Ask for a capability map when Nightshift is in use. A rejected map keeps the phrase fallback."""

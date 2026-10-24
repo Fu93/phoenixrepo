@@ -5,7 +5,7 @@ from app.sql_catalog import ATTEMPT_COLUMNS, SOURCE_COLUMNS
 
 
 def test_attempt_snapshot_records_the_fork_api_facts():
-    provenance = json.loads(Path("data/real/revival_attempts_provenance.json").read_text(encoding="utf-8"))
+    provenance = json.loads(Path("tests/fixtures/hygen_pre_revival/revival_attempts_provenance.json").read_text(encoding="utf-8"))
     assert provenance["token_used"] is False
     assert provenance["token_written"] is False
     assert provenance["fork"] == "Fu93/hygen"
@@ -26,11 +26,11 @@ def test_attempt_snapshot_records_the_fork_api_facts():
 def test_attempt_and_source_columns_match_the_sql_contract():
     import csv
 
-    with Path("data/real/revival_attempts.csv").open(newline="", encoding="utf-8") as handle:
+    with Path("tests/fixtures/hygen_pre_revival/revival_attempts.csv").open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         assert tuple(reader.fieldnames or ()) == ATTEMPT_COLUMNS
         attempts = list(reader)
-    with Path("data/real/revival_sources.csv").open(newline="", encoding="utf-8") as handle:
+    with Path("tests/fixtures/hygen_pre_revival/revival_sources.csv").open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         assert tuple(reader.fieldnames or ()) == SOURCE_COLUMNS
         sources = list(reader)
@@ -44,3 +44,18 @@ def test_attempt_and_source_columns_match_the_sql_contract():
     assert compare["url"] == "https://github.com/jondot/hygen/compare/master...Fu93:master"
     actions = next(row for row in sources if row["kind"] == "actions")
     assert "total_count 0" in actions["excerpt"]
+
+
+def test_current_snapshot_records_the_merged_revival():
+    import csv
+
+    with Path("data/real/revival_attempts.csv").open(newline="", encoding="utf-8") as handle:
+        attempts = list(csv.DictReader(handle))
+    with Path("data/real/revival_sources.csv").open(newline="", encoding="utf-8") as handle:
+        sources = list(csv.DictReader(handle))
+    revive = next(row for row in attempts if row["stage"] == "revive")
+    assert revive["status"] == "success" and revive["ci_head_repo"] == "Fu93/hygen"
+    compare = next(row for row in sources if row["kind"] == "compare")
+    assert "ahead_by 11" in compare["excerpt"]
+    provenance = json.loads(Path("data/real/revival_attempts_provenance.json").read_text(encoding="utf-8"))
+    assert "Bearer " not in json.dumps(provenance) and "ghp_" not in json.dumps(provenance)

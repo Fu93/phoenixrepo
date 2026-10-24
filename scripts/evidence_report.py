@@ -74,11 +74,13 @@ def events_for_repo(events: list[dict[str, Any]], repo_id: str) -> dict[str, Any
         if act == "PROBLEM_STATEMENT":
             out["problem"] = o
         elif act == "QUERY_GENERATION" and not inp.get("retry"):
-            out["queries"] = (o or {}).get("queries")
+            out["queries"] = o.get("queries") if isinstance(o, dict) else None
         elif act == "PRIOR_ART_SEARCH" and not inp.get("retry"):
             out["search"] = o
         elif act == "ALTERNATIVES_VERIFIED":
-            out["alternatives"] = (o or {}).get("alternatives") or []
+            out["alternatives"] = (o.get("alternatives") if isinstance(o, dict) else None) or []
+            if not isinstance(o, dict):
+                out["alternatives_unreadable"] = True
             out["searched"] = inp.get("searched")
         elif act == "DISCOVERY_FILTER":
             out["filter"] = o

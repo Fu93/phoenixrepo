@@ -90,6 +90,7 @@ class HackathonTrace:
         retry_count: int = 0,
         status: str = "ok",
         llm: dict[str, Any] | None = None,
+        summary_limit: int = 500,
     ) -> dict[str, Any]:
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -97,7 +98,7 @@ class HackathonTrace:
             "agent_name": agent_name,
             "action": action,
             "input_summary": _summary(input_summary, self.secrets),
-            "output_summary": _summary(output_summary, self.secrets),
+            "output_summary": _summary(output_summary, self.secrets, limit=summary_limit),
             "target_agent": target_agent,
             "confidence": confidence,
             "retry_count": retry_count,
