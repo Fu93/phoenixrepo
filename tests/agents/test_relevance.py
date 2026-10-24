@@ -1256,3 +1256,25 @@ def test_build_search_queries_adds_product_discovery_queries_early():
     assert "best automate boilerplate code tools" in qs[:4]
     assert "best project scaffolding tools" in qs[:4]
     assert len(qs) <= 8
+
+
+def test_web_full_overlap_with_quote_overrides_llm_candidate(tmp_path: Path):
+    web_alt = {
+        "alternative_id": "web:https://vendor.example/help/invoices",
+        "url": "https://vendor.example/help/invoices",
+        "same_problem": True,
+        "overlap": "full",
+        "quotes": ["Built-in invoice automation"],
+        "excerpt": "Built-in invoice automation.",
+    }
+    client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
+    verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[web_alt])
+    assert verdict == "ALREADY_EXISTS"
+    assert "vendor.example" in reason and "Built-in invoice automation" in reason
+
+
+def test_github_full_overlap_alone_does_not_override_candidate_rule(tmp_path: Path):
+    gh_alt = {"alternative_id": "someone/tool", "url": "https://github.com/someone/tool", "same_problem": True, "overlap": "full"}
+    client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
+    verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[gh_alt])
+    assert "overrides LLM CANDIDATE" not in reason

@@ -1046,6 +1046,17 @@ def judge_discovery(
     elif zero_results:
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
+    elif raw_verdict == "CANDIDATE" and any(str(r.get("overlap") or "") == "full" for r in mainstream_overlap):
+        # The LLM called it novel, but a web alternative with a verified quote (checked against that
+        # alternative's own text) already solves the same core problem in full. A unique feature
+        # mix does not outweigh verified prior art, so the LLM's CANDIDATE is overridden.
+        m = next(r for r in mainstream_overlap if str(r.get("overlap") or "") == "full")
+        quotes = [str(q) for q in (m.get("quotes") or []) if str(q).strip()]
+        verdict = "ALREADY_EXISTS"
+        reason = (
+            f"verified full-overlap alternative {m.get('url') or m.get('alternative_id')} already solves the same "
+            f"problem" + (f" (quote: '{quotes[0]}')" if quotes else "") + "; overrides LLM CANDIDATE"
+        )
     elif raw_verdict == "CANDIDATE":
         if coverage_blocked:
             verdict = "NEEDS_REVIEW"
