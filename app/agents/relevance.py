@@ -73,7 +73,7 @@ STOPWORDS = frozenset(
     }
 )
 
-RETRY_DELAYS = (0, 1, 2, 4)
+RETRY_DELAYS = (0, 3, 8, 20, 45)
 
 
 class RelevanceLLMError(InvestigationError):
@@ -106,6 +106,18 @@ def extract_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _complete_json(client, prompt, system_prompt, repo_id, step, validate=None):
+    """Use client.complete_json when available (retries unusable answers), else one plain call."""
+    fn = getattr(client, "complete_json", None)
+    if callable(fn):
+        return fn(prompt, system_prompt, repo_id=repo_id, step=step, validate=validate)
+    text, req_m, srv_m = client.complete(prompt, system_prompt, repo_id=repo_id, step=step)
+    obj = extract_json_object(text)
+    if obj is not None and validate is not None and not validate(obj):
+        obj = None
+    return obj, text, req_m, srv_m
+
+
 @dataclass
 class RelevanceClient:
     base_url: str = "http://127.0.0.1:8088/v1"
@@ -114,7 +126,7 @@ class RelevanceClient:
     cache_dir: Path | None = None
     timeout: float | httpx.Timeout = 90.0
     wall_clock_timeout: float = 120.0
-    total_timeout: float = 240.0
+    total_timeout: float = 420.0
     transport: httpx.BaseTransport | None = None
     mock_handler: Callable[[str, str], str] | None = None
     mock_served_model: str | None = None
@@ -132,6 +144,47 @@ class RelevanceClient:
         self.model_calls: dict[str, int] = {}
         self.repo_mismatches: set[str] = set()
         self.last_cache_hit: bool = False
+        self.last_cache_file: Path | None = None
+
+    def discard_last(self) -> None:
+        """Delete the cache entry of the last call, so an unusable answer is never replayed."""
+        f = self.last_cache_file
+        self.last_cache_file = None
+        if f is not None:
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+    def complete_json(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        repo_id: str = "",
+        step: str = "",
+        attempts: int = 3,
+        validate: Callable[[dict[str, Any]], bool] | None = None,
+    ) -> tuple[dict[str, Any] | None, str, str, str]:
+        """Call the model until it returns a usable JSON object.
+
+        An unusable answer (invalid JSON, or failing `validate`) is removed from the cache and
+        the call is repeated with a short corrective note, so the cache key differs and a bad
+        answer can never be replayed. Returns (obj_or_None, text, requested_model, served_model).
+        Transport errors propagate to the caller.
+        """
+        last = ("", self.model, "")
+        for n in range(max(1, attempts)):
+            p = prompt if n == 0 else (
+                prompt + f"\n\n(Retry {n}: your previous reply could not be used. Reply with ONLY one strict "
+                "JSON object that follows the schema exactly: no prose, no code fences.)"
+            )
+            text, req_m, srv_m = self.complete(p, system_prompt, repo_id=repo_id, step=step)
+            obj = extract_json_object(text)
+            if obj is not None and (validate is None or validate(obj)):
+                return obj, text, req_m, srv_m
+            self.discard_last()
+            last = (text, req_m, srv_m)
+        return None, last[0], last[1], last[2]
 
     def complete(
         self,
@@ -162,6 +215,7 @@ class RelevanceClient:
                     if repo_id:
                         self.repo_mismatches.add(repo_id)
                 self.last_cache_hit = True
+                self.last_cache_file = cache_file
                 elapsed = time.monotonic() - call_start
                 sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} cache_hit served={served} {elapsed:.2f}s\n")
                 sys.stderr.flush()
@@ -195,6 +249,7 @@ class RelevanceClient:
                 if repo_id:
                     self.repo_mismatches.add(repo_id)
             self.last_cache_hit = False
+            self.last_cache_file = cache_file
             elapsed = time.monotonic() - call_start
             sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} served={served} {elapsed:.2f}s\n")
             sys.stderr.flush()
@@ -297,6 +352,7 @@ class RelevanceClient:
                     if repo_id:
                         self.repo_mismatches.add(repo_id)
                 self.last_cache_hit = False
+                self.last_cache_file = cache_file
                 elapsed = time.monotonic() - call_start
                 sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} served={served} {elapsed:.2f}s\n")
                 sys.stderr.flush()
@@ -1078,8 +1134,8 @@ def extract_problem_statement(
     )
 
     try:
-        text, req_m, srv_m = client.complete(
-            user_prompt, prompt_record.text, repo_id=repo_id, step="problem"
+        obj, text, req_m, srv_m = _complete_json(
+            client, user_prompt, prompt_record.text, repo_id, "problem"
         )
     except Exception as exc:
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
@@ -1091,7 +1147,6 @@ def extract_problem_statement(
             "error": str(exc),
         }
 
-    obj = extract_json_object(text)
     if obj is None:
         return None, {
             "requested_model": req_m,
@@ -1542,16 +1597,43 @@ def judge_alternatives_batch(
         + "\n\nFor every alternative index, judge whether it solves the same core user problem, the overlap "
         "degree (full, partial, none), and give verbatim supporting quotes. Output strict JSON."
     )
+    wanted = {i for i, _, _ in items}
+
+    def _batch_ok(o: dict[str, Any]) -> bool:
+        rs = o.get("results")
+        if not isinstance(rs, list):
+            return False
+        got = set()
+        for e in rs:
+            if isinstance(e, dict):
+                try:
+                    got.add(int(e.get("index")))
+                except (TypeError, ValueError):
+                    pass
+        return wanted <= got
+
+    def _fallback(reason: str) -> None:
+        if trace is not None:
+            trace.event(
+                agent_name="orchestrator",
+                action="ALTERNATIVE_BATCH_FALLBACK",
+                input_summary={"repo_id": candidate_repo_id, "alternatives": len(items)},
+                output_summary={"reason": reason},
+                status="error",
+            )
+
     try:
-        text, req_m, srv_m = client.complete(
-            user_prompt, prompt_record.text + BATCH_INSTRUCTION, repo_id=candidate_repo_id, step="alternative_batch"
+        obj, text, req_m, srv_m = _complete_json(
+            client, user_prompt, prompt_record.text + BATCH_INSTRUCTION, candidate_repo_id, "alternative_batch",
+            validate=_batch_ok,
         )
     except Exception as exc:
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
             raise
+        _fallback(f"batch call failed: {str(exc)[:160]}")
         return None
-    obj = extract_json_object(text)
-    if not isinstance(obj, dict) or not isinstance(obj.get("results"), list):
+    if obj is None:
+        _fallback("batch answer unusable after retries (invalid JSON or missing indexes)")
         return None
     by_index: dict[int, dict[str, Any]] = {}
     for entry in obj["results"]:

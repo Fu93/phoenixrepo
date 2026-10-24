@@ -896,8 +896,13 @@ def _do_score_candidates(
                 # Fail loud: if the problem statement could not be extracted (LLM error,
                 # timeout, invalid JSON or unverified quote) the prior-art search never ran,
                 # so a verdict here would be judged without evidence. Always NEEDS_REVIEW.
-                verdict = "NEEDS_REVIEW"
-                reason = f"PROBLEM_EXTRACTION_FAILED: {err}. Prior-art search was not run. Method: llm+verified quote (requested={meta_prob.get('requested_model')}, served={meta_prob.get('served_model')})."
+                if _is_infra_failure(err):
+                    # Infrastructure failure (HTTP 5xx, timeout, unusable JSON): no judgment was made.
+                    verdict = "UNJUDGED"
+                    reason = f"UNJUDGED (PROBLEM_EXTRACTION_FAILED): {err}. No judgment was made and prior-art search was not run; rerun this repo."
+                else:
+                    verdict = "NEEDS_REVIEW"
+                    reason = f"PROBLEM_EXTRACTION_FAILED: {err}. Prior-art search was not run. Method: llm+verified quote (requested={meta_prob.get('requested_model')}, served={meta_prob.get('served_model')})."
                 trace.event(
                     agent_name="orchestrator",
                     action="DISCOVERY_FILTER",
@@ -1036,8 +1041,8 @@ def _do_score_candidates(
                         raise
                     # A transient Nightshift failure (e.g. HTTP 502 after retries) must not
                     # abort the whole run: this repo gets NEEDS_REVIEW and scoring continues.
-                    verdict = "NEEDS_REVIEW"
-                    reason = f"LLM_UNAVAILABLE: {exc}. Relevance/judgment step failed after retries; rerun this repo (results are cached)."
+                    verdict = "UNJUDGED"
+                    reason = f"UNJUDGED (LLM_UNAVAILABLE): {exc}. Relevance/judgment step failed after retries; no judgment was made. Rerun this repo (finished calls are cached)."
                     trace.event(
                         agent_name="orchestrator",
                         action="DISCOVERY_FILTER",
@@ -1515,6 +1520,12 @@ def _render_markdown(data: dict[str, Any]) -> str:
     lines.append("")
 
     return "\n".join(lines)
+
+
+def _is_infra_failure(err: str) -> bool:
+    """True when an LLM failure is infrastructure (5xx, 429, timeout, invalid JSON), not evidence."""
+    low = str(err or "").lower()
+    return any(k in low for k in ("http 5", "http 429", "timed out", "timeout", "nightshift request", "invalid json", "exceeded total timeout"))
 
 
 def main() -> int:

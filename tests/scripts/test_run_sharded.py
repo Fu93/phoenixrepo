@@ -31,3 +31,11 @@ def test_merge_sums_model_calls_and_never_autoselects_protagonist():
     assert m["model_calls"] == {"m": 5, "n": 1}
     assert [c["repo_id"] for c in m["candidates"]] == ["a"]
     assert m["protagonist"] is None
+
+
+def test_count_unjudged_counts_only_unjudged():
+    from scripts.run_sharded import count_unjudged
+
+    merged = {"ineligible": [{"verdict": "UNJUDGED"}, {"verdict": "NEEDS_REVIEW"}, {"verdict": "UNJUDGED"}, {"verdict": "ALREADY_EXISTS"}]}
+    assert count_unjudged(merged) == 2
+    assert count_unjudged({}) == 0

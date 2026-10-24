@@ -1136,3 +1136,71 @@ def test_batch_missing_index_falls_back_to_per_item_calls(tmp_path: Path):
     rows = filter_relevant_alternatives(_PROB, "me/cand", _ALTS, client=client)
     assert rows == []
     assert calls[0] == "batch" and calls.count("single") == 3
+
+
+def test_complete_json_retries_unusable_answer_and_never_caches_it(tmp_path):
+    """Regression (full77c): an invalid-JSON answer was cached and replayed. Now it is discarded and retried."""
+    calls = []
+
+    def handler(prompt, system_prompt):
+        calls.append(prompt)
+        return "not json at all" if len(calls) == 1 else '{"ok": true}'
+
+    client = RelevanceClient(mock_handler=handler, cache_dir=tmp_path / "c")
+    obj, text, req, srv = client.complete_json("question", "sys", repo_id="r/x", step="problem")
+    assert obj == {"ok": True}
+    assert len(calls) == 2
+    assert "Retry 1" in calls[1]
+    # The bad first answer is not in the cache: only the good answer file remains.
+    cached = [json.loads(f.read_text(encoding="utf-8"))["response_text"] for f in (tmp_path / "c").glob("*.json")]
+    assert "not json at all" not in cached
+    assert '{"ok": true}' in cached
+
+
+def test_complete_json_gives_up_after_attempts(tmp_path):
+    client = RelevanceClient(mock_handler=lambda p, s: "nope", cache_dir=tmp_path / "c")
+    obj, text, req, srv = client.complete_json("q", "s", attempts=2)
+    assert obj is None
+    assert list((tmp_path / "c").glob("*.json")) == []
+
+
+def test_batch_retries_on_missing_indexes_before_falling_back(tmp_path):
+    from app.agents.relevance import judge_alternatives_batch
+
+    calls = []
+
+    def handler(prompt, system_prompt):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return json.dumps({"results": [{"index": 0, "same_problem": False, "overlap": "none", "reason": "x", "quotes": []}]})
+        return json.dumps({"results": [
+            {"index": 0, "same_problem": False, "overlap": "none", "reason": "x", "quotes": []},
+            {"index": 1, "same_problem": False, "overlap": "none", "reason": "y", "quotes": []},
+        ]})
+
+    client = RelevanceClient(mock_handler=handler, cache_dir=tmp_path / "c")
+    results = [
+        {"alternative_id": "a/one", "url": "https://github.com/a/one", "description": "one tool"},
+        {"alternative_id": "b/two", "url": "https://github.com/b/two", "description": "two tool"},
+    ]
+    out = judge_alternatives_batch({"problem": "p", "target_user": "u", "category": "c"}, "cand/x", results, client=client)
+    assert out == []
+    assert len(calls) == 2
+
+
+def test_batch_unusable_emits_fallback_event_with_reason(tmp_path):
+    from app.agents.relevance import judge_alternatives_batch
+
+    events = []
+
+    class T:
+        def event(self, **kw):
+            events.append(kw)
+
+    client = RelevanceClient(mock_handler=lambda p, s: "garbage", cache_dir=tmp_path / "c")
+    results = [
+        {"alternative_id": "a/one", "url": "u1", "description": "one"},
+        {"alternative_id": "b/two", "url": "u2", "description": "two"},
+    ]
+    assert judge_alternatives_batch({"problem": "p"}, "cand/x", results, client=client, trace=T()) is None
+    assert any(e["action"] == "ALTERNATIVE_BATCH_FALLBACK" and "unusable" in e["output_summary"]["reason"] for e in events)

@@ -85,22 +85,14 @@ def render_md(m: dict) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--snapshot", type=Path, required=True)
-    ap.add_argument("--run-id", required=True)
-    ap.add_argument("--shards", type=int, default=4)
-    ap.add_argument("--log-dir", type=Path, default=ROOT / "logs")
-    ap.add_argument("--max-calls", type=int, default=3000)
-    ap.add_argument("--max-seconds", type=float, default=21600)
-    args = ap.parse_args()
+def count_unjudged(merged: dict) -> int:
+    return sum(1 for r in merged.get("ineligible") or [] if r.get("verdict") == "UNJUDGED")
 
-    shard_root = ROOT / "data" / "discovery" / "_shards" / args.run_id
-    shard_root.mkdir(parents=True, exist_ok=True)
-    shards = make_shards(args.snapshot, shard_root, args.shards)
+
+def run_round(args, shards: list[Path], suffix: str) -> tuple[list[dict], list[tuple[str, int]], list[str]]:
     procs = []
     for k, d in enumerate(shards):
-        rid = f"{args.run_id}-s{k}"
+        rid = f"{args.run_id}{suffix}-s{k}"
         cmd = [sys.executable, str(ROOT / "scripts" / "score_candidates.py"), "--snapshot", str(d), "--llm",
                "--max-calls", str(args.max_calls), "--max-seconds", str(args.max_seconds), "--run-id", rid,
                "--log-dir", str(args.log_dir), "--output-json", str(args.log_dir / f"{rid}_scores.json"),
@@ -120,12 +112,45 @@ def main() -> int:
         f = args.log_dir / f"{rid}_scores.json"
         if f.exists():
             parts.append(json.loads(f.read_text(encoding="utf-8")))
-    merged = merge(args.run_id, parts, args.log_dir)
-    merged["failed_shards"] = [{"run_id": r, "exit_code": c} for r, c in failed]
+    return parts, failed, [rid for rid, *_ in procs]
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--snapshot", type=Path, required=True)
+    ap.add_argument("--run-id", required=True)
+    ap.add_argument("--shards", type=int, default=2, help="Parallel shards. Fewer shards mean fewer Nightshift 502s.")
+    ap.add_argument("--max-rounds", type=int, default=3, help="Rerun rounds while repos are still UNJUDGED (cached work is skipped).")
+    ap.add_argument("--round-wait", type=float, default=60.0, help="Seconds to wait before a rerun round.")
+    ap.add_argument("--log-dir", type=Path, default=ROOT / "logs")
+    ap.add_argument("--max-calls", type=int, default=3000)
+    ap.add_argument("--max-seconds", type=float, default=21600)
+    args = ap.parse_args()
+
+    shard_root = ROOT / "data" / "discovery" / "_shards" / args.run_id
+    shard_root.mkdir(parents=True, exist_ok=True)
+    shards = make_shards(args.snapshot, shard_root, args.shards)
+    merged: dict = {}
+    failed: list[tuple[str, int]] = []
+    rounds_run = 0
+    for rnd in range(1, max(1, args.max_rounds) + 1):
+        rounds_run = rnd
+        suffix = "" if rnd == 1 else f"-r{rnd}"
+        parts, failed, _ = run_round(args, shards, suffix)
+        merged = merge(args.run_id, parts, args.log_dir)
+        merged["failed_shards"] = [{"run_id": r, "exit_code": c} for r, c in failed]
+        merged["rounds"] = rnd
+        merged["unjudged"] = count_unjudged(merged)
+        if merged["unjudged"] == 0 and not failed:
+            break
+        if rnd < args.max_rounds:
+            sys.stderr.write(f"round {rnd}: {merged['unjudged']} UNJUDGED, {len(failed)} failed shards; rerunning\n")
+            time.sleep(args.round_wait)
     (args.log_dir / f"{args.run_id}_scores.json").write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8")
     (args.log_dir / f"{args.run_id}_scores.md").write_text(render_md(merged), encoding="utf-8")
-    print(json.dumps({"shards": len(procs), "failed": merged["failed_shards"], "candidates": len(merged["candidates"]),
-                      "ineligible": len(merged["ineligible"])}))
+    print(json.dumps({"shards": len(shards), "rounds": rounds_run, "failed": merged["failed_shards"],
+                      "candidates": len(merged["candidates"]), "ineligible": len(merged["ineligible"]),
+                      "unjudged": merged["unjudged"]}))
     return 1 if failed else 0
 
 

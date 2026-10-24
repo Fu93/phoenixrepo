@@ -1092,7 +1092,7 @@ def test_single_discovery_filter_event_and_retry_with_broader_queries(tmp_path):
     assert out_summary["verdict"] == "NEEDS_PRIOR_ART"
 
 
-def test_problem_extraction_llm_error_is_needs_review_not_judged_without_search(tmp_path):
+def test_problem_extraction_llm_error_is_unjudged_not_judged_without_search(tmp_path):
     """Regression (trial5f, ytkb): if problem extraction fails with an LLM error
     (e.g. Nightshift 502/timeout), the prior-art search never runs. The repo must be
     NEEDS_REVIEW, never judged CANDIDATE from CSV rows alone."""
@@ -1170,14 +1170,14 @@ def test_problem_extraction_llm_error_is_needs_review_not_judged_without_search(
     assert all(r.get("repo_id") != candidate["repo_id"] for r in ranked)
     inel = [r for r in results["ineligible"] if r["repo_id"] == candidate["repo_id"]]
     assert len(inel) == 1
-    assert inel[0]["verdict"] == "NEEDS_REVIEW"
+    assert inel[0]["verdict"] == "UNJUDGED"
     assert "PROBLEM_EXTRACTION_FAILED" in inel[0]["reason"]
-    assert "Prior-art search was not run" in inel[0]["reason"]
+    assert "prior-art search was not run" in inel[0]["reason"]
 
 
 def test_llm_502_after_extraction_does_not_abort_run(tmp_path, monkeypatch):
     """Regression (full77a/b): a Nightshift 502 in the alternatives or judgment step must
-    mark only that repo NEEDS_REVIEW (LLM_UNAVAILABLE), not abort the whole run."""
+    mark only that repo UNJUDGED (LLM_UNAVAILABLE), not abort the whole run."""
     snap_dir = tmp_path / "snap"
     snap_dir.mkdir()
     out_json = tmp_path / "out.json"
@@ -1266,7 +1266,7 @@ def test_llm_502_after_extraction_does_not_abort_run(tmp_path, monkeypatch):
     assert all(r.get("repo_id") != candidate["repo_id"] for r in ranked)
     inel = [r for r in results["ineligible"] if r["repo_id"] == candidate["repo_id"]]
     assert len(inel) == 1
-    assert inel[0]["verdict"] == "NEEDS_REVIEW"
+    assert inel[0]["verdict"] == "UNJUDGED"
     assert "LLM_UNAVAILABLE" in inel[0]["reason"]
     assert "HTTP 502" in inel[0]["reason"]
 
