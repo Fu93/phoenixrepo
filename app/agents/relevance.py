@@ -827,8 +827,12 @@ def build_search_queries(candidate: dict[str, Any], problem_statement: dict[str,
     # "X alternatives"). They surface mainstream products and comparison pages that keyword
     # queries about the job miss. Placed early so the 8-query cap never drops them.
     if llm_queries:
-        job = re.sub(r"\s+", " ", llm_queries[0]).strip()
-        product_queries = [f"best {job} tools", f"{job} alternatives comparison"]
+        product_queries = []
+        for raw_job in llm_queries[:2]:
+            job = re.sub(r"\s+", " ", raw_job).strip()
+            job = re.sub(r"\s+(tools?|software|apps?)$", "", job, flags=re.I)
+            if job:
+                product_queries.append(f"best {job} tools")
         for pq in reversed(product_queries):
             if pq.lower() not in seen:
                 seen.add(pq.lower())
@@ -1261,7 +1265,7 @@ def search_prior_art(
 
     # Collect one bucket per query, then merge round-robin so the first query
     # cannot fill every slot (e.g. a tech-stack query crowding out the job query).
-    max_results = 15
+    max_results = 18
     buckets: list[list[tuple[str, dict[str, Any]]]] = []
     if "pypi" in source_status:
         # PyPI's search page is behind a bot challenge; package metadata lookups still work,
@@ -1372,7 +1376,7 @@ def search_prior_art(
     # Merge: round-robin across queries within each source, then per-source quotas
     # so GitHub/npm rows cannot crowd out web rows (official features and commercial
     # products), then fill any unused slots from what is left.
-    quotas = {"web": 6, "github": 6, "npm": 3}
+    quotas = {"web": 9, "github": 6, "npm": 3}
     per_source: dict[str, list[tuple[str, dict[str, Any]]]] = {"github": [], "npm": [], "web": []}
     for src in ("github", "npm", "web"):
         src_buckets = [bk for bk in buckets if bk and bk[0][1]["source"] == src]

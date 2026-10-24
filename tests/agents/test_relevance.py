@@ -1254,5 +1254,5 @@ def test_build_search_queries_adds_product_discovery_queries_early():
     }
     qs = build_search_queries({"repo_id": "me/gen", "description": "a code generator"}, ps)
     assert "best automate boilerplate code tools" in qs[:4]
-    assert "automate boilerplate code alternatives comparison" in qs[:4]
+    assert "best project scaffolding tools" in qs[:4]
     assert len(qs) <= 8
