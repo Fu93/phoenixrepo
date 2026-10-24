@@ -920,6 +920,20 @@ def _do_score_candidates(
                 )
                 continue
             else:
+                trace.event(
+                    agent_name="orchestrator",
+                    action="PROBLEM_STATEMENT",
+                    input_summary={"repo_id": repo_id},
+                    output_summary={
+                        "problem": problem_stmt.get("problem"),
+                        "target_user": problem_stmt.get("target_user"),
+                        "category": problem_stmt.get("category"),
+                        "quotes": problem_stmt.get("quotes"),
+                        "requested_model": meta_prob.get("requested_model"),
+                        "served_model": meta_prob.get("served_model"),
+                    },
+                    status="ok",
+                )
                 # 1. Build search queries including category + self-hosted / open-source if self-hosted
                 queries = build_search_queries(candidate, problem_stmt)
                 queries_tried = list(queries)
@@ -1015,6 +1029,25 @@ def _do_score_candidates(
                         search_results=search_results,
                         client=relevance_client,
                         trace=trace,
+                    )
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="ALTERNATIVES_VERIFIED",
+                        input_summary={"repo_id": repo_id, "searched": len(search_results)},
+                        output_summary={
+                            "alternatives": [
+                                {
+                                    "alternative_id": r.get("alternative_id"),
+                                    "url": r.get("url"),
+                                    "source": r.get("source"),
+                                    "overlap": r.get("overlap"),
+                                    "reason": r.get("reason"),
+                                    "quotes": r.get("quotes"),
+                                }
+                                for r in (problem_alternatives or [])
+                            ]
+                        },
+                        status="ok",
                     )
 
                     # Combined union of prior_art.csv rows and problem_alternatives
