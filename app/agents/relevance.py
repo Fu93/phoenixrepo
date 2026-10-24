@@ -1557,6 +1557,9 @@ BATCH_INSTRUCTION = (
 )
 
 
+BATCH_CALL_ATTEMPTS = 2
+
+
 def judge_alternatives_batch(
     problem_statement: dict[str, Any],
     candidate_repo_id: str,
@@ -1622,16 +1625,31 @@ def judge_alternatives_batch(
                 status="error",
             )
 
-    try:
-        obj, text, req_m, srv_m = _complete_json(
-            client, user_prompt, prompt_record.text + BATCH_INSTRUCTION, candidate_repo_id, "alternative_batch",
-            validate=_batch_ok,
-        )
-    except Exception as exc:
-        if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
-            raise
-        _fallback(f"batch call failed: {str(exc)[:160]}")
-        return None
+    obj = None
+    for attempt in range(BATCH_CALL_ATTEMPTS):
+        try:
+            obj, text, req_m, srv_m = _complete_json(
+                client, user_prompt, prompt_record.text + BATCH_INSTRUCTION, candidate_repo_id, "alternative_batch",
+                validate=_batch_ok,
+            )
+            break
+        except Exception as exc:
+            if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
+                raise
+            if attempt + 1 < BATCH_CALL_ATTEMPTS:
+                # A transient provider error (for example HTTP 502) is retried once before the
+                # much slower one-call-per-alternative fallback.
+                if trace is not None:
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="ALTERNATIVE_BATCH_RETRY",
+                        input_summary={"repo_id": candidate_repo_id, "attempt": attempt + 1},
+                        output_summary={"reason": str(exc)[:160]},
+                        status="error",
+                    )
+                continue
+            _fallback(f"batch call failed after {BATCH_CALL_ATTEMPTS} attempts: {str(exc)[:160]}")
+            return None
     if obj is None:
         _fallback("batch answer unusable after retries (invalid JSON or missing indexes)")
         return None

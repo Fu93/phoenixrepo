@@ -1204,3 +1204,40 @@ def test_batch_unusable_emits_fallback_event_with_reason(tmp_path):
     ]
     assert judge_alternatives_batch({"problem": "p"}, "cand/x", results, client=client, trace=T()) is None
     assert any(e["action"] == "ALTERNATIVE_BATCH_FALLBACK" and "unusable" in e["output_summary"]["reason"] for e in events)
+
+
+def test_batch_retries_once_on_transient_error_then_succeeds(tmp_path):
+    from app.agents.relevance import judge_alternatives_batch
+
+    calls = []
+    events = []
+
+    class T:
+        def event(self, **kw):
+            events.append(kw)
+
+    def llm(prompt, sys):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("Nightshift returned HTTP 502")
+        return json.dumps({"results": [
+            {"index": 0, "same_problem": True, "overlap": "full", "reason": "same", "quotes": ["Sync YouTrack articles to markdown files"]},
+            {"index": 1, "same_problem": False, "overlap": "none", "reason": "no", "quotes": []},
+        ]})
+
+    client = RelevanceClient(mock_handler=llm, cache_dir=tmp_path / "c")
+    results = _ALTS[:2]
+    rows = judge_alternatives_batch(_PROB, "cand/x", results, client=client, trace=T())
+    assert rows is not None and [r["alternative_id"] for r in rows] == ["a/one"]
+    assert any(e["action"] == "ALTERNATIVE_BATCH_RETRY" for e in events)
+    assert not any(e["action"] == "ALTERNATIVE_BATCH_FALLBACK" for e in events)
+
+
+def test_batch_gives_up_after_two_transient_errors(tmp_path):
+    from app.agents.relevance import judge_alternatives_batch
+
+    def llm(prompt, sys):
+        raise RuntimeError("Nightshift returned HTTP 502")
+
+    client = RelevanceClient(mock_handler=llm, cache_dir=tmp_path / "c")
+    assert judge_alternatives_batch(_PROB, "cand/x", _ALTS[:2], client=client) is None

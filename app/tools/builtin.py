@@ -324,7 +324,7 @@ EXA_MCP_URL = "https://mcp.exa.ai/mcp"
 HN_SEARCH_URL = "https://hn.algolia.com/api/v1/search"
 
 
-def parse_exa_mcp(body: str) -> list[dict[str, Any]]:
+def parse_exa_mcp(body: str, source: str = "exa") -> list[dict[str, Any]]:
     """Parse a keyless Exa MCP ``web_search_exa`` response (JSON or SSE) into items.
 
     Raises ValueError("SOURCE_ERROR: ...") on any malformed, error or empty response:
@@ -362,10 +362,10 @@ def parse_exa_mcp(body: str) -> list[dict[str, Any]]:
             continue
         url = m.group(1).strip()
         snippet = ""
-        h = part.find("Highlights:")
-        if h != -1:
-            snippet = " ".join(part[h + len("Highlights:"):].split())[:800]
-        items.append({"url": url, "title": title, "snippet": snippet, "source": "exa"})
+        hm = re.search(r"(?m)^(?:Highlights|Snippets):", part)
+        if hm:
+            snippet = " ".join(part[hm.end():].split())[:800]
+        items.append({"url": url, "title": title, "snippet": snippet, "source": source})
     if not items:
         raise ValueError("SOURCE_ERROR: Exa returned no parseable results")
     return items
@@ -385,6 +385,130 @@ def _search_exa(q: str, client: httpx.Client, num_results: int = 8) -> list[dict
     if resp.status_code != 200:
         raise ValueError(f"SOURCE_ERROR: Exa HTTP {resp.status_code}")
     return parse_exa_mcp(resp.text)
+
+
+PARALLEL_MCP_URL = "https://search.parallel.ai/mcp"
+KEENABLE_MCP_URL = "https://api.keenable.ai/mcp"
+_MCP_HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+
+
+def _mcp_payload(resp: httpx.Response, label: str) -> dict[str, Any]:
+    if resp.status_code not in (200, 202):
+        raise ValueError(f"SOURCE_ERROR: {label} HTTP {resp.status_code}")
+    text = (resp.text or "").strip()
+    if not text:
+        return {}
+    if text.startswith("{"):
+        return json.loads(text)
+    for line in text.splitlines():
+        if line.startswith("data:") and line[5:].strip():
+            return json.loads(line[5:].strip())
+    raise ValueError(f"SOURCE_ERROR: {label} response has no JSON payload")
+
+
+def _mcp_tool_call(
+    client: httpx.Client, url: str, tool: str, arguments: dict[str, Any], label: str
+) -> dict[str, Any]:
+    """Run one keyless MCP tool call (initialize, initialized, tools/call). Raises SOURCE_ERROR."""
+    init = client.post(
+        url,
+        headers=_MCP_HEADERS,
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "phoenixrepo", "version": "1"},
+            },
+        },
+    )
+    _mcp_payload(init, label)
+    headers = dict(_MCP_HEADERS)
+    sid = init.headers.get("Mcp-Session-Id")
+    if sid:
+        headers["Mcp-Session-Id"] = sid
+    try:
+        client.post(url, headers=headers, json={"jsonrpc": "2.0", "method": "notifications/initialized"})
+    except Exception:
+        pass
+    resp = client.post(
+        url,
+        headers=headers,
+        json={"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": tool, "arguments": arguments}},
+    )
+    payload = _mcp_payload(resp, label)
+    if payload.get("error"):
+        raise ValueError(f"SOURCE_ERROR: {label} error {payload['error']}")
+    result = payload.get("result") or {}
+    if result.get("isError"):
+        raise ValueError(f"SOURCE_ERROR: {label} tool returned isError")
+    return result
+
+
+def _mcp_text(result: dict[str, Any]) -> str:
+    return "\n".join(str(c.get("text") or "") for c in (result.get("content") or []) if isinstance(c, dict))
+
+
+def parse_parallel_result(text: str) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(text)
+    except Exception as exc:
+        raise ValueError("SOURCE_ERROR: Parallel response is not JSON") from exc
+    items: list[dict[str, Any]] = []
+    for r in (data.get("results") or []) if isinstance(data, dict) else []:
+        url = str(r.get("url") or "").strip()
+        if not url:
+            continue
+        excerpts = r.get("excerpts") or []
+        snippet = " ".join(" ".join(str(e) for e in excerpts).split())[:800]
+        items.append(
+            {"url": url, "title": " ".join(str(r.get("title") or "").split()), "snippet": snippet, "source": "parallel"}
+        )
+    if not items:
+        raise ValueError("SOURCE_ERROR: Parallel returned no parseable results")
+    return items
+
+
+def _search_parallel(q: str, client: httpx.Client) -> list[dict[str, Any]]:
+    result = _mcp_tool_call(
+        client,
+        PARALLEL_MCP_URL,
+        "web_search",
+        {"objective": q, "search_queries": [q]},
+        "Parallel",
+    )
+    return parse_parallel_result(_mcp_text(result))
+
+
+def _search_keenable(q: str, client: httpx.Client, max_results: int = 8) -> list[dict[str, Any]]:
+    result = _mcp_tool_call(
+        client,
+        KEENABLE_MCP_URL,
+        "search_web_pages",
+        {"query": q, "max_results": max_results},
+        "Keenable",
+    )
+    body = _mcp_text(result)
+    items = _parse_titled_blocks(body, "keenable")
+    if not items:
+        raise ValueError("SOURCE_ERROR: Keenable returned no parseable results")
+    return items
+
+
+def _parse_titled_blocks(joined: str, source: str) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for part in re.split(r"(?m)^Title: ", joined)[1:]:
+        lines = part.splitlines()
+        title = lines[0].strip() if lines else ""
+        m = re.search(r"(?m)^URL: (\S+)", part)
+        if not m:
+            continue
+        hm = re.search(r"(?m)^(?:Highlights|Snippets):", part)
+        snippet = " ".join(part[hm.end():].split())[:800] if hm else ""
+        items.append({"url": m.group(1).strip(), "title": title, "snippet": snippet, "source": source})
+    return items
 
 
 def _search_hn(q: str, client: httpx.Client, limit: int = 3) -> list[dict[str, Any]]:
@@ -428,8 +552,9 @@ def search_web(
     timeout_seconds: float = 30.0,
     cache_dir: Path | str | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
-    """Whole-web search: Exa (keyless MCP) first, Hacker News as a supplement,
-    DuckDuckGo HTML as a fallback. Bing is deliberately not used (bot-degraded junk).
+    """Whole-web search: Exa (keyless MCP) first, then Parallel and Keenable keyless MCP
+    (the same free engines the dsh-free-search plugin uses), DuckDuckGo HTML last, with
+    Hacker News as a supplement. Bing is deliberately not used (bot-degraded junk).
 
     Returns (items, "ok") or ([], "SOURCE_ERROR"). Only non-empty ok results are cached.
     """
@@ -448,15 +573,19 @@ def search_web(
     items: list[dict[str, Any]] = []
     try:
         with httpx.Client(transport=transport, timeout=timeout_seconds, follow_redirects=True) as client:
-            try:
-                items = _search_exa(q, client)
+            for engine in (_search_exa, _search_parallel, _search_keenable, _search_ddg):
+                try:
+                    items = engine(q, client)
+                except Exception:
+                    items = []
+                    continue
+                if items:
+                    break
+            if not items:
+                return [], "SOURCE_ERROR"
+            if items[0].get("source") != "duckduckgo":
                 seen = {i["url"] for i in items}
                 items += [h for h in _search_hn(q, client) if h["url"] not in seen]
-            except Exception:
-                try:
-                    items = _search_ddg(q, client)
-                except Exception:
-                    return [], "SOURCE_ERROR"
     except Exception:
         return [], "SOURCE_ERROR"
 
@@ -495,7 +624,7 @@ class WebSearchTool:
             return ToolResult(
                 ok=False,
                 data="",
-                error="SOURCE_ERROR: web search failed (Exa and DuckDuckGo)",
+                error="SOURCE_ERROR: web search failed (Exa, Parallel, Keenable and DuckDuckGo)",
                 source_url=url,
                 fetched_at=now,
             )
