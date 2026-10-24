@@ -1175,6 +1175,102 @@ def test_problem_extraction_llm_error_is_needs_review_not_judged_without_search(
     assert "Prior-art search was not run" in inel[0]["reason"]
 
 
+def test_llm_502_after_extraction_does_not_abort_run(tmp_path, monkeypatch):
+    """Regression (full77a/b): a Nightshift 502 in the alternatives or judgment step must
+    mark only that repo NEEDS_REVIEW (LLM_UNAVAILABLE), not abort the whole run."""
+    snap_dir = tmp_path / "snap"
+    snap_dir.mkdir()
+    out_json = tmp_path / "out.json"
+    out_md = tmp_path / "out.md"
+    log_dir = tmp_path / "logs"
+    candidate = {
+        "repo_id": "testowner/flaky-llm-tool",
+        "html_url": "https://github.com/testowner/flaky-llm-tool",
+        "description": "Sync tool for knowledge base articles.",
+        "readme_excerpt": "Sync tool for knowledge base articles to local markdown.",
+        "problem_excerpt": "Sync tool for knowledge base articles.",
+        "user_excerpt": "developers",
+        "scope_excerpt": "knowledge base sync",
+        "code_paths": "main.py",
+        "created_at": "2024-01-01T00:00:00Z",
+        "pushed_at": "2024-06-01T00:00:00Z",
+        "days_since_push": "100",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "MIT",
+        "core_terms": "knowledge base sync",
+        "cohort": "discovery",
+        "data_origin": "test",
+        "collected_at": "2026-10-22T23:00:00+00:00",
+    }
+    prior = {c: "" for c in PRIOR_ART_COLUMNS}
+    prior.update({"repo_id": candidate["repo_id"], "alternative_id": "someone/partial-alt"})
+
+    def _write(path, cols, rows):
+        with path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(cols), lineterminator="\n")
+            w.writeheader()
+            for r in rows:
+                w.writerow({c: r.get(c, "") for c in cols})
+
+    _write(snap_dir / "discovery_candidates.csv", DISCOVERY_COLUMNS, [candidate])
+    _write(snap_dir / "prior_art.csv", PRIOR_ART_COLUMNS, [prior])
+    _write(snap_dir / "demand_signals.csv", DEMAND_COLUMNS, [])
+
+    searches_called = []
+
+    def mock_transport_fn(request):
+        searches_called.append(str(request.url))
+        return httpx.Response(200, json={"items": []})
+
+    toolbox = ToolBox(
+        tools={"github": GitHubTool(transport=httpx.MockTransport(mock_transport_fn))},
+        budget=Budget(max_calls=20, max_seconds=30.0),
+    )
+
+    import scripts.score_candidates as sc
+
+    monkeypatch.setattr(
+        sc,
+        "extract_problem_statement",
+        lambda cand, client=None: (
+            {"problem": "Sync knowledge base articles", "category": "knowledge base sync", "target_user": "developers", "queries": ["knowledge base sync"]},
+            {},
+        ),
+    )
+
+    def _boom(**kwargs):
+        raise RelevanceLLMError("Nightshift returned HTTP 502")
+
+    monkeypatch.setattr(sc, "filter_relevant_alternatives", _boom)
+
+    def mock_handler(prompt, system_prompt):
+        return "{}"
+
+    rel_client = RelevanceClient(mock_handler=mock_handler, cache_dir=tmp_path / "cache")
+    results = score_all(
+        data_dir=snap_dir,
+        output_json=out_json,
+        output_md=out_md,
+        max_calls=20,
+        max_seconds=30.0,
+        use_llm=False,
+        run_id="test-llm-502-after-extraction",
+        log_dir=log_dir,
+        custom_toolbox=toolbox,
+        relevance_client=rel_client,
+    )
+
+    ranked = results.get("ranked") or results.get("candidates") or []
+    assert all(r.get("repo_id") != candidate["repo_id"] for r in ranked)
+    inel = [r for r in results["ineligible"] if r["repo_id"] == candidate["repo_id"]]
+    assert len(inel) == 1
+    assert inel[0]["verdict"] == "NEEDS_REVIEW"
+    assert "LLM_UNAVAILABLE" in inel[0]["reason"]
+    assert "HTTP 502" in inel[0]["reason"]
+
+
 def test_llm_flag_exits_code_2_when_unconfigured(monkeypatch, capsys):
     """Bug 3: When --llm is passed and LLM cannot be configured, exit code 2 with error to stderr."""
     from scripts.score_candidates import main

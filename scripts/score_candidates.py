@@ -1002,34 +1002,53 @@ def _do_score_candidates(
                     )
                     continue
 
-                # Alternative relevance step
-                problem_alternatives = filter_relevant_alternatives(
-                    problem_statement=problem_stmt,
-                    candidate_repo_id=repo_id,
-                    search_results=search_results,
-                    client=relevance_client,
-                    trace=trace,
-                )
+                try:
+                    # Alternative relevance step
+                    problem_alternatives = filter_relevant_alternatives(
+                        problem_statement=problem_stmt,
+                        candidate_repo_id=repo_id,
+                        search_results=search_results,
+                        client=relevance_client,
+                        trace=trace,
+                    )
 
-                # Combined union of prior_art.csv rows and problem_alternatives
-                combined_priors = []
-                seen_alts = set()
-                for r in list(prior_for_repo or []) + list(problem_alternatives or []):
-                    ak = str(r.get("alternative_id") or r.get("url") or "").strip().casefold()
-                    if ak and ak not in seen_alts:
-                        seen_alts.add(ak)
-                        combined_priors.append(r)
+                    # Combined union of prior_art.csv rows and problem_alternatives
+                    combined_priors = []
+                    seen_alts = set()
+                    for r in list(prior_for_repo or []) + list(problem_alternatives or []):
+                        ak = str(r.get("alternative_id") or r.get("url") or "").strip().casefold()
+                        if ak and ak not in seen_alts:
+                            seen_alts.add(ak)
+                            combined_priors.append(r)
 
-                verdict, reason = judge_discovery(
-                    candidate,
-                    combined_priors,
-                    demand_for_repo,
-                    client=relevance_client,
-                    problem_alternatives=problem_alternatives,
-                    source_status=getattr(search_results, "source_status", None),
-                    source_counts=getattr(search_results, "source_counts", None),
-                    insufficient_coverage=getattr(search_results, "insufficient_coverage", False),
-                )
+                    verdict, reason = judge_discovery(
+                        candidate,
+                        combined_priors,
+                        demand_for_repo,
+                        client=relevance_client,
+                        problem_alternatives=problem_alternatives,
+                        source_status=getattr(search_results, "source_status", None),
+                        source_counts=getattr(search_results, "source_counts", None),
+                        insufficient_coverage=getattr(search_results, "insufficient_coverage", False),
+                    )
+                except RelevanceLLMError as exc:
+                    if "refusing to score with a small local model" in str(exc):
+                        raise
+                    # A transient Nightshift failure (e.g. HTTP 502 after retries) must not
+                    # abort the whole run: this repo gets NEEDS_REVIEW and scoring continues.
+                    verdict = "NEEDS_REVIEW"
+                    reason = f"LLM_UNAVAILABLE: {exc}. Relevance/judgment step failed after retries; rerun this repo (results are cached)."
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="DISCOVERY_FILTER",
+                        input_summary={"repo_id": repo_id},
+                        output_summary={"verdict": verdict, "reason": reason},
+                        status="ok",
+                    )
+                    ineligible_repos.append(
+                        {"repo_id": repo_id, "verdict": verdict, "reason": reason, "eligibility": False}
+                    )
+                    continue
                 if verdict == "CANDIDATE" and getattr(search_results, "insufficient_coverage", False) and len(combined_priors) == 0:
                     verdict = "NEEDS_REVIEW"
                     reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: absence of alternatives is not evidence of no competition"
