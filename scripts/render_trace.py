@@ -51,7 +51,7 @@ def render_markdown(events: list[dict], *, title: str) -> str:
     lines = [
         f"# {title}",
         "",
-        "Decisions include CANDIDATE (policy passed, no qualifying stage-1 success), RESURRECTED, RESURRECTION_FAILED, and NO_GO.",
+        "Decisions include CANDIDATE (policy passed, no qualifying stage-1 success), RESURRECTED, RESURRECTION_FAILED, NO_GO, and ALREADY_EXISTS.",
         "line_hash chains each row to the previous one. RUN_SEAL is the run hash. The chain shows the file was not edited later. It does not show the text is true.",
         "",
         "| # | timestamp | agent | action | status | served_model | line_hash | input | output |",
@@ -100,7 +100,7 @@ def render_html(events: list[dict], *, title: str) -> str:
         seal = "<p>Run hash: " + html.escape(str(events[-1].get("line_hash") or "")) + "</p>"
     note = (
         "<p>Decisions include CANDIDATE (policy passed, no qualifying stage-1 success), "
-        "RESURRECTED, RESURRECTION_FAILED, and NO_GO. "
+        "RESURRECTED, RESURRECTION_FAILED, NO_GO, and ALREADY_EXISTS. "
         "line_hash chains each row to the previous one. RUN_SEAL is the run hash. "
         "The chain shows the file was not edited later. It does not show the text is true.</p>"
     )

@@ -38,7 +38,13 @@ def _document():
 
 
 def test_committed_hygen_prd_matches_the_deterministic_builder(tmp_path):
-    markdown_path, json_path = write_prd("jondot/hygen", Path("data/real"), tmp_path)
+    import shutil
+
+    frozen = tmp_path / "frozen_real"
+    shutil.copytree("data/real", frozen)
+    for name in ("revival_attempts.csv", "revival_attempts_provenance.json", "revival_sources.csv"):
+        shutil.copy(Path("tests/fixtures/hygen_pre_revival") / name, frozen / name)  # the PRD records the pre-revival state
+    markdown_path, json_path = write_prd("jondot/hygen", frozen, tmp_path / "out")
     committed_md = Path("docs/revival/jondot__hygen.prd.md").read_text(encoding="utf-8")
     committed_json = json.loads(Path("docs/revival/jondot__hygen.prd.json").read_text(encoding="utf-8"))
     assert markdown_path.read_text(encoding="utf-8") == committed_md

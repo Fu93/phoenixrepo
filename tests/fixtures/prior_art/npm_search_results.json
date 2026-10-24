@@ -1,0 +1,14 @@
+{
+  "objects": [
+    {
+      "package": {
+        "name": "youtrack-rest-client",
+        "version": "1.0.0",
+        "description": "YouTrack REST API client for Node.js and TypeScript",
+        "links": {
+          "npm": "https://www.npmjs.com/package/youtrack-rest-client"
+        }
+      }
+    }
+  ]
+}

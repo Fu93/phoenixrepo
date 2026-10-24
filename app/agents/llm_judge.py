@@ -14,13 +14,11 @@ from dataclasses import dataclass
 from app.agents.validate import Critique
 from app.errors import InvestigationError
 from app.llm.parsing import parse_model_json
+from app.prompts import load_prompt
 
-JUDGE_SYSTEM = (
-    "You are the PhoenixRepo evidence judge. Accept a claim only when the Zetaris rows support it. "
-    "Reject a claim that asserts demand, users, tests, CI, or a successor the rows do not show. "
-    'Return one JSON object: {"decision":"accept"|"reject","reason":"...","claim_ids":["..."]}. '
-    "Reasoning before the JSON is allowed. The last value must be that object."
-)
+_REVIEWER = load_prompt("reviewer")
+JUDGE_SYSTEM = _REVIEWER.text
+PROMPT_VERSION = _REVIEWER.sha256
 
 
 @dataclass
@@ -33,11 +31,12 @@ class LlmJudgeOutcome:
     requested_model: str
     served_model: str | None
     latency_ms: int
+    prompt_version: str = PROMPT_VERSION
 
 
 def call_llm_judge(llm, *, subject: dict) -> LlmJudgeOutcome:
     messages = [
-        {"role": "system", "content": JUDGE_SYSTEM},
+        {"role": "system", "content": JUDGE_SYSTEM + "\nReasoning before the JSON is allowed. The last value must be that object."},
         {
             "role": "user",
             "content": "ROLE: llm_judge\nSUBJECT:\n" + json.dumps(subject, ensure_ascii=False, default=str),
