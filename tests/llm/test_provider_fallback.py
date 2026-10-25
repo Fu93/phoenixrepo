@@ -214,3 +214,47 @@ def test_chat_timeout_stays_inside_the_step_budget():
     settings = Settings(_env_file=None)
     assert settings.chat_timeout_seconds() < settings.agent_step_timeout_seconds
     assert settings.markovian_max_chunks > 8
+
+def test_a_failed_lane_recovers_after_the_cooldown():
+    inner = _Scripted(
+        [
+            MeterlessError("Meterless chat failed with HTTP 502.", status_code=502),
+            MeterlessError("Meterless chat failed with HTTP 502.", status_code=502),
+            MeterlessError("Meterless chat failed with HTTP 502.", status_code=502),
+            MeterlessError("Meterless chat failed with HTTP 502.", status_code=502),
+            '{"ok":1}',
+            '{"ok":2}',
+        ]
+    )
+    now = [0.0]
+    llm = BoundLLM(
+        inner,
+        "meterless",
+        "gemini-2.5-flash",
+        False,
+        lanes=("gemini-2.5-flash", "meterless/auto"),
+        sleeper=lambda _seconds: None,
+        clock=lambda: now[0],
+    )
+    assert llm.complete([{"role": "user", "content": "a"}]) == '{"ok":1}'
+    now[0] = 1000.0
+    assert llm.complete([{"role": "user", "content": "b"}]) == '{"ok":2}'
+    assert inner.calls[-1] == "gemini-2.5-flash"
+
+
+def test_when_every_lane_is_cooling_down_the_call_waits_and_retries():
+    inner = _Scripted(['{"ok":1}'])
+    slept = []
+    now = [0.0]
+    llm = BoundLLM(
+        inner,
+        "meterless",
+        "gemini-2.5-flash",
+        False,
+        lanes=("gemini-2.5-flash",),
+        sleeper=lambda seconds: slept.append(seconds),
+        clock=lambda: now[0],
+    )
+    llm.failed_lanes["gemini-2.5-flash"] = 20.0
+    assert llm.complete([{"role": "user", "content": "a"}]) == '{"ok":1}'
+    assert slept == [20.0]

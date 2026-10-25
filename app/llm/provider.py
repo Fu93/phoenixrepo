@@ -11,6 +11,10 @@ from app.llm.standin import SampleStandIn
 from config.settings import Settings
 
 _RETRY_DELAYS = (2, 4, 8)
+# A lane that failed is skipped only for this long. A permanent skip turned one 502 burst into
+# deterministic stand-ins for every later role in the run (hygen run phoenix-894721ec).
+LANE_COOLDOWN_SECONDS = 45.0
+LANE_COOLDOWN_WAIT_CAP = 30.0
 
 
 def retry_reason(exc: BaseException) -> str | None:
@@ -44,7 +48,9 @@ class BoundLLM:
     lanes: tuple[str, ...] = ()
     sleeper: Callable[[float], None] = time.sleep
     fallback_log: list[dict] = field(default_factory=list)
-    failed_lanes: set[str] = field(default_factory=set)
+    failed_lanes: dict[str, float] = field(default_factory=dict)
+    clock: Callable[[], float] = time.monotonic
+    _budget_lanes: set[str] = field(default_factory=set)
     lane: str = ""
 
     def __post_init__(self) -> None:
@@ -57,23 +63,56 @@ class BoundLLM:
         if self.sample_standin or self.provider != "meterless":
             return self._once(messages, self.model)
         last: BaseException | None = None
-        for lane in self.lanes:
-            if lane in self.failed_lanes:
-                self._remember(lane, "skipped-failed-lane")
-                last = MeterlessError(
-                    f"Nightshift lane {lane} already failed in this run.",
-                    status_code=502,
-                )
-                continue
-            kind, outcome = self._lane(messages, lane, deadline)
-            if kind == "ok":
-                return str(outcome)
-            last = outcome if isinstance(outcome, BaseException) else MeterlessError(str(outcome), status_code=502)
-            if kind == "stop":
-                raise last
+        for round_no in range(2):
+            attempted = False
+            for lane in self.lanes:
+                if self._is_failed(lane):
+                    self._remember(lane, "skipped-failed-lane")
+                    last = MeterlessError(
+                        f"Nightshift lane {lane} failed recently (cooling down).",
+                        status_code=502,
+                    )
+                    continue
+                attempted = True
+                kind, outcome = self._lane(messages, lane, deadline)
+                if kind == "ok":
+                    return str(outcome)
+                last = outcome if isinstance(outcome, BaseException) else MeterlessError(str(outcome), status_code=502)
+                if kind == "stop":
+                    raise last
+            if attempted or round_no == 1:
+                break
+            if all(lane in self._budget_lanes for lane in self.failed_lanes):
+                break  # lanes are merely too slow for the step budget; waiting will not help
+            # Every lane is cooling down from an earlier burst of errors: wait for the earliest
+            # one to recover (bounded) and try again instead of degrading to a stand-in.
+            now = self.clock()
+            wait = min((exp - now for exp in self.failed_lanes.values() if exp > now), default=0.0)
+            if deadline is not None:
+                wait = min(wait, max(0.0, deadline - time.monotonic() - 1.0))
+            wait = max(0.0, min(wait, LANE_COOLDOWN_WAIT_CAP))
+            if wait > 0:
+                self.sleeper(wait)
+            self.failed_lanes.clear()
         if last is None:
             raise MeterlessError("Meterless lanes were empty.", status_code=502)
         raise last
+
+    def _fail(self, lane: str, budget: bool = False) -> None:
+        self.failed_lanes[lane] = self.clock() + LANE_COOLDOWN_SECONDS
+        if budget:
+            self._budget_lanes.add(lane)
+        else:
+            self._budget_lanes.discard(lane)
+
+    def _is_failed(self, lane: str) -> bool:
+        expiry = self.failed_lanes.get(lane)
+        if expiry is None:
+            return False
+        if expiry <= self.clock():
+            del self.failed_lanes[lane]
+            return False
+        return True
 
     def _lane(self, messages: list[dict[str, str]], lane: str, deadline: float | None) -> tuple[str, object]:
         delays = (0, *_RETRY_DELAYS)
@@ -82,7 +121,7 @@ class BoundLLM:
             if deadline is not None:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0 or (delay and delay >= remaining):
-                    self.failed_lanes.add(lane)
+                    self._fail(lane, budget=True)
                     self._remember(lane, "budget")
                     return "next", MeterlessError("Nightshift step budget exhausted.", status_code=504)
             if delay:
@@ -91,7 +130,7 @@ class BoundLLM:
             if deadline is not None:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    self.failed_lanes.add(lane)
+                    self._fail(lane, budget=True)
                     self._remember(lane, "budget")
                     return "next", MeterlessError("Nightshift step budget exhausted.", status_code=504)
                 timeout = min(self._client_timeout(), remaining)
@@ -106,9 +145,9 @@ class BoundLLM:
                 if is_unauthorized(exc):
                     return "stop", exc
                 if retry_reason(exc) is None or attempt == len(delays) - 1:
-                    self.failed_lanes.add(lane)
+                    self._fail(lane, budget=deadline is not None and time.monotonic() >= deadline)
                     return "next", exc
-        self.failed_lanes.add(lane)
+        self._fail(lane, budget=deadline is not None and time.monotonic() >= deadline)
         return "next", last or MeterlessError("Nightshift lane failed.", status_code=502)
 
     def _client_timeout(self) -> float:
