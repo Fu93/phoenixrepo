@@ -16,13 +16,15 @@ import os
 import re
 import shlex
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 from app import quality_gate as qg
-from app.revive_prd import draft_prd
+from app.revive_prd import draft_prd, minimal_prd
 
 MAX_FILE_BYTES = 12_000
 MAX_CONTEXT_FILES = 6
@@ -32,6 +34,9 @@ MAX_ITEMS_PER_KIND = 4
 MAX_FILES_PER_ITEM = 5
 NPM_FAST_FLAGS = "--prefer-offline --no-audit --no-fund"
 SUMMARY_CHECKS = ("tests", "lint", "types", "build", "audit")
+HUMAN_GATE_VERDICTS = frozenset({"NEEDS_REVIEW", "NEEDS_PRIOR_ART"})
+APPROVAL_LABEL = "HUMAN_APPROVED_AFTER_NEEDS_REVIEW"
+INFRA_BACKOFF = (0.0, 1.0, 3.0)
 TEST_PATH_RE = re.compile(r"(^|/)(tests?|__tests__|spec|specs)(/|$)|(^|/)(test_[^/]*|[^/]*\.(test|spec)\.[a-z]+|[^/]*_test\.(py|go))$", re.IGNORECASE)
 ENV_BINARY_RE = re.compile(r"Cannot find module '@(rollup|esbuild|swc|parcel)/|@(rollup|esbuild)/[a-z0-9-]+-(win32|linux|darwin)", re.IGNORECASE)
 PROTECTED_NAMES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock"}
@@ -97,6 +102,11 @@ class ReviveResult:
     prd_items_not_done: list[dict[str, Any]] = field(default_factory=list)
     review: dict[str, Any] | None = None
     env_repairs: list[dict[str, Any]] = field(default_factory=list)
+    human_approval: dict[str, Any] | None = None
+    label: str = ""
+    terminal: str = ""
+    infrastructure_failures: list[dict[str, Any]] = field(default_factory=list)
+    unverified: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -112,6 +122,11 @@ class ReviveResult:
             "prd_items_not_done": self.prd_items_not_done,
             "review": self.review,
             "env_repairs": self.env_repairs,
+            "human_approval": self.human_approval,
+            "label": self.label,
+            "terminal": self.terminal or self.state,
+            "infrastructure_failures": self.infrastructure_failures,
+            "unverified": self.unverified,
         }
 
 
@@ -785,8 +800,12 @@ def format_run_summary(payload: dict[str, Any]) -> str:
     lines = [
         f"{payload.get('repo') or 'repository'}: {payload.get('state') or ''}",
         _short(payload.get("reason") or ""),
-        "Checks:",
     ]
+    if payload.get("terminal") and payload.get("terminal") != payload.get("state"):
+        lines.append(f"Terminal: {payload.get('terminal')}")
+    if payload.get("label"):
+        lines.append(f"Label: {payload.get('label')}")
+    lines.append("Checks:")
     for check in SUMMARY_CHECKS:
         left = (before.get(check) or {}).get("status") or "n/a"
         right = (after.get(check) or {}).get("status") or "n/a"
@@ -877,6 +896,140 @@ def _work_items(prd: dict[str, Any]) -> tuple[list[tuple[str, dict[str, Any]]], 
     return selected, skipped
 
 
+def normalize_human_approval(raw: dict[str, Any] | None, *, verdict: str, reason: str) -> dict[str, str] | None:
+    """A complete approval names a reviewer and why. Anything else is not an approval."""
+    if not isinstance(raw, dict):
+        return None
+    reviewer = str(raw.get("reviewer") or "").strip()
+    note = str(raw.get("note") or raw.get("review_note") or "").strip()
+    if not reviewer or not note:
+        return None
+    timestamp = str(raw.get("timestamp") or "").strip() or datetime.now(timezone.utc).isoformat()
+    return {
+        "reviewer": reviewer[:120],
+        "note": note[:500],
+        "timestamp": timestamp,
+        "verdict": str(verdict or ""),
+        "reason": str(reason or "")[:500],
+    }
+
+
+def revival_allowed(verdict: str, approval: dict[str, Any] | None) -> bool:
+    """CANDIDATE may proceed. NEEDS_REVIEW and NEEDS_PRIOR_ART may proceed only with a human approval.
+
+    ALREADY_EXISTS, NO_GO, and UNJUDGED never proceed. An approval cannot turn them into a revival.
+    """
+    if verdict == "CANDIDATE":
+        return True
+    return verdict in HUMAN_GATE_VERDICTS and bool(approval)
+
+
+def is_infra_failure(exc: BaseException) -> bool:
+    """Nightshift HTTP 502. Other errors stay ordinary call failures."""
+    if getattr(exc, "status_code", None) == 502:
+        return True
+    text = str(exc)
+    return "HTTP 502" in text or "status code 502" in text
+
+
+class InfraRetry:
+    """Retry one model call on HTTP 502, then record an infrastructure failure."""
+
+    def __init__(self, inner: Any, trace: Any, failures: list[dict[str, Any]], backoff: tuple[float, ...] = INFRA_BACKOFF, sleep: Callable[[float], None] = time.sleep):
+        self.inner = inner
+        self.trace = trace
+        self.failures = failures
+        self.backoff = tuple(backoff) if backoff else (0.0,)
+        self.sleep = sleep
+
+    def complete_json(self, *args: Any, **kwargs: Any):
+        last: BaseException | None = None
+        step = str(kwargs.get("step") or "")
+        for index, delay in enumerate(self.backoff):
+            if delay:
+                self.sleep(delay)
+            try:
+                return self.inner.complete_json(*args, **kwargs)
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                if not is_infra_failure(exc):
+                    raise
+                if index + 1 >= len(self.backoff):
+                    record = {"step": step, "error": type(exc).__name__, "attempts": len(self.backoff), "detail": str(exc)[:240]}
+                    self.failures.append(record)
+                    if self.trace is not None:
+                        self.trace.event(agent_name="orchestrator", action="REVIVE_INFRA", input_summary=step or "model", output_summary=record, retry_count=index, status="failed")
+                    raise
+                if self.trace is not None:
+                    self.trace.event(agent_name="orchestrator", action="REVIVE_INFRA", input_summary=step or "model", output_summary={"error": type(exc).__name__, "detail": str(exc)[:240]}, retry_count=index + 1, status="retry")
+        if last is not None:
+            raise last
+        raise RuntimeError("model call failed")
+
+
+class HeartbeatWatch:
+    """A daemon thread that writes REVIVE_HEARTBEAT every interval until stop()."""
+
+    def __init__(self, trace: Any, interval_s: float):
+        self.trace = trace
+        self.interval_s = float(interval_s or 0)
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.beats = 0
+
+    def start(self) -> None:
+        if self.interval_s <= 0 or self.trace is None:
+            return
+
+        def loop() -> None:
+            while not self._stop.wait(self.interval_s):
+                self.beats += 1
+                self.trace.event(agent_name="orchestrator", action="REVIVE_HEARTBEAT", input_summary="revive", output_summary={"beat": self.beats, "interval_s": self.interval_s}, status="ok")
+
+        self._thread = threading.Thread(target=loop, name="revive-heartbeat", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=0.2)
+
+
+def apply_terminal(result: ReviveResult) -> None:
+    """Set result.terminal. A 502, a stuck environment, or a partial keep replaces a false verdict."""
+    if result.state == "TIMEOUT":
+        result.terminal = "TIMEOUT"
+        return
+    if result.state == "RESURRECTION_FAILED" and result.infrastructure_failures and not result.prd_items_done:
+        result.state = "INFRA_FAILED"
+        result.reason = "Nightshift returned HTTP 502; the revival stopped on an infrastructure failure, not a verdict"
+        result.terminal = "INFRA_FAILED"
+        return
+    final = result.final
+    if result.state == "RESURRECTION_FAILED" and not result.prd_items_done and final is not None and not final.ok and is_environment_failure(final.output or ""):
+        result.state = "ENV_FAILED"
+        result.reason = "the test command failed because the environment could not be repaired"
+        result.terminal = "ENV_FAILED"
+        return
+    if result.state == "RESURRECTION_FAILED" and result.prd_items_done:
+        result.state = "PARTIAL"
+        result.reason = "some items were applied but the repository's own tests still fail"
+        result.terminal = "PARTIAL"
+        return
+    result.terminal = result.state
+
+
+def unverified_lines(result: ReviveResult) -> list[str]:
+    lines = ["fork CI was not run"]
+    if result.infrastructure_failures:
+        lines.append("a model step hit an infrastructure error and was not treated as a verdict")
+    for row in (result.quality or {}).get("after") or []:
+        if isinstance(row, dict) and row.get("status") in {"skipped", "unavailable"}:
+            lines.append(f"{row.get('id')} was {row.get('status')}")
+    return lines
+
+
 def revive(
     repo: Path,
     client: Any,
@@ -889,26 +1042,86 @@ def revive(
     install_timeout: int = 900,
     test_timeout: int = 300,
     time_budget_s: float = 2400,
+    human_approval: dict[str, Any] | None = None,
+    gate_reason: str = "",
+    deadline_s: float = 3600,
+    heartbeat_s: float = 60,
+    infra_backoff: tuple[float, ...] = INFRA_BACKOFF,
+    step_timeout_s: int | None = None,
 ) -> ReviveResult:
-    if gate_verdict != "CANDIDATE":
-        # Gate 1 is a hard precondition: an idea that is not worth rescuing is never built, so a
-        # refused repository can never end up RESURRECTED (or "revived anyway").
+    approval = normalize_human_approval(human_approval, verdict=gate_verdict, reason=gate_reason)
+    if not revival_allowed(gate_verdict, approval):
+        # ALREADY_EXISTS and NO_GO stay blocked even when someone supplies an approval.
+        # NEEDS_REVIEW without a complete approval stays blocked too.
+        if isinstance(human_approval, dict):
+            trace.event(
+                agent_name="orchestrator",
+                action="REVIVE_HUMAN_APPROVAL",
+                input_summary=repo_id,
+                output_summary={
+                    "reviewer": str(human_approval.get("reviewer") or ""),
+                    "note": str(human_approval.get("note") or human_approval.get("review_note") or "")[:500],
+                    "timestamp": str(human_approval.get("timestamp") or ""),
+                    "verdict": gate_verdict,
+                    "reason": (gate_reason or "")[:500],
+                    "refused": True,
+                },
+                status="refused",
+            )
         trace.event(agent_name="orchestrator", action="REVIVE_BLOCKED_BY_GATE1", input_summary=repo_id, output_summary={"gate1": gate_verdict, "note": "revival not attempted"}, status="blocked")
-        return ReviveResult("NOT_ATTEMPTED_GATE1", f"gate 1 said {gate_verdict}, so no revival was attempted")
+        return ReviveResult(
+            "NOT_ATTEMPTED_GATE1",
+            f"gate 1 said {gate_verdict}, so no revival was attempted",
+            human_approval=approval,
+            terminal="NOT_ATTEMPTED_GATE1",
+        )
+    label = APPROVAL_LABEL if gate_verdict in HUMAN_GATE_VERDICTS and approval else ""
+    if label and approval is not None:
+        trace.event(agent_name="orchestrator", action="REVIVE_HUMAN_APPROVAL", input_summary=repo_id, output_summary=approval, status="ok")
     install, test = detect_commands(repo)
     if not test:
         trace.event(agent_name="validator", action="REVIVE_UNSUPPORTED", input_summary=repo_id, output_summary="No runnable test command found in the manifest.", status="needs_review")
-        result = ReviveResult("NEEDS_REVIEW", "no test command could be detected, so a revival cannot be verified")
-        trace.event(agent_name="orchestrator", action="REVIVE_RESULT", input_summary=repo_id, output_summary={"state": result.state, "reason": result.reason}, status="needs_review")
+        result = ReviveResult("NEEDS_REVIEW", "no test command could be detected, so a revival cannot be verified", label=label, human_approval=approval if label else None, terminal="NEEDS_REVIEW")
+        trace.event(agent_name="orchestrator", action="REVIVE_RESULT", input_summary=repo_id, output_summary={"state": result.state, "reason": result.reason, "label": label}, status="needs_review")
+        return result
+
+    watch = HeartbeatWatch(trace, heartbeat_s)
+    watch.start()
+    infra: list[dict[str, Any]] = []
+    client = InfraRetry(client, trace, infra, backoff=infra_backoff)
+    started = time.monotonic()
+    deadline_at = started + float(deadline_s)
+    stopped = {"phase": ""}
+    if float(deadline_s) <= 0:
+        stopped["phase"] = "start"
+
+    def _finish(result: ReviveResult) -> ReviveResult:
+        watch.stop()
+        result.label = label
+        result.human_approval = approval if label else None
+        result.infrastructure_failures = list(infra)
+        if stopped["phase"]:
+            result.state = "TIMEOUT"
+            result.reason = f"deadline of {float(deadline_s):g}s reached during {stopped['phase']}"
+            result.terminal = "TIMEOUT"
+        else:
+            apply_terminal(result)
+        result.unverified = unverified_lines(result)
         return result
 
     def _run(cmd: str, cwd: Path, timeout: int) -> CmdResult:
+        remaining = deadline_at - time.monotonic()
+        if remaining <= 0 or stopped["phase"]:
+            stopped["phase"] = stopped["phase"] or "command"
+            return CmdResult(cmd, 124, f"TIMEOUT after deadline {float(deadline_s):g}s")
+        limit = max(1, int(min(int(timeout), remaining)))
+        if step_timeout_s:
+            limit = max(1, min(limit, int(step_timeout_s)))
         try:
-            return runner(cmd, cwd, timeout)
+            return runner(cmd, cwd, limit)
         except Exception as exc:  # noqa: BLE001
             return CmdResult(cmd, 1, f"runner error: {type(exc).__name__}")
 
-    started = time.monotonic()
     env_repairs: list[dict[str, Any]] = []
 
     def _ensure() -> CmdResult:
@@ -1000,12 +1213,18 @@ def revive(
             test_result=test_result,
         )
 
-    if install:
-        _install(install)
-    baseline = _ensure()
-    trace.event(agent_name="validator", action="REVIVE_BASELINE", input_summary=test, output_summary={"exit": baseline.code, "tail": tail(baseline.output, 400)}, status="ok" if baseline.ok else "failed")
-
-    prd = draft_prd(client, repo, repo_id, description, baseline)
+    if stopped["phase"]:
+        baseline = CmdResult(test, 124, f"TIMEOUT after deadline {float(deadline_s):g}s")
+        trace.event(agent_name="validator", action="REVIVE_BASELINE", input_summary=test, output_summary={"exit": 124, "tail": baseline.output}, status="failed")
+        prd = minimal_prd(repo, repo_id, baseline, "deadline reached before the model was called")
+    else:
+        if install:
+            _install(install)
+        baseline = _ensure()
+        trace.event(agent_name="validator", action="REVIVE_BASELINE", input_summary=test, output_summary={"exit": baseline.code, "tail": tail(baseline.output, 400)}, status="ok" if baseline.ok else "failed")
+        if time.monotonic() >= deadline_at:
+            stopped["phase"] = stopped["phase"] or "baseline"
+        prd = draft_prd(client, repo, repo_id, description, baseline) if not stopped["phase"] else minimal_prd(repo, repo_id, baseline, "deadline reached before the model was called")
     trace.event(
         agent_name="architect",
         action="REVIVE_PRD",
@@ -1040,6 +1259,8 @@ def revive(
                 "prd_items_not_done": [item.get("id") for item in result.prd_items_not_done],
                 "regressed": (result.quality or {}).get("regressed") or [],
                 "verified_criteria": (result.quality or {}).get("verified_criteria") or [],
+                "terminal": result.terminal,
+                "label": result.label,
             },
             status="ok" if result.state in ("RESURRECTED", "NOTHING_TO_FIX") else "failed",
             summary_limit=4000,
@@ -1054,6 +1275,7 @@ def revive(
         result.final = baseline
         result.state = "NOTHING_TO_FIX"
         result.reason = "the repository's own tests already pass; there is no failing build to revive"
+        _finish(result)
         _emit_result()
         return result
 
@@ -1061,8 +1283,11 @@ def revive(
     last = baseline
     accepted_checks = before
     stage_a_ok = baseline.ok
-    if not baseline.ok:
+    if not baseline.ok and not stopped["phase"]:
         for n in range(1, max_iterations + 1):
+            if time.monotonic() >= deadline_at:
+                stopped["phase"] = "stage-a"
+                break
             files = context_files(repo, last.output)
             patch = propose_patch(client, repo_id, prd, n, last, files, history)
             if not patch:
@@ -1098,7 +1323,7 @@ def revive(
                 break
             history.append(f"iteration {n}: changed {changed}, test exit {run.code}; output tail: {tail(run.output, 600)}")
 
-    if stage_a_ok and not baseline.ok:
+    if stage_a_ok and not baseline.ok and not stopped["phase"]:
         auto_upgrades = deterministic_upgrade_items(repo, _run, min(60, test_timeout))
 
     def _lines_for(snap: dict[str, bytes | None], paths: list[str]) -> int:
@@ -1202,7 +1427,7 @@ def revive(
         _restore(snap)
         _record_not_done(item_id, "upgrade", last_reason, failed)
 
-    if stage_a_ok and (work_items or auto_upgrades):
+    if stage_a_ok and (work_items or auto_upgrades) and not stopped["phase"]:
         adopt_deterministic_upgrades(prd, auto_upgrades)
         prd_upgrades = [item for kind, item in work_items if kind == "upgrade"]
         others = [(kind, item) for kind, item in work_items if kind != "upgrade"]
@@ -1224,6 +1449,9 @@ def revive(
         ordered = _order_work_items(repo, merged[:MAX_ITEMS_PER_KIND] + others)
         index = 0
         while index < len(ordered):
+            if stopped["phase"] or time.monotonic() >= deadline_at:
+                stopped["phase"] = stopped["phase"] or "stage-b"
+                break
             if time.monotonic() - started >= float(time_budget_s):
                 for kind, item in ordered[index:]:
                     record = {"id": str(item.get("id") or kind), "kind": kind, "reason": "time budget"}
@@ -1294,10 +1522,13 @@ def revive(
             result.prd_items_not_done.append(record)
             trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": record["id"], "kind": kind}, output_summary={"status": "not_done", "reason": record["reason"]}, status="not_done")
 
-    review = _review(client, repo_id, prd, _unified(), before, accepted_checks)
+    if stopped["phase"]:
+        review = {"approve": None, "issues": [], "degraded": True, "reason": "deadline reached before review"}
+    else:
+        review = _review(client, repo_id, prd, _unified(), before, accepted_checks)
     result.review = review
     trace.event(agent_name="reviewer", action="REVIVE_REVIEW", input_summary=repo_id, output_summary=review, status="degraded" if review.get("degraded") else ("ok" if review.get("approve") else "rejected"), summary_limit=4000)
-    if review.get("approve") is False and review.get("issues"):
+    if not stopped["phase"] and review.get("approve") is False and review.get("issues"):
         note = "Reviewer iteration review-1. The reviewer rejected the revival with these issues:\n" + "\n".join(f"- {issue['detail']}" for issue in review["issues"])
         files = context_files(repo, last.output)
         patch = propose_patch(client, repo_id, prd, "review-1", last, files, history, note=note)
@@ -1332,6 +1563,7 @@ def revive(
         items_applied=len(result.prd_items_done),
         not_done_reason=not_done_reason[:400],
     )
+    _finish(result)
     _emit_result()
     return result
 

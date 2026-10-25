@@ -611,9 +611,12 @@ td[data-status="fail"] {{ background: #fef3f2; }}
 td[data-status="skipped"], td[data-status="unavailable"] {{ background: #f5f5f4; }}
 td[data-status="info"] {{ background: #eff6ff; }}
 .note {{ color: #44403c; }}
+.outcome {{ background: #fff; border: 2px solid #1c1917; padding: 0.8rem 1rem; margin: 0 0 1.2rem; }}
 </style>
 </head>
 <body>
+{_outcome_banner(payload)}
+{_approval_block(payload)}
 <h1>{_cell(payload.get("repo") or "repository")} — {_cell(payload.get("state") or "")}</h1>
 <p>{_cell(payload.get("reason") or "")}</p>
 <p class="note">Run {_cell(payload.get("run_id") or "")}. Skipped and unavailable checks are not passes. Files changed: {_cell(files)}. Lines changed: {_cell(lines)}.</p>
@@ -648,6 +651,52 @@ td[data-status="info"] {{ background: #eff6ff; }}
 </body>
 </html>
 """
+
+
+def _outcome_banner(payload: dict[str, Any]) -> str:
+    """One honest status block: what changed, tests before and after, and what was not verified."""
+    quality = payload.get("quality") or {}
+    before = {str(row.get("id")): row for row in quality.get("before") or [] if isinstance(row, dict)}
+    after = {str(row.get("id")): row for row in quality.get("after") or [] if isinstance(row, dict)}
+    status = payload.get("terminal") or payload.get("state") or ""
+    files = quality.get("files_changed") or payload.get("files_changed") or []
+    if not isinstance(files, list):
+        files = []
+    changed = ", ".join(str(path) for path in files) or "nothing"
+    lines = quality.get("lines_changed", 0)
+    left = (before.get("tests") or {}).get("status") or "n/a"
+    right = (after.get("tests") or {}).get("status") or "n/a"
+    unverified = payload.get("unverified") or []
+    missing = "; ".join(str(item) for item in unverified) if isinstance(unverified, list) else str(unverified)
+    if not missing:
+        missing = "none recorded"
+    label = str(payload.get("label") or "")
+    label_html = f"<p>Label: {_cell(label)}</p>" if label else ""
+    return (
+        "<section class=\"outcome\">"
+        "<h2>Outcome</h2>"
+        f"<p><strong>{_cell(status)}</strong></p>"
+        f"{label_html}"
+        f"<p>Changed: {_cell(changed)} ({_cell(lines)} lines).</p>"
+        f"<p>Tests: {_cell(left)} -&gt; {_cell(right)}.</p>"
+        f"<p>Not verified: {_cell(missing)}</p>"
+        "</section>"
+    )
+
+
+def _approval_block(payload: dict[str, Any]) -> str:
+    approval = payload.get("human_approval") or {}
+    if not isinstance(approval, dict) or not approval:
+        return ""
+    rows = (
+        ("reviewer", approval.get("reviewer")),
+        ("note", approval.get("note")),
+        ("timestamp", approval.get("timestamp")),
+        ("verdict", approval.get("verdict")),
+        ("reason", approval.get("reason")),
+    )
+    items = "".join(f"<li>{_cell(name)}: {_cell(value)}</li>" for name, value in rows)
+    return f"<h2>Human approval</h2><ul>{items}</ul>"
 
 
 def _ordered_checks(after: list[dict[str, Any]]) -> list[dict[str, Any]]:
