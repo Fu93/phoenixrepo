@@ -16,3 +16,5 @@ credentials/
 
 .cache/
 data/discovery/_shards/
+
+work/
