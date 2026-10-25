@@ -191,3 +191,11 @@ def test_missing_platform_binary_triggers_one_clean_reinstall_before_blaming_cod
     res = rl.revive(repo, _Client([]), trace, "o/r", runner=runner)
     assert res.state == "NOTHING_TO_FIX"
     assert any(e["action"] == "REVIVE_ENV_REPAIR" for e in trace.events)
+
+
+def test_decode_output_handles_utf8_empty_and_non_utf8_bytes():
+    assert rl.decode_output(None) == ""
+    assert rl.decode_output("錯誤 error".encode("utf-8")) == "錯誤 error"
+    garbled = "錯誤".encode("cp950")
+    out = rl.decode_output(garbled)
+    assert isinstance(out, str) and out  # never raises; on Windows it is decoded with the console code page

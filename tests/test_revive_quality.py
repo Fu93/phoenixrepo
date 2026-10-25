@@ -1,4 +1,4 @@
-"""Gate 2 quality: PRD validation, real checks, revert, and acceptance. No network and no live model."""
+﻿"""Gate 2 quality: PRD validation, real checks, revert, and acceptance. No network and no live model."""
 from __future__ import annotations
 
 import json
@@ -528,10 +528,13 @@ def test_end_to_end_real_runner_fixes_a_python_module(tmp_path):
     if shutil.which("pip-audit") is None:
         assert "unavailable" in html
     assert "<script src=" not in html
-    assert shutil.which("pip-audit") is None
 
 
 def shlex_quote(value: str) -> str:
+    import os
     import shlex
+    import subprocess
 
+    if os.name == 'nt':
+        return subprocess.list2cmdline([value])
     return shlex.quote(value)

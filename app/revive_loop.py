@@ -85,16 +85,38 @@ class ReviveResult:
 Runner = Callable[[str, Path, int], CmdResult]
 
 
+def decode_output(raw: bytes | None) -> str:
+    """Decode child output: UTF-8 first, then the Windows console code page (cmd.exe messages on a
+    non-English locale are not UTF-8 and would otherwise reach the model as replacement characters)."""
+    if not raw:
+        return ""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    import os
+
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            return raw.decode(f"cp{ctypes.windll.kernel32.GetOEMCP()}", errors="replace")
+        except Exception:  # noqa: BLE001
+            pass
+    return raw.decode("utf-8", errors="replace")
+
+
 def shell_runner(cmd: str, cwd: Path, timeout: int) -> CmdResult:
     """Run one command non-interactively (CI=1, no stdin) and kill the whole process tree on timeout."""
     import os
     import time
 
-    env = dict(os.environ, CI="1", NO_COLOR="1", FORCE_COLOR="0")
+    env = dict(os.environ, CI="1", NO_COLOR="1", FORCE_COLOR="0", PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     started = time.monotonic()
-    proc = subprocess.Popen(cmd, cwd=str(cwd), shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env)
+    proc = subprocess.Popen(cmd, cwd=str(cwd), shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     try:
-        out, _ = proc.communicate(timeout=timeout)
+        raw, _ = proc.communicate(timeout=timeout)
+        out = decode_output(raw)
         code = proc.returncode
     except subprocess.TimeoutExpired:
         if os.name == "nt":
@@ -102,7 +124,8 @@ def shell_runner(cmd: str, cwd: Path, timeout: int) -> CmdResult:
         else:
             proc.kill()
         try:
-            out, _ = proc.communicate(timeout=10)
+            raw, _ = proc.communicate(timeout=10)
+            out = decode_output(raw)
         except subprocess.TimeoutExpired:
             out = ""
         out = f"TIMEOUT after {timeout}s (the command never finished on its own)\n" + (out or "")
