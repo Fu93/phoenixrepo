@@ -1025,6 +1025,8 @@ def _do_score_candidates(
                     )
                     continue
 
+                problem_alternatives = None
+                judgement_evidence: list[dict[str, Any]] = []
                 try:
                     # Alternative relevance step
                     problem_alternatives = filter_relevant_alternatives(
@@ -1064,7 +1066,7 @@ def _do_score_candidates(
                             seen_alts.add(ak)
                             combined_priors.append(r)
 
-                    verdict, reason = judge_discovery(
+                    judged = judge_discovery(
                         candidate,
                         combined_priors,
                         demand_for_repo,
@@ -1074,6 +1076,8 @@ def _do_score_candidates(
                         source_counts=getattr(search_results, "source_counts", None),
                         insufficient_coverage=getattr(search_results, "insufficient_coverage", False),
                     )
+                    verdict, reason = judged
+                    judgement_evidence = list(getattr(judged, "evidence", []) or [])
                 except RelevanceLLMError as exc:
                     if "refusing to score with a small local model" in str(exc):
                         raise
@@ -1097,21 +1101,27 @@ def _do_score_candidates(
                     reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: absence of alternatives is not evidence of no competition"
                 prior_for_repo = combined_priors
         else:
-            verdict, reason = judge_discovery(
+            judged = judge_discovery(
                 candidate, prior_for_repo, demand_for_repo, client=relevance_client
             )
+            verdict, reason = judged
+            judgement_evidence = list(getattr(judged, "evidence", []) or [])
 
         if verdict == "CANDIDATE" and len(prior_for_repo) == 0:
             verdict = "NEEDS_PRIOR_ART"
             reason = "Zero alternatives checked in prior-art search."
+
+        if verdict not in {"ALREADY_EXISTS", "NEEDS_REVIEW"}:
+            judgement_evidence = []
 
         # Emit exactly one final DISCOVERY_FILTER event per repo
         trace.event(
             agent_name="orchestrator",
             action="DISCOVERY_FILTER",
             input_summary={"repo_id": repo_id},
-            output_summary={"verdict": verdict, "reason": reason},
+            output_summary={"verdict": verdict, "reason": reason, "evidence": judgement_evidence},
             status="ok",
+            summary_limit=EVIDENCE_SUMMARY_LIMIT,
         )
 
         if verdict == "CANDIDATE":
@@ -1125,14 +1135,15 @@ def _do_score_candidates(
                 }
             )
         else:
-            ineligible_repos.append(
-                {
-                    "repo_id": repo_id,
-                    "verdict": verdict,
-                    "reason": reason,
-                    "eligibility": False,
-                }
-            )
+            row = {
+                "repo_id": repo_id,
+                "verdict": verdict,
+                "reason": reason,
+                "eligibility": False,
+            }
+            if verdict in {"ALREADY_EXISTS", "NEEDS_REVIEW"}:
+                row["decision_evidence"] = judgement_evidence
+            ineligible_repos.append(row)
 
     evaluated_scorecards: list[Scorecard] = []
     candidates_output: list[dict[str, Any]] = []
@@ -1556,6 +1567,24 @@ def _render_markdown(data: dict[str, Any]) -> str:
     for inel in data.get("ineligible") or []:
         lines.append(f"| [`{inel['repo_id']}`](https://github.com/{inel['repo_id']}) | `{inel['verdict']}` | {inel['reason']} |")
     lines.append("")
+    from scripts.evidence_report import format_decision_lines
+
+    lines.append("## Why a repository was refused or sent to review")
+    lines.append("")
+    shown = False
+    for inel in data.get("ineligible") or []:
+        block = format_decision_lines(
+            str(inel.get("repo_id") or ""),
+            str(inel.get("verdict") or ""),
+            str(inel.get("reason") or ""),
+            inel.get("decision_evidence"),
+        )
+        if block:
+            shown = True
+            lines.extend(block)
+    if not shown:
+        lines.append("No ALREADY_EXISTS or NEEDS_REVIEW row was recorded.")
+        lines.append("")
 
     return "\n".join(lines)
 

@@ -1,0 +1,108 @@
+{
+  "fetched_at": "2026-10-25",
+  "note": "Human labels for gate 1. Each quote is a substring of text copied from the cited public page on fetched_at. This file is not a live Nightshift score.",
+  "cases": [
+    {
+      "repo_id": "orangekame3/mirrormate",
+      "acceptable": ["CANDIDATE", "NEEDS_REVIEW"],
+      "forbidden": ["ALREADY_EXISTS"],
+      "why": "The repository's own README says the agent lives in a mirror and is not a browser chat UI. A browser voice assistant that does not say it runs in a mirror is not full overlap.",
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://raw.githubusercontent.com/orangekame3/mirrormate/develop/README.md",
+          "fetched_at": "2026-10-25",
+          "quote": "A voice-first AI designed to live in a mirror",
+          "text": "A voice-first AI designed to live in a mirror\n- Runs entirely local with Ollama + VOICEVOX (no cloud required)"
+        },
+        {
+          "role": "candidate",
+          "source_url": "https://raw.githubusercontent.com/orangekame3/mirrormate/develop/README.md",
+          "fetched_at": "2026-10-25",
+          "quote": "Not another chat UI in a browser",
+          "text": "Not another chat UI in a browser\n\n---\n\n## Architecture"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://raw.githubusercontent.com/open-webui/open-webui/main/README.md",
+          "fetched_at": "2026-10-25",
+          "quote": "Integrated voice and video calls with multiple Speech-to-Text providers (Local Whisper, OpenAI, Deepgram, Azure)",
+          "text": "Integrated voice and video calls with multiple Speech-to-Text providers (Local Whisper, OpenAI, Deepgram, Azure) and Text-to-Speech engines (Azure, ElevenLabs)"
+        }
+      ]
+    },
+    {
+      "repo_id": "Fu93/hygen",
+      "acceptable": ["ALREADY_EXISTS"],
+      "forbidden": [],
+      "why": "Fu93/hygen is a fork of jondot/hygen. Its README describes a code generator that lives in the project and injects into existing files. Plop's README describes a micro-generator framework that generates code or other flat text files.",
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://raw.githubusercontent.com/Fu93/hygen/master/README.md",
+          "fetched_at": "2026-10-25",
+          "quote": "`hygen` is the simple, fast, and scalable code generator that lives _in_ your project.",
+          "text": "`hygen` is the simple, fast, and scalable code generator that lives _in_ your project.\n- ✅ Injecting into existing files"
+        },
+        {
+          "role": "candidate",
+          "source_url": "https://raw.githubusercontent.com/Fu93/hygen/master/README.md",
+          "fetched_at": "2026-10-25",
+          "quote": "Injecting into existing files",
+          "text": "- ✅ Injecting into existing files"
+        },
+        {
+          "role": "alternative",
+          "source_url": "https://raw.githubusercontent.com/plopjs/plop/main/README.md",
+          "fetched_at": "2026-10-25",
+          "quote": "Plop is what I like to call a \"micro-generator framework.\" Now, I call it that because it is a small tool that gives you a simple way to generate code or any other type of flat text files in a consistent way.",
+          "text": "Plop is what I like to call a \"micro-generator framework.\" Now, I call it that because it is a small tool that gives you a simple way to generate code or any other type of flat text files in a consistent way. You see, we all create structures and patterns in our code."
+        }
+      ]
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "acceptable": ["ALREADY_EXISTS"],
+      "forbidden": [],
+      "why": "ytkb syncs YouTrack knowledge-base articles to local markdown and pushes edits back. kd-cli's own description includes an idempotent push from local markdown and a pull as markdown for editing.",
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://raw.githubusercontent.com/SergioMendolia/ytkb/main/README.md",
+          "fetched_at": "2026-10-25",
+          "quote": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+          "text": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n\n## Features\n\n- **Download**: Download all pages "
+        },
+        {
+          "role": "alternative",
+          "source_url": "https://pypi.org/project/kd-cli/",
+          "fetched_at": "2026-10-25",
+          "quote": "Idempotent `push` from local markdown, `pull` as markdown for editing",
+          "text": "- **Knowledge-base article workflows.** Idempotent `push` from local markdown, `pull` as markdown for editing, moves across projects, tag-driven queries."
+        }
+      ]
+    },
+    {
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "acceptable": ["ALREADY_EXISTS"],
+      "forbidden": [],
+      "why": "The repository is a web application for creating professional invoices. Invoify's README describes a web-based invoice generator: fill in a form, pick a template, and get a real PDF.",
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://raw.githubusercontent.com/tharani-2006/Invoice-generator-application/main/README.md",
+          "fetched_at": "2026-10-25",
+          "quote": "A full-stack web application for creating, managing, and sending professional invoices with multiple customizable templates.",
+          "text": "**A full-stack web application for creating, managing, and sending professional invoices with multiple customizable templates.**"
+        },
+        {
+          "role": "alternative",
+          "source_url": "https://raw.githubusercontent.com/al1abb/invoify/master/README.md",
+          "fetched_at": "2026-10-25",
+          "quote": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF.",
+          "text": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF."
+        }
+      ]
+    }
+  ]
+}

@@ -20,6 +20,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def make_shards(snapshot: Path, out_dir: Path, n: int) -> list[Path]:
@@ -81,6 +83,23 @@ def render_md(m: dict) -> str:
     for r in m["ineligible"]:
         reason = str(r.get("reason") or "").replace("|", "/").replace("\n", " ")
         lines.append(f"| `{r.get('repo_id')}` | `{r.get('verdict')}` | {reason[:300]} |")
+    from scripts.evidence_report import format_decision_lines
+
+    lines += ["", "## Why a repository was refused or sent to review", ""]
+    shown = False
+    for r in m["ineligible"]:
+        block = format_decision_lines(
+            str(r.get("repo_id") or ""),
+            str(r.get("verdict") or ""),
+            str(r.get("reason") or ""),
+            r.get("decision_evidence"),
+        )
+        if block:
+            shown = True
+            lines.extend(block)
+    if not shown:
+        lines.append("No ALREADY_EXISTS or NEEDS_REVIEW row was recorded.")
+        lines.append("")
     lines += ["", m["protagonist_note"], ""]
     return "\n".join(lines)
 

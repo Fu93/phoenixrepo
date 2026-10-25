@@ -85,6 +85,8 @@ def events_for_repo(events: list[dict[str, Any]], repo_id: str) -> dict[str, Any
         elif act == "DISCOVERY_FILTER":
             out["filter"] = o
             out["file"] = e.get("_file")
+            if isinstance(o, dict) and isinstance(o.get("evidence"), list):
+                out["decision_evidence"] = o.get("evidence")
     seals = {}
     for e in events:
         if e.get("action") == "RUN_SEAL":
@@ -97,6 +99,63 @@ def _e(x: Any) -> str:
     return html.escape("" if x is None else str(x))
 
 
+def decision_rows(evidence: list[dict[str, Any]] | None, alternatives: list[dict[str, Any]] | None = None) -> list[dict[str, str]]:
+    """Normalise refusal evidence to alternative, overlap, quote, reason.
+
+    `evidence` is the structured list stored on a score row or a DISCOVERY_FILTER event.
+    `alternatives` is the verified-alternative list from the trace, used when that event
+    did not carry the structured list.
+    """
+    source = evidence if evidence else (alternatives or [])
+    rows: list[dict[str, str]] = []
+    for item in source:
+        if not isinstance(item, dict):
+            continue
+        quotes = item.get("quotes") if isinstance(item.get("quotes"), list) else []
+        quote = str(item.get("quote") or "").strip()
+        if not quote:
+            for q in quotes:
+                if str(q).strip():
+                    quote = str(q).strip()
+                    break
+        name = str(item.get("alternative") or item.get("alternative_id") or item.get("url") or "").strip()
+        overlap = str(item.get("overlap") or "").strip()
+        why = str(item.get("reason") or "").strip()
+        if not any((name, overlap, quote, why)):
+            continue
+        rows.append({"alternative": name, "overlap": overlap, "quote": quote, "reason": why})
+    return rows
+
+
+def format_decision_lines(repo_id: str, verdict: str, reason: str, evidence: list[dict[str, Any]] | None) -> list[str]:
+    """Markdown a human can read for one ALREADY_EXISTS or NEEDS_REVIEW row."""
+    if verdict not in {"ALREADY_EXISTS", "NEEDS_REVIEW"}:
+        return []
+    rows = decision_rows(evidence)
+    title = f"### `{repo_id}` `{verdict}`"
+    lines = [title, ""]
+    if not rows:
+        lines.append(f"No verified alternative was recorded. Reason: {_md_cell(reason)}")
+        lines.append("")
+        return lines
+    lines.append("| Alternative | Overlap | Verified quote | Reason |")
+    lines.append("| :--- | :--- | :--- | :--- |")
+    for row in rows:
+        lines.append(
+            "| "
+            + " | ".join(
+                _md_cell(row[k]) for k in ("alternative", "overlap", "quote", "reason")
+            )
+            + " |"
+        )
+    lines.append("")
+    return lines
+
+
+def _md_cell(value: Any) -> str:
+    return str(value or "").replace("|", "/").replace("\n", " ").strip()
+
+
 def render_repo_html(repo_id: str, verdict: str, reason: str, ev: dict[str, Any], run_id: str = "", run_hash: str = "") -> str:
     color, label = VERDICT_STYLE.get(verdict, ("#475467", verdict))
     parts: list[str] = []
@@ -105,6 +164,22 @@ def render_repo_html(repo_id: str, verdict: str, reason: str, ev: dict[str, Any]
         f'<p><span class="badge" style="background:{color}">{_e(verdict)}</span> <span class="muted">{_e(label)}</span></p>'
     )
     parts.append(f"<h2>Why</h2><p>{_e(reason)}</p>")
+    if verdict in {"ALREADY_EXISTS", "NEEDS_REVIEW"}:
+        rows = decision_rows(ev.get("decision_evidence"), ev.get("alternatives") if isinstance(ev.get("alternatives"), list) else None)
+        parts.append("<h2>Why this verdict</h2>")
+        parts.append("<table><tr><th>Alternative</th><th>Overlap</th><th>Verified quote</th><th>Reason</th></tr>")
+        if not rows:
+            parts.append(f"<tr><td colspan=\"4\">No verified alternative was recorded. {_e(reason)}</td></tr>")
+        for row in rows:
+            parts.append(
+                "<tr>"
+                f"<td>{_e(row['alternative'])}</td>"
+                f"<td>{_e(row['overlap'])}</td>"
+                f"<td>{_e(row['quote'])}</td>"
+                f"<td>{_e(row['reason'])}</td>"
+                "</tr>"
+            )
+        parts.append("</table>")
 
     prob = ev.get("problem")
     if isinstance(prob, dict):

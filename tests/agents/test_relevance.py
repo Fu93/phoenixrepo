@@ -1118,12 +1118,16 @@ def test_batch_one_call_and_quotes_verified_per_item(tmp_path: Path):
         ]})
 
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=llm)
-    rows = filter_relevant_alternatives(_PROB, "me/cand", _ALTS, client=client)
+    # Two alternatives fit in one chunk. A third would be a separate call.
+    rows = filter_relevant_alternatives(_PROB, "me/cand", _ALTS[:2], client=client)
     assert len(calls) == 1 and "BATCH MODE" in calls[0]
     assert [r["alternative_id"] for r in rows] == ["a/one"]
 
 
-def test_batch_missing_index_falls_back_to_per_item_calls(tmp_path: Path):
+def test_batch_missing_index_retries_only_the_missing_items(tmp_path: Path):
+    """A reply that judges one index is kept. Only the indexes it omitted are retried."""
+    from app.agents.relevance import judge_alternatives_batch
+
     calls = []
 
     def llm(prompt: str, sys: str) -> str:
@@ -1133,9 +1137,13 @@ def test_batch_missing_index_falls_back_to_per_item_calls(tmp_path: Path):
         return json.dumps({"same_problem": False, "overlap": "none", "reason": "no", "quotes": []})
 
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=llm)
-    rows = filter_relevant_alternatives(_PROB, "me/cand", _ALTS, client=client)
+    rows = judge_alternatives_batch(_PROB, "me/cand", _ALTS, client=client)
     assert rows == []
-    assert calls[0] == "batch" and calls.count("single") == 3
+    # Index 0 was parsed, so it is not sent to a single call. Indexes 1 and 2 share one
+    # smaller batch; that reply still has no usable index, so only those two go per-item.
+    assert calls[0] == "batch"
+    assert calls.count("single") == 2
+    assert calls.count("batch") == 2
 
 
 def test_complete_json_retries_unusable_answer_and_never_caches_it(tmp_path):
@@ -1241,6 +1249,63 @@ def test_batch_gives_up_after_two_transient_errors(tmp_path):
 
     client = RelevanceClient(mock_handler=llm, cache_dir=tmp_path / "c")
     assert judge_alternatives_batch(_PROB, "cand/x", _ALTS[:2], client=client) is None
+
+
+def test_truncated_batch_reply_keeps_closed_objects_and_retries_the_rest(tmp_path):
+    """A reply cut off inside a later object must not discard the objects that already closed."""
+    from app.agents.relevance import extract_result_entries, judge_alternatives_batch
+
+    truncated = (
+        '{"results": ['
+        '{"index": 0, "same_problem": true, "overlap": "full", "reason": "same", '
+        '"quotes": ["Sync YouTrack articles to markdown files"]},'
+        '{"index": 1, "same_problem": false, "overlap": "none", "reason": "no", "quotes": []},'
+        '{"index": 2, "same_problem": true, "overlap": "par'
+    )
+    assert [e["index"] for e in extract_result_entries(truncated)] == [0, 1]
+    calls = []
+
+    def llm(prompt, sys):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return truncated
+        return json.dumps({"same_problem": False, "overlap": "none", "reason": "cut off", "quotes": []})
+
+    client = RelevanceClient(mock_handler=llm, cache_dir=tmp_path / "c", mock_served_model="served-batch")
+    rows = judge_alternatives_batch(_PROB, "cand/x", _ALTS, client=client)
+    assert [r["alternative_id"] for r in rows] == ["a/one"]
+    assert len(calls) == 2
+    # The follow-up is only the alternative whose object was cut off.
+    assert "b/two" in calls[1]
+    assert "a/one" not in calls[1]
+    assert "vendor.example" not in calls[1]
+
+
+def test_every_batch_call_is_traced_with_served_model(tmp_path):
+    from app.agents.relevance import judge_alternatives_batch
+
+    events = []
+
+    class T:
+        def event(self, **kw):
+            events.append(kw)
+
+    def llm(prompt, sys):
+        if "BATCH MODE" in sys and prompt.count("Alternative:") > 1:
+            return (
+                '{"results": ['
+                '{"index": 0, "same_problem": false, "overlap": "none", "reason": "x", "quotes": []},'
+                '{"index": 1, "same_problem": false, "overlap": "none", "reason": "y", "quotes": []}'
+            )
+        return json.dumps({"same_problem": False, "overlap": "none", "reason": "z", "quotes": []})
+
+    client = RelevanceClient(mock_handler=llm, cache_dir=tmp_path / "c", mock_served_model="served-batch")
+    assert judge_alternatives_batch(_PROB, "cand/x", _ALTS, client=client, trace=T()) == []
+    calls = [e for e in events if e["action"] in {"ALTERNATIVE_BATCH_CALL", "ALTERNATIVE_CALL"}]
+    assert calls
+    assert all(e["llm"]["served_model"] == "served-batch" for e in calls)
+    assert any(e["action"] == "ALTERNATIVE_BATCH_CALL" for e in calls)
+    assert any(e["action"] == "ALTERNATIVE_CALL" for e in calls)
 
 
 def test_build_search_queries_adds_product_discovery_queries_early():

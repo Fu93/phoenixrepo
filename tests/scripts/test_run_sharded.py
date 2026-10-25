@@ -33,6 +33,37 @@ def test_merge_sums_model_calls_and_never_autoselects_protagonist():
     assert m["protagonist"] is None
 
 
+def test_render_md_shows_refusal_evidence():
+    from scripts.run_sharded import render_md
+
+    merged = {
+        "run_id": "r",
+        "shard_run_ids": ["r-s0"],
+        "model_calls": {},
+        "candidates": [],
+        "protagonist_note": "human picks",
+        "ineligible": [
+            {
+                "repo_id": "o/already",
+                "verdict": "ALREADY_EXISTS",
+                "reason": "full overlap",
+                "decision_evidence": [
+                    {
+                        "alternative": "other/tool",
+                        "overlap": "full",
+                        "quote": "does the same job",
+                        "reason": "same core job",
+                    }
+                ],
+            },
+            {"repo_id": "o/no", "verdict": "NO_GO", "reason": "not an idea"},
+        ],
+    }
+    md = render_md(merged)
+    assert "other/tool" in md and "full" in md and "does the same job" in md and "same core job" in md
+    assert "Why a repository was refused or sent to review" in md
+
+
 def test_count_unjudged_counts_only_unjudged():
     from scripts.run_sharded import count_unjudged
 
