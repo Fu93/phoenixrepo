@@ -67,3 +67,7 @@ Alternative Text: `Reinforcement learning framework for high-frequency crypto ar
 
 ## Substitution rule (overrides feature-by-feature comparison)
 Judge by the user's core job, not by feature lists. Ask: "If this repository disappeared, could its target user do the same core job with the alternative, with at most minor inconvenience?" If yes, the overlap is "full" even when the alternative lacks some secondary features (diff view, tree view, stars, cookies, offline mode, UI polish) or combines them differently. A unique combination of secondary features is NOT novelty. Only a capability the core job cannot be done without, and that no alternative offers, counts as differentiation.
+
+
+## Form factor and context rule (limits the substitution rule)
+The core job includes WHERE and HOW it is done. If the candidate's core job is tied to a specific physical device, hardware, platform, runtime or environment (for example a smart mirror or kiosk, a Raspberry Pi appliance, a browser extension, an editor plugin, a mobile app, an on-premise server), an alternative that only solves the abstract goal on a different device, platform or environment is "partial", not "full", unless its own text says it also runs in the candidate's setting. A generic goal such as "talk to an AI" or "sync files" is not the core job. Switching to a different device or platform is NOT "minor inconvenience". Use "full" only when you can quote text from the alternative showing the same kind of product for the same kind of user in the same setting.
