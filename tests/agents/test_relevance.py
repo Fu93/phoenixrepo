@@ -1273,8 +1273,23 @@ def test_web_full_overlap_with_quote_overrides_llm_candidate(tmp_path: Path):
     assert "vendor.example" in reason and "Built-in invoice automation" in reason
 
 
-def test_github_full_overlap_alone_does_not_override_candidate_rule(tmp_path: Path):
-    gh_alt = {"alternative_id": "someone/tool", "url": "https://github.com/someone/tool", "same_problem": True, "overlap": "full"}
+def test_github_full_overlap_with_quote_overrides_llm_candidate(tmp_path: Path):
+    gh_alt = {
+        "alternative_id": "someone/tool",
+        "url": "https://github.com/someone/tool",
+        "same_problem": True,
+        "overlap": "full",
+        "quotes": ["sync local Markdown files with YouTrack Knowledge Base articles"],
+    }
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
     verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[gh_alt])
-    assert "overrides LLM CANDIDATE" not in reason
+    assert verdict == "ALREADY_EXISTS"
+    assert "someone/tool" in reason and "overrides LLM CANDIDATE" in reason
+
+
+def test_github_partial_overlap_blocks_candidate(tmp_path: Path):
+    gh_alt = {"alternative_id": "someone/tool", "url": "https://github.com/someone/tool", "same_problem": True, "overlap": "partial"}
+    client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
+    verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[gh_alt])
+    assert verdict == "NEEDS_REVIEW"
+    assert "ALTERNATIVE_OVERLAP" in reason

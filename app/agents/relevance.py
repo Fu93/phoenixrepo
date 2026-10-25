@@ -970,6 +970,16 @@ def judge_discovery(
         r for r in combined_priors
         if _is_web_row(r) and r.get("same_problem") is True and str(r.get("overlap") or "") in {"partial", "full"}
     ]
+    # A verified full-overlap alternative of any source (GitHub included) means an open-source or
+    # commercial substitute exists; GitHub partial overlap only needs a human look.
+    full_overlap_rows = [
+        r for r in combined_priors
+        if r.get("same_problem") is True and str(r.get("overlap") or "") == "full"
+    ]
+    github_partial_rows = [
+        r for r in combined_priors
+        if not _is_web_row(r) and r.get("same_problem") is True and str(r.get("overlap") or "") == "partial"
+    ]
     # Show same-problem alternatives (web first) to the judge before unrelated rows.
     combined_priors.sort(key=lambda r: (r.get("same_problem") is not True, not _is_web_row(r)))
 
@@ -1046,11 +1056,11 @@ def judge_discovery(
     elif zero_results:
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
-    elif raw_verdict == "CANDIDATE" and any(str(r.get("overlap") or "") == "full" for r in mainstream_overlap):
+    elif raw_verdict == "CANDIDATE" and full_overlap_rows:
         # The LLM called it novel, but a web alternative with a verified quote (checked against that
         # alternative's own text) already solves the same core problem in full. A unique feature
         # mix does not outweigh verified prior art, so the LLM's CANDIDATE is overridden.
-        m = next(r for r in mainstream_overlap if str(r.get("overlap") or "") == "full")
+        m = full_overlap_rows[0]
         quotes = [str(q) for q in (m.get("quotes") or []) if str(q).strip()]
         verdict = "ALREADY_EXISTS"
         reason = (
@@ -1064,6 +1074,13 @@ def judge_discovery(
         elif not problem_quote or not quote_in_text(problem_quote, cand_text):
             verdict = "NEEDS_REVIEW"
             reason = f"unverified LLM quote: problem_quote '{problem_quote}' not found in candidate README or description"
+        elif github_partial_rows and not mainstream_overlap:
+            m = github_partial_rows[0]
+            verdict = "NEEDS_REVIEW"
+            reason = (
+                f"ALTERNATIVE_OVERLAP: repo {m.get('url') or m.get('alternative_id')} solves the same problem "
+                f"(overlap partial); a human must confirm the remaining gap before CANDIDATE"
+            )
         elif mainstream_overlap:
             # An official feature, doc page or commercial product on the web solves the
             # same problem. A unique feature mix is not proof of novelty: a human must

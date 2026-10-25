@@ -126,9 +126,9 @@ def _create_mock_relevance_client(tmp_path: Path) -> RelevanceClient:
                 })
             if "yt-cli" in prompt.lower():
                 return json.dumps({
-                    "same_problem": True,
-                    "overlap": "partial",
-                    "reason": "yt-cli is a CLI for YouTrack but primarily focused on general developer use rather than full knowledge base sync.",
+                    "same_problem": False,
+                    "overlap": "none",
+                    "reason": "yt-cli is a generic YouTrack CLI that does not sync knowledge base articles to local markdown (fixture: adjacent tool, different problem).",
                     "quotes": ["YouTrack CLI tool for AI agent and developer use"],
                 })
             return json.dumps({
