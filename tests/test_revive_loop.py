@@ -86,6 +86,7 @@ def test_detect_commands_reads_the_manifest(tmp_path):
     install, test = rl.detect_commands(repo)
     assert test == "npm test --silent"
     assert install.startswith("npm install")
+    assert "--prefer-offline" in install and "--no-audit" in install and "--no-fund" in install
 
 
 def test_no_test_command_is_needs_review(tmp_path):
@@ -205,6 +206,7 @@ def test_reinstall_after_a_manifest_edit_never_uses_npm_ci():
     assert rl.reinstall_command("npm ci --no-audit --no-fund") == "npm install --no-audit --no-fund"
     assert rl.reinstall_command("npm install --no-audit") == "npm install --no-audit"
     assert rl.reinstall_command("python -m pip install -q -e .") == "python -m pip install -q -e ."
+    assert rl.reinstall_command(f"npm ci {rl.NPM_FAST_FLAGS}") == f"npm install {rl.NPM_FAST_FLAGS}"
 
 
 def test_missing_platform_module_is_read_from_the_error():
@@ -231,6 +233,7 @@ def test_ensure_env_installs_the_missing_platform_package_and_reruns(tmp_path):
     result = rl.ensure_env(repo, runner, "npm test --silent", trace=trace, repairs=repairs)
     assert result.ok
     assert any("--no-save" in call and "@rollup/rollup-win32-x64-msvc" in call for call in calls)
+    assert any("--prefer-offline" in call and "--no-audit" in call and "--no-fund" in call for call in calls)
     assert repairs[0]["package"] == "@rollup/rollup-win32-x64-msvc"
     assert [event["action"] for event in trace.events] == ["REVIVE_ENV_REPAIR"]
     assert rl.is_environment_failure("Error: Cannot find module '@rollup/rollup-win32-x64-msvc'")
@@ -258,12 +261,18 @@ def test_docs_may_be_replaced_wholesale_and_source_may_not(tmp_path):
         [
             {"path": "CONTRIBUTING.md", "content": "# contributing\n\nRun npm test.\n"},
             {"path": "docs/guide.txt", "content": "new guide\n"},
+        ],
+    )
+    rejected_changed, rejected = rl.apply_edits(
+        repo,
+        [
             {"path": "src/notes.md", "content": "replaced\n"},
             {"path": "src.js", "content": "nope\n"},
             {"path": "tests/a.test.js", "content": "skip\n"},
             {"path": "package-lock.json", "content": "{}\n"},
         ],
     )
+    assert rejected_changed == []
     assert changed == ["CONTRIBUTING.md", "docs/guide.txt"]
     assert (repo / "CONTRIBUTING.md").read_text(encoding="utf-8").endswith("Run npm test.\n")
     assert (repo / "docs" / "guide.txt").read_text(encoding="utf-8") == "new guide\n"

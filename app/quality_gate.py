@@ -561,10 +561,11 @@ def _cell(value: Any) -> str:
 def render_evidence_html(payload: dict[str, Any]) -> str:
     """One static page. No external assets, scripts, or stylesheets."""
     quality = payload.get("quality") or {}
-    before = {str(row["id"]): row for row in quality.get("before") or []}
-    after = quality.get("after") or []
+    before = {str(row["id"]): row for row in quality.get("before") or [] if isinstance(row, dict) and row.get("id")}
+    after = [row for row in (quality.get("after") or []) if isinstance(row, dict)]
     rows = []
-    for row in after:
+    ordered = _ordered_checks(after)
+    for row in ordered:
         check_id = str(row.get("id") or "")
         prev = before.get(check_id) or {}
         rows.append(
@@ -579,10 +580,14 @@ def render_evidence_html(payload: dict[str, Any]) -> str:
         )
     if not rows:
         rows.append("<tr><td colspan=\"6\">No quality checks were run.</td></tr>")
-    done = payload.get("prd_items_done") or []
-    not_done = payload.get("prd_items_not_done") or []
-    done_html = "".join(f"<li>{_cell(_item_line(item))}</li>" for item in done) or "<li>None.</li>"
-    not_html = "".join(f"<li>{_cell(_item_line(item))}</li>" for item in not_done) or "<li>None.</li>"
+    done = [item for item in (payload.get("prd_items_done") or []) if isinstance(item, dict)]
+    not_done = [item for item in (payload.get("prd_items_not_done") or []) if isinstance(item, dict) or item]
+    reverted = [item for item in not_done if isinstance(item, dict) and (item.get("failed_check") or item.get("status") == "reverted")]
+    reverted_ids = {id(item) for item in reverted}
+    other = [item for item in not_done if id(item) not in reverted_ids]
+    done_html = "".join(_applied_row(item) for item in done) or "<tr><td colspan=\"4\">None.</td></tr>"
+    reverted_html = "".join(_reverted_row(item) for item in reverted) or "<tr><td colspan=\"3\">None.</td></tr>"
+    not_html = "".join(f"<li>{_cell(_item_line(item))}</li>" for item in other) or "<li>None.</li>"
     repairs = payload.get("env_repairs") or []
     repair_html = "".join(f"<li>{_cell(_repair_line(item))}</li>" for item in repairs) or "<li>None.</li>"
     files = ", ".join(quality.get("files_changed") or payload.get("files_changed") or []) or "none"
@@ -620,7 +625,19 @@ td[data-status="info"] {{ background: #eff6ff; }}
 </tbody>
 </table>
 <h2>PRD items applied</h2>
-<ul>{done_html}</ul>
+<table>
+<thead><tr><th>Item</th><th>Kind</th><th>Files</th><th>Diff stat</th></tr></thead>
+<tbody>
+{done_html}
+</tbody>
+</table>
+<h2>Reverted</h2>
+<table>
+<thead><tr><th>Item</th><th>Failing check</th><th>Reason</th></tr></thead>
+<tbody>
+{reverted_html}
+</tbody>
+</table>
 <h2>PRD items not done</h2>
 <ul>{not_html}</ul>
 <h2>Environment repairs</h2>
@@ -631,6 +648,47 @@ td[data-status="info"] {{ background: #eff6ff; }}
 </body>
 </html>
 """
+
+
+def _ordered_checks(after: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """tests, lint, types, build, and audit first. Other rows keep their original order."""
+    if not after:
+        return []
+    present = {str(row.get("id") or ""): row for row in after}
+    summary = list(CHECK_IDS[:5])
+    ordered = [present.get(check_id) or {"id": check_id, "status": "n/a", "detail_tail": ""} for check_id in summary]
+    seen = set(summary)
+    for row in after:
+        check_id = str(row.get("id") or "")
+        if check_id in seen:
+            continue
+        ordered.append(row)
+        seen.add(check_id)
+    return ordered
+
+
+def _applied_row(item: dict[str, Any]) -> str:
+    files = item.get("files") if isinstance(item.get("files"), list) else []
+    names = ", ".join(str(path) for path in files)
+    stat = f"{len(files)} file(s), {int(item.get('lines') or 0)} lines"
+    return (
+        "<tr>"
+        f"<td>{_cell(item.get('id') or '')}</td>"
+        f"<td>{_cell(item.get('kind') or '')}</td>"
+        f"<td>{_cell(names or 'none')}</td>"
+        f"<td>{_cell(stat)}</td>"
+        "</tr>"
+    )
+
+
+def _reverted_row(item: dict[str, Any]) -> str:
+    return (
+        "<tr>"
+        f"<td>{_cell(item.get('id') or '')}</td>"
+        f"<td>{_cell(item.get('failed_check') or '')}</td>"
+        f"<td>{_cell(item.get('reason') or '')}</td>"
+        "</tr>"
+    )
 
 
 def _audit_counts(row: dict[str, Any]) -> str:

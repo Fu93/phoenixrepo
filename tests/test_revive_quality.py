@@ -11,7 +11,7 @@ from pathlib import Path
 from app import quality_gate as qg
 from app import revive_loop as rl
 from app import revive_prd as prd
-from scripts.revive import build_parser
+from scripts.revive import build_parser, emit_result
 
 
 class _Trace:
@@ -72,8 +72,8 @@ def _node_repo(tmp_path: Path, source: str = "module.exports = () => 1;\n", *, l
     return tmp_path
 
 
-def _result(cmd: str, code: int, output: str) -> rl.CmdResult:
-    return rl.CmdResult(cmd, code, output)
+def _result(cmd: str, code: int, output: str, seconds: float = 0.0) -> rl.CmdResult:
+    return rl.CmdResult(cmd, code, output, seconds)
 
 
 def test_prd_validation_rejects_thin_drafts_and_missing_files(tmp_path):
@@ -304,6 +304,7 @@ def test_diff_scope_rejects_tests_and_oversized_diffs(tmp_path):
     assert huge["status"] == "fail" and "oversized" in huge["detail_tail"]
     ok = qg.diff_scope_check(["src.js"], 4, prd_obj, rl.is_protected)
     assert ok["status"] == "pass"
+    assert qg.MAX_DIFF_FILES == 8 and qg.MAX_DIFF_LINES == 300
     assert qg.regressions([{"id": "lint", "status": "pass"}], [{"id": "lint", "status": "skipped"}]) == ["lint"]
     assert qg.regressions([{"id": "audit", "status": "fail", "high": 1, "critical": 0}], [{"id": "audit", "status": "fail", "high": 2, "critical": 0}]) == ["audit"]
     assert qg.verified_criteria(prd_obj, [{"id": "tests", "status": "pass"}, {"id": "lint", "status": "skipped"}]) == ["ac-tests"]
@@ -345,14 +346,19 @@ def test_regression_reverts_the_patch_and_item_retries_then_not_done(tmp_path):
 
 def test_applied_upgrade_on_a_green_baseline_can_resurrect(tmp_path):
     repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
+    pkg = json.loads((repo / "package.json").read_text(encoding="utf-8"))
+    pkg["dependencies"] = {"left-pad": "1.2.0"}
+    (repo / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
     upgrade = {"id": "u1", "package": "left-pad", "version": "1.3.0", "reason": "pin a maintained release"}
-    patch = {"edits": [{"path": "src.js", "find": "=> 2;", "replace": "=> 2; // pinned"}]}
-    client = _Client([_prd(["src.js"], upgrades=[upgrade]), patch, {"approve": True, "issues": []}])
+    client = _Client([_prd(["src.js", "package.json"], upgrades=[upgrade]), {"approve": True, "issues": []}])
     res = rl.revive(repo, client, _Trace(), "o/r", runner=_passing_after_fix(repo))
     assert res.state == "RESURRECTED"
     assert res.prd_items_done[0]["id"] == "u1"
-    assert "pinned" in (repo / "src.js").read_text(encoding="utf-8")
+    assert res.prd_items_done[0]["status"] == "applied"
+    assert res.prd_items_done[0]["lines"] >= 1
+    assert "1.3.0" in (repo / "package.json").read_text(encoding="utf-8")
     assert "tests" not in res.quality["regressed"]
+    assert not any("Item attempt" in prompt for _, prompt in client.prompts)
 
 
 def test_final_acceptance_requires_a_real_verified_criterion(tmp_path):
@@ -479,6 +485,38 @@ def test_cli_flags_stay_compatible():
     assert args.time_budget == 2400
     short = build_parser().parse_args(["https://github.com/o/r", "--time-budget", "30"])
     assert short.time_budget == 30
+
+
+def test_cli_prints_a_one_screen_summary(capsys):
+    payload = {
+        "repo": "o/r",
+        "gate1": "CANDIDATE",
+        "state": "NOTHING_TO_FIX",
+        "reason": "no upgrade was applied",
+        "files_changed": [],
+        "run_id": "abc",
+        "quality": {
+            "before": [{"id": "tests", "status": "pass"}, {"id": "lint", "status": "skipped"}],
+            "after": [{"id": "tests", "status": "pass"}, {"id": "lint", "status": "fail"}, {"id": "audit", "status": "pass"}],
+        },
+        "prd_items_done": [{"id": "u1", "kind": "upgrade", "files": ["package.json"], "lines": 2, "status": "applied"}],
+        "prd_items_not_done": [
+            {"id": "u2", "kind": "upgrade", "reason": "AssertionError expected green", "status": "reverted", "failed_check": "tests"},
+            {"id": "u3", "kind": "upgrade", "reason": "target version not found", "status": "not_done"},
+        ],
+    }
+    text = rl.format_run_summary(payload)
+    assert text.startswith("o/r: NOTHING_TO_FIX")
+    assert "tests: pass -> pass" in text
+    assert "lint: skipped -> fail" in text
+    assert "u1: 1 file(s), 2 lines" in text
+    assert "u2: tests failed" in text
+    assert "u3: target version not found" in text
+    emit_result(payload, ("repo", "state", "reason"))
+    out = capsys.readouterr().out
+    assert "o/r: NOTHING_TO_FIX" in out
+    assert "tests: pass -> pass" in out
+    assert '"state": "NOTHING_TO_FIX"' in out
 
 
 def test_decide_state_ignores_any_reviewer_opinion():
@@ -616,7 +654,11 @@ def test_evidence_lists_not_done_reasons_and_env_repairs(tmp_path):
         "NOTHING_TO_FIX",
         "no upgrade was applied",
         prd=_prd(["src.js"]),
-        prd_items_not_done=[{"id": "u2", "kind": "upgrade", "reason": "target version not found"}],
+        prd_items_done=[{"id": "u1", "kind": "upgrade", "files": ["package.json"], "lines": 2, "status": "applied"}],
+        prd_items_not_done=[
+            {"id": "u2", "kind": "upgrade", "reason": "target version not found"},
+            {"id": "u3", "kind": "upgrade", "reason": "AssertionError expected green", "status": "reverted", "failed_check": "tests"},
+        ],
         env_repairs=[{"package": "@rollup/rollup-win32-x64-msvc", "install_exit": 0, "test_exit": 0}],
         quality={
             "before": [{"id": "deps_freshness", "status": "info", "detail_tail": "4 outdated package(s)"}],
@@ -638,6 +680,14 @@ def test_evidence_lists_not_done_reasons_and_env_repairs(tmp_path):
     assert 'data-status="info"' in html
     assert "#eff6ff" in html
     assert 'data-status="pass"' in html
+    assert "#ecfdf3" in html
+    body = html.split("<tbody>", 1)[1]
+    assert body.index(">tests<") < body.index(">lint<") < body.index(">types<") < body.index(">build<") < body.index(">audit<")
+    assert "1 file(s), 2 lines" in html
+    assert "package.json" in html
+    assert "Failing check" in html
+    assert ">u3<" in html
+    assert "NOTHING_TO_FIX" in html
 
 
 def test_unresolved_or_unexplained_major_upgrades_are_dropped(tmp_path):
@@ -678,17 +728,14 @@ def test_minor_upgrades_run_before_a_justified_major(tmp_path):
     (repo / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
     major = {"id": "u-major", "package": "left-pad", "version": "2.0.0", "reason": "The public API must move to the 2.x line"}
     minor = {"id": "u-minor", "package": "debug", "version": "4.4.0", "reason": "pick up the patch"}
-    first = {"edits": [{"path": "src.js", "find": "=> 2;", "replace": "=> 2; // debug"}]}
-    second = {"edits": [{"path": "src.js", "find": "=> 2; // debug", "replace": "=> 2; // debug // left-pad"}]}
-    client = _Client([_prd(["src.js", "package.json"], upgrades=[major, minor]), first, second, {"approve": True, "issues": []}])
+    client = _Client([_prd(["src.js", "package.json"], upgrades=[major, minor]), {"approve": True, "issues": []}])
     res = rl.revive(repo, client, _Trace(), "o/r", runner=_passing_after_fix(repo))
-    item_prompts = [prompt for _, prompt in client.prompts if "Item attempt 1 of" in prompt]
-    assert item_prompts[0].split("Item: ", 1)[1].startswith('{"id": "u-minor"')
-    assert "debug@4.4.0" in item_prompts[0]
-    assert "exactly one package" in item_prompts[0]
-    assert item_prompts[1].split("Item: ", 1)[1].startswith('{"id": "u-major"')
+    body = (repo / "package.json").read_text(encoding="utf-8")
     assert [item["id"] for item in res.prd_items_done] == ["u-minor", "u-major"]
+    assert all(item["status"] == "applied" for item in res.prd_items_done)
+    assert '"debug": "4.4.0"' in body and '"left-pad": "2.0.0"' in body
     assert res.state == "RESURRECTED"
+    assert not any("Item attempt" in prompt for _, prompt in client.prompts)
 
 
 def test_time_budget_stops_new_items_and_still_checks(tmp_path):
@@ -734,12 +781,9 @@ def test_environment_failure_after_a_green_baseline_is_not_resurrection_failed(t
     assert res.final is not None and not res.final.ok
 
 
-def test_two_upgrades_repair_env_then_keep_one_and_revert_the_other(tmp_path):
-    repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
-    pkg = {"scripts": {"test": "node t.js"}, "dependencies": {"left-pad": "1.2.0", "debug": "4.3.4"}}
-    (repo / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
+def _platform_replay_runner(outdated_json: str, break_marker: str = ""):
     state = {"platform": False}
-    calls = []
+    calls: list[str] = []
 
     def runner(cmd, cwd, timeout):
         calls.append(cmd)
@@ -747,52 +791,234 @@ def test_two_upgrades_repair_env_then_keep_one_and_revert_the_other(tmp_path):
             match = re.search(r"@(\d+\.\d+\.\d+)", cmd)
             return _result(cmd, 0, match.group(1) if match else "")
         if "outdated" in cmd:
-            return _result(cmd, 0, "{}")
+            return _result(cmd, 1, outdated_json)
         if "npm audit" in cmd:
             return _result(cmd, 0, json.dumps({"metadata": {"vulnerabilities": {"high": 0, "critical": 0}}}))
         if cmd.startswith("npm install") and "--no-save" in cmd:
             state["platform"] = True
-            return _result(cmd, 0, "added platform")
+            return _result(cmd, 0, "added platform", 0.4)
         if cmd.startswith("npm install") or cmd.startswith("npm ci"):
             state["platform"] = False
-            return _result(cmd, 0, "installed")
-        text = (cwd / "package.json").read_text(encoding="utf-8") + (cwd / "src.js").read_text(encoding="utf-8")
+            return _result(cmd, 0, "installed", 1.5)
         if not state["platform"]:
             return _result(cmd, 1, "Error: Cannot find module '@rollup/rollup-win32-x64-msvc'")
-        if "BREAK" in text:
+        text = (cwd / "package.json").read_text(encoding="utf-8")
+        if break_marker and break_marker in text:
             return _result(cmd, 1, "AssertionError expected green")
         return _result(cmd, 0, "all tests pass")
 
-    u1 = {"id": "u1", "package": "left-pad", "version": "1.3.0", "reason": "patch a maintained release"}
-    u2 = {"id": "u2", "package": "debug", "version": "4.3.5", "reason": "patch the logger"}
-    keep = {"edits": [{"path": "package.json", "find": '"left-pad": "1.2.0"', "replace": '"left-pad": "1.3.0"'}]}
-    break_edit = {"edits": [{"path": "package.json", "find": '"debug": "4.3.4"', "replace": '"debug": "4.3.4 BREAK"'}]}
-    client = _Client(
-        [
-            _prd(["package.json", "src.js"], upgrades=[u1, u2]),
-            keep,
-            break_edit,
-            break_edit,
-            break_edit,
-            {"approve": True, "issues": [{"detail": "src.js looks consistent"}, {"detail": "try harder"}]},
-        ]
-    )
+    return runner, calls, state
+
+
+def test_platform_replay_reverts_a_breaking_upgrade_without_calling_it_failed(tmp_path):
+    """Baseline dies on a missing platform module, a reinstall drops it, and the upgrade is reverted."""
+    repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
+    pkg = {"scripts": {"test": "node t.js"}, "dependencies": {"debug": "4.3.4"}}
+    (repo / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
+    outdated = json.dumps({"debug": {"current": "4.3.4", "wanted": "4.4.0", "latest": "4.4.0"}})
+    runner, calls, state = _platform_replay_runner(outdated, break_marker='"debug": "4.4.0"')
+    client = _Client([_prd(["src.js", "package.json"])])
     trace = _Trace()
     res = rl.revive(repo, client, trace, "o/r", runner=runner)
-    body = (repo / "package.json").read_text(encoding="utf-8")
-    assert res.state == "RESURRECTED"
-    assert [item["id"] for item in res.prd_items_done] == ["u1"]
-    assert [item["id"] for item in res.prd_items_not_done] == ["u2"]
-    assert "1.3.0" in body and "BREAK" not in body
+    assert res.state == "NOTHING_TO_FIX"
+    assert res.state != "RESURRECTION_FAILED"
+    assert res.prd_items_done == []
+    assert res.prd_items_not_done[0]["id"] == "upgrade-debug"
+    assert res.prd_items_not_done[0]["failed_check"] == "tests"
+    assert res.prd_items_not_done[0]["status"] == "reverted"
+    assert "4.3.4" in (repo / "package.json").read_text(encoding="utf-8")
+    assert "4.4.0" not in (repo / "package.json").read_text(encoding="utf-8")
     assert state["platform"] is True
-    assert sum(1 for event in trace.events if event["action"] == "REVIVE_ENV_REPAIR") >= 2
-    assert sum(1 for cmd in calls if cmd.startswith("npm install") and "--no-save" not in cmd) >= 2
     assert res.final is not None and res.final.ok
-    assert "tests" not in res.quality["regressed"]
-    review_prompt = [prompt for step, prompt in client.prompts if step == "revive_review"][0]
-    assert "1.3.0" in review_prompt
-    assert "Quality before" in review_prompt and "Quality after" in review_prompt
-    assert all("try harder" not in issue["detail"] for issue in res.review["issues"])
+    assert "tests" not in (res.quality.get("regressed") or [])
+    before_tests = next(row for row in res.quality["before"] if row["id"] == "tests")
+    assert before_tests["status"] == "pass"
+    installs = [cmd for cmd in calls if cmd.startswith("npm install") or cmd.startswith("npm ci")]
+    assert all("--prefer-offline" in cmd and "--no-audit" in cmd and "--no-fund" in cmd for cmd in installs)
+    assert sum(1 for cmd in installs if "--no-save" not in cmd) >= 2
+    install_events = [event for event in trace.events if event["action"] == "REVIVE_INSTALL"]
+    assert install_events and all("seconds" in event["output_summary"] and "timeout" in event["output_summary"] for event in install_events)
+    assert any(event["output_summary"]["seconds"] > 0 for event in install_events)
+    assert sum(1 for event in trace.events if event["action"] == "REVIVE_ENV_REPAIR") >= 1
+    repair_prompts = [prompt for step, prompt in client.prompts if "repair" in step]
+    assert len(repair_prompts) == 2
+    assert "Validation errors from the previous attempt" in repair_prompts[1]
+    assert "model returned no usable patch" in repair_prompts[1]
+
+
+def test_platform_replay_keeps_a_harmless_upgrade_after_env_repair(tmp_path):
+    repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
+    pkg = {"scripts": {"test": "node t.js"}, "dependencies": {"left-pad": "1.2.0"}}
+    (repo / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
+    outdated = json.dumps({"left-pad": {"current": "1.2.0", "wanted": "1.3.0", "latest": "1.3.0"}})
+    runner, calls, state = _platform_replay_runner(outdated)
+    client = _Client([_prd(["src.js", "package.json"]), {"approve": True, "issues": []}])
+    trace = _Trace()
+    res = rl.revive(repo, client, trace, "o/r", runner=runner)
+    assert res.state == "RESURRECTED"
+    assert [item["id"] for item in res.prd_items_done] == ["upgrade-left-pad"]
+    assert res.prd_items_done[0]["lines"] >= 1
+    assert "1.3.0" in (repo / "package.json").read_text(encoding="utf-8")
+    assert state["platform"] is True
+    assert res.final is not None and res.final.ok
+    assert "tests" not in (res.quality.get("regressed") or [])
+    assert sum(1 for event in trace.events if event["action"] == "REVIVE_ENV_REPAIR") >= 1
+    assert any("--prefer-offline" in cmd for cmd in calls if cmd.startswith("npm install"))
+    assert any(event["action"] == "REVIVE_INSTALL" and event["output_summary"].get("seconds", 0) > 0 for event in trace.events)
+
+
+def test_deterministic_upgrade_keeps_a_source_repair(tmp_path):
+    repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
+    pkg = json.loads((repo / "package.json").read_text(encoding="utf-8"))
+    pkg["dependencies"] = {"debug": "4.3.4"}
+    (repo / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
+
+    def runner(cmd, cwd, timeout):
+        if "outdated" in cmd:
+            return _result(cmd, 1, json.dumps({"debug": {"current": "4.3.4", "wanted": "4.4.0", "latest": "4.4.0"}}))
+        if cmd.startswith("npm install") or cmd.startswith("npm ci"):
+            return _result(cmd, 0, "installed")
+        if "npm audit" in cmd:
+            return _result(cmd, 0, json.dumps({"metadata": {"vulnerabilities": {"high": 0, "critical": 0}}}))
+        manifest = (cwd / "package.json").read_text(encoding="utf-8")
+        source = (cwd / "src.js").read_text(encoding="utf-8")
+        if '"debug": "4.4.0"' in manifest and "// repaired" not in source:
+            return _result(cmd, 1, "AssertionError expected green")
+        if "=> 2" in source and "BAD" not in source:
+            return _result(cmd, 0, "all tests pass")
+        return _result(cmd, 1, "AssertionError expected 2")
+
+    repair = {"edits": [{"path": "src.js", "find": "=> 2;", "replace": "=> 2; // repaired"}]}
+    client = _Client([_prd(["src.js", "package.json"]), repair, {"approve": True, "issues": []}])
+    res = rl.revive(repo, client, _Trace(), "o/r", runner=runner)
+    assert res.state == "RESURRECTED"
+    assert res.prd_items_done[0]["id"] == "upgrade-debug"
+    assert "src.js" in res.prd_items_done[0]["files"]
+    assert '"debug": "4.4.0"' in (repo / "package.json").read_text(encoding="utf-8")
+    assert "// repaired" in (repo / "src.js").read_text(encoding="utf-8")
+    assert any("failed check tests" in prompt for _, prompt in client.prompts)
+
+
+def test_unusable_patch_is_retried_once_with_the_validation_error(tmp_path):
+    repo = _node_repo(tmp_path)
+    client = _Client(
+        [
+            _prd(["src.js"]),
+            {"edits": []},
+            {"edits": [{"path": "src.js", "find": "=> 1", "replace": "=> 2"}]},
+            {"approve": True, "issues": []},
+        ]
+    )
+    res = rl.revive(repo, client, _Trace(), "o/r", runner=_passing_after_fix(repo))
+    assert res.state == "RESURRECTED"
+    assert "=> 2" in (repo / "src.js").read_text(encoding="utf-8")
+    retries = [prompt for step, prompt in client.prompts if step == "revive_patch_1"]
+    assert len(retries) == 2
+    assert "Validation errors from the previous attempt" in retries[1]
+    assert "non-empty" in retries[1]
+
+
+def test_patch_touching_more_than_the_file_cap_is_rejected(tmp_path):
+    edits = [{"path": f"f{i}.js", "content": "x\n"} for i in range(rl.MAX_FILES_PER_ITEM + 1)]
+    changed, rejected = rl.apply_edits(tmp_path, edits)
+    assert changed == []
+    assert any("more than" in item for item in rejected)
+    assert not (tmp_path / "f0.js").exists()
+    assert rl.MAX_FILES_PER_ITEM == 5
+    assert qg.MAX_DIFF_FILES == 8 and qg.MAX_DIFF_LINES == 300
+
+
+def test_revert_of_source_reuses_node_modules(tmp_path):
+    repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
+    calls: list[str] = []
+
+    def runner(cmd, cwd, timeout):
+        calls.append(cmd)
+        if cmd.startswith("npm install") or cmd.startswith("npm ci"):
+            return _result(cmd, 0, "installed")
+        if "npm audit" in cmd:
+            return _result(cmd, 0, json.dumps({"metadata": {"vulnerabilities": {"high": 0, "critical": 0}}}))
+        text = (cwd / "src.js").read_text(encoding="utf-8")
+        if "=> 2" in text and "BAD" not in text:
+            return _result(cmd, 0, "all tests pass")
+        return _result(cmd, 1, "AssertionError tests failed")
+
+    refactor = {"id": "r1", "title": "Tighten the export", "files": ["src.js"], "reason": "name the constant"}
+    bad = {"edits": [{"path": "src.js", "find": "=> 2", "replace": "=> 2 /* BAD */"}]}
+    client = _Client([_prd(["src.js"], refactors=[refactor]), bad, bad, bad])
+    trace = _Trace()
+    res = rl.revive(repo, client, trace, "o/r", runner=runner)
+    installs = [cmd for cmd in calls if cmd.startswith("npm install") or cmd.startswith("npm ci")]
+    assert installs == [installs[0]]
+    assert "--prefer-offline" in installs[0] and "--no-audit" in installs[0] and "--no-fund" in installs[0]
+    assert res.state == "NOTHING_TO_FIX"
+    assert (repo / "src.js").read_text(encoding="utf-8") == "module.exports = () => 2;\n"
+    assert not any(event["action"] == "REVIVE_INSTALL" and event["output_summary"].get("skipped") for event in trace.events)
+    assert res.prd_items_not_done[0]["failed_check"] == "tests"
+
+
+def test_deterministic_outdated_lists_skip_majors(tmp_path):
+    repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
+    pkg = json.loads((repo / "package.json").read_text(encoding="utf-8"))
+    pkg["dependencies"] = {"left-pad": "1.2.0"}
+    (repo / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
+
+    def runner(cmd, cwd, timeout):
+        assert cmd == "npm outdated --json"
+        return _result(
+            cmd,
+            1,
+            json.dumps(
+                {
+                    "left-pad": {"current": "1.2.0", "wanted": "1.3.0", "latest": "2.0.0"},
+                    "debug": {"current": "4.0.0", "wanted": "5.0.0", "latest": "5.0.0"},
+                }
+            ),
+        )
+
+    items = rl.deterministic_upgrade_items(repo, runner, 30)
+    assert [item["package"] for item in items] == ["left-pad"]
+    assert items[0]["version"] == "1.3.0" and items[0]["source"] == "deterministic"
+    assert rl.deterministic_upgrade_items(repo, lambda cmd, cwd, timeout: _result(cmd, 1, "not json"), 10) == []
+
+    py = tmp_path / "py"
+    py.mkdir()
+    (py / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
+
+    def py_runner(cmd, cwd, timeout):
+        assert "pip list --outdated" in cmd
+        return _result(cmd, 0, json.dumps([{"name": "requests", "version": "2.31.0", "latest_version": "2.32.3"}]))
+
+    pip_items = rl.deterministic_upgrade_items(py, py_runner, 30)
+    assert pip_items[0]["package"] == "requests"
+    assert pip_items[0]["version"] == "2.32.3"
+    assert "pip" in pip_items[0]["reason"]
+    changed, rejected = rl.bump_declared_version(py, "requests", "2.31.0", "2.32.3")
+    assert changed == ["requirements.txt"] and rejected == []
+    assert (py / "requirements.txt").read_text(encoding="utf-8") == "requests==2.32.3\n"
+
+
+def test_docs_item_is_written_by_the_model(tmp_path):
+    repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
+    (repo / "CONTRIBUTING.md").write_text("# contributing\n", encoding="utf-8")
+    draft = _prd(["src.js", "CONTRIBUTING.md"])
+    draft["docs_items"] = [{"id": "d1", "title": "Note the test command", "files": ["CONTRIBUTING.md"]}]
+    edit = {"edits": [{"path": "CONTRIBUTING.md", "content": "# contributing\n\nRun npm test.\n"}]}
+    client = _Client([draft, edit, {"approve": True, "issues": []}])
+    res = rl.revive(repo, client, _Trace(), "o/r", runner=_passing_after_fix(repo))
+    assert res.state == "RESURRECTED"
+    assert res.prd_items_done[0]["id"] == "d1"
+    assert (repo / "CONTRIBUTING.md").read_text(encoding="utf-8").endswith("Run npm test.\n")
+    assert any("docs" in prompt and "Item attempt 1" in prompt for _, prompt in client.prompts)
+
+
+def test_unchanged_manifest_bytes_are_not_a_reinstall(tmp_path):
+    repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
+    original = (repo / "package.json").read_bytes()
+    assert rl.manifest_content_changed(repo, {"package.json": original}) is False
+    assert rl.manifest_content_changed(repo, {"src.js": b"other"}) is False
+    (repo / "package.json").write_text(original.decode("utf-8") + "\n", encoding="utf-8")
+    assert rl.manifest_content_changed(repo, {"package.json": original}) is True
 
 
 def shlex_quote(value: str) -> str:

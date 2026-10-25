@@ -68,7 +68,7 @@ def main() -> int:
         payload = result.as_dict() | {"repo": full_name, "gate1": verdict, "run_id": rid, "run_hash": trace.run_hash}
         write_reports(out, result, full_name, rid)
         (out / "revive.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(json.dumps({k: payload[k] for k in ("repo", "gate1", "state", "reason", "run_id")}, indent=2, ensure_ascii=False))
+        emit_result(payload, ("repo", "gate1", "state", "reason", "run_id"))
         return 3
 
     target = args.workdir / full_name.replace("/", "__")
@@ -95,8 +95,14 @@ def main() -> int:
     payload = result.as_dict() | {"repo": full_name, "gate1": verdict, "run_id": rid, "run_hash": trace.run_hash, "clone": str(target), "served_models": sorted(client.served_models)}
     write_reports(out, result, full_name, rid)
     (out / "revive.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(json.dumps({k: payload[k] for k in ("repo", "gate1", "state", "reason", "files_changed", "run_id", "clone")}, indent=2, ensure_ascii=False))
+    emit_result(payload, ("repo", "gate1", "state", "reason", "files_changed", "run_id", "clone"))
     return 0 if result.state in ("RESURRECTED", "NOTHING_TO_FIX") else 1
+
+
+def emit_result(payload: dict, keys: tuple[str, ...]) -> None:
+    """Print a one-screen summary, then the same JSON fields as before."""
+    print(revive_loop.format_run_summary(payload))
+    print(json.dumps({k: payload[k] for k in keys}, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":
