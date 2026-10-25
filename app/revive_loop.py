@@ -74,17 +74,28 @@ Runner = Callable[[str, Path, int], CmdResult]
 
 
 def shell_runner(cmd: str, cwd: Path, timeout: int) -> CmdResult:
+    """Run one command non-interactively (CI=1, no stdin) and kill the whole process tree on timeout."""
+    import os
     import time
 
+    env = dict(os.environ, CI="1", NO_COLOR="1", FORCE_COLOR="0")
     started = time.monotonic()
+    proc = subprocess.Popen(cmd, cwd=str(cwd), shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env)
     try:
-        proc = subprocess.run(cmd, cwd=str(cwd), shell=True, capture_output=True, text=True, timeout=timeout, encoding="utf-8", errors="replace")
-        out = (proc.stdout or "") + (proc.stderr or "")
+        out, _ = proc.communicate(timeout=timeout)
         code = proc.returncode
-    except subprocess.TimeoutExpired as exc:
-        out = f"TIMEOUT after {timeout}s\n" + str(exc.stdout or "")[-2000:]
+    except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+        else:
+            proc.kill()
+        try:
+            out, _ = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            out = ""
+        out = f"TIMEOUT after {timeout}s (the command never finished on its own)\n" + (out or "")
         code = 124
-    return CmdResult(cmd, code, out, time.monotonic() - started)
+    return CmdResult(cmd, code, out or "", time.monotonic() - started)
 
 
 def detect_commands(repo: Path) -> tuple[str | None, str | None]:
@@ -240,7 +251,7 @@ def revive(
     max_iterations: int = 4,
     runner: Runner = shell_runner,
     install_timeout: int = 900,
-    test_timeout: int = 600,
+    test_timeout: int = 300,
 ) -> ReviveResult:
     install, test = detect_commands(repo)
     if not test:
