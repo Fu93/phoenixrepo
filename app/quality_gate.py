@@ -7,6 +7,7 @@ The runner is injectable so tests never need a real toolchain.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Callable
@@ -15,6 +16,8 @@ CHECK_IDS = ("tests", "lint", "types", "build", "audit", "smoke", "diff_scope")
 MAX_DIFF_FILES = 8
 MAX_DIFF_LINES = 300
 DETAIL_LIMIT = 500
+# A missing optional platform binary is an environment gap, not a failed build.
+PLATFORM_BINARY_RE = re.compile(r"@(?:parcel/watcher|rollup/|swc/|esbuild/|parcel/)", re.IGNORECASE)
 
 Runner = Callable[..., Any]
 ToolLookup = Callable[[str], str | None]
@@ -213,6 +216,7 @@ def detect_type_commands(repo: Path) -> list[str]:
 
 
 def detect_build_commands(repo: Path) -> list[str]:
+    """Run the repo's own build, including `next build` and `vite build` scripts."""
     cmds: list[str] = []
     pkg = _read_json(repo / "package.json")
     scripts = pkg.get("scripts") if isinstance(pkg.get("scripts"), dict) else {}
@@ -224,6 +228,14 @@ def detect_build_commands(repo: Path) -> list[str]:
     if (repo / "go.mod").is_file():
         cmds.append("go build ./...")
     return cmds
+
+
+def _build_check(runner: Runner, repo: Path, cmd: str, timeout: int) -> dict[str, Any]:
+    row = _run_exit_check("build", runner, repo, cmd, timeout)
+    if row["status"] == "fail" and PLATFORM_BINARY_RE.search(str(row.get("detail_tail") or "")):
+        row = dict(row)
+        row["status"] = "unavailable"
+    return row
 
 
 def detect_smoke(repo: Path) -> tuple[str, str] | None:
@@ -449,13 +461,40 @@ def run_quality_gate(
         checks.append(_check("types", "skipped", "no tsc or mypy configuration found"))
     build_cmds = detect_build_commands(repo)
     if build_cmds:
-        checks.append(_merge_runs("build", [_run_exit_check("build", runner, repo, cmd, check_timeout) for cmd in build_cmds]))
+        checks.append(_merge_runs("build", [_build_check(runner, repo, cmd, check_timeout) for cmd in build_cmds]))
     else:
         checks.append(_check("build", "skipped", "no npm build script, Python build-system, or go.mod found"))
     checks.append(audit_check(repo, runner, check_timeout, tools_present))
     checks.append(smoke_check(repo, runner, smoke_timeout))
     checks.append(diff_scope_check(changed_files or [], lines_changed, prd, is_protected, max_files=max_files, max_lines=max_lines))
+    checks.append(deps_freshness_check(repo, runner, check_timeout))
     return checks
+
+
+def deps_freshness_check(repo: Path, runner: Runner, timeout: int) -> dict[str, Any]:
+    """How many dependencies are behind. Informational only: never pass or fail."""
+    if (repo / "package.json").is_file():
+        cmd = "npm outdated --json"
+    elif any((repo / name).is_file() for name in ("requirements.txt", "pyproject.toml", "setup.py")):
+        cmd = "python -m pip list --outdated --format json"
+    else:
+        return _check("deps_freshness", "info", "no npm or pip manifest to compare", outdated=None)
+    try:
+        result = runner(cmd, repo, min(timeout, 30))
+    except Exception as exc:  # noqa: BLE001
+        return _check("deps_freshness", "info", f"outdated package list was unavailable ({type(exc).__name__})", outdated=None)
+    output = str(getattr(result, "output", "") or "")
+    code = int(getattr(result, "code", 1))
+    if not output.strip() and code == 0:
+        return _check("deps_freshness", "info", "0 outdated package(s)", outdated=0)
+    data = _json_value(output)
+    if isinstance(data, dict):
+        count = len(data)
+    elif isinstance(data, list):
+        count = len(data)
+    else:
+        return _check("deps_freshness", "info", "outdated package list was unavailable", outdated=None)
+    return _check("deps_freshness", "info", f"{count} outdated package(s)", outdated=count)
 
 
 def regressions(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[str]:
@@ -467,6 +506,8 @@ def regressions(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> li
         if not counts_as_pass(row):
             continue
         later = current.get(check_id)
+        if later is not None and later.get("status") == "info":
+            continue
         if later is None or not counts_as_pass(later):
             found.append(check_id)
     before_audit = previous.get("audit") or {}
@@ -542,6 +583,8 @@ def render_evidence_html(payload: dict[str, Any]) -> str:
     not_done = payload.get("prd_items_not_done") or []
     done_html = "".join(f"<li>{_cell(_item_line(item))}</li>" for item in done) or "<li>None.</li>"
     not_html = "".join(f"<li>{_cell(_item_line(item))}</li>" for item in not_done) or "<li>None.</li>"
+    repairs = payload.get("env_repairs") or []
+    repair_html = "".join(f"<li>{_cell(_repair_line(item))}</li>" for item in repairs) or "<li>None.</li>"
     files = ", ".join(quality.get("files_changed") or payload.get("files_changed") or []) or "none"
     lines = quality.get("lines_changed", 0)
     review = payload.get("review") or {}
@@ -561,6 +604,7 @@ th {{ background: #e7e5e4; }}
 td[data-status="pass"] {{ background: #ecfdf3; }}
 td[data-status="fail"] {{ background: #fef3f2; }}
 td[data-status="skipped"], td[data-status="unavailable"] {{ background: #f5f5f4; }}
+td[data-status="info"] {{ background: #eff6ff; }}
 .note {{ color: #44403c; }}
 </style>
 </head>
@@ -579,6 +623,8 @@ td[data-status="skipped"], td[data-status="unavailable"] {{ background: #f5f5f4;
 <ul>{done_html}</ul>
 <h2>PRD items not done</h2>
 <ul>{not_html}</ul>
+<h2>Environment repairs</h2>
+<ul>{repair_html}</ul>
 <h2>Reviewer</h2>
 <p>approve={_cell(review.get("approve"))}</p>
 <ul>{issue_html}</ul>
@@ -599,3 +645,10 @@ def _item_line(item: Any) -> str:
     reason = item.get("reason") or ""
     base = f"{item.get('kind') or 'item'} {item.get('id') or ''}".strip()
     return f"{base}: {reason}" if reason else base
+
+
+def _repair_line(item: Any) -> str:
+    if not isinstance(item, dict):
+        return str(item)
+    package = item.get("package") or "platform package"
+    return f"{package} (install exit {item.get('install_exit')}, test exit {item.get('test_exit')})"

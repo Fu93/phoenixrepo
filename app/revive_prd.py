@@ -114,11 +114,8 @@ def validate_prd(obj: Any, repo: Path) -> list[str]:
             errors.append(f"upgrade_items[{index}] missing id")
         package = str(item.get("package") or "").strip()
         version = str(item.get("version") or item.get("to_version") or "").strip()
-        reason = str(item.get("reason") or "").strip()
-        concrete_pin = bool(package and version)
-        concrete_reason = len(reason) >= 12
-        if not concrete_pin and not concrete_reason:
-            errors.append(f"upgrade_items[{index}] needs a package and version, or a concrete reason")
+        if not package or not version:
+            errors.append(f"upgrade_items[{index}] needs a package and a target version")
     refactors = obj.get("refactor_items") if isinstance(obj.get("refactor_items"), list) else []
     for index, item in enumerate(refactors):
         if not isinstance(item, dict):
@@ -212,7 +209,8 @@ def _prompt(repo_id: str, description: str, baseline: Any, files: dict[str, str]
         '"docs_items": [{"id": str, "title": str, "files": [str]}], '
         '"acceptance_criteria": [{"id": str, "statement": str, "check_id": str}], "risks": [str]}. '
         "scope and refactor files must be real paths from the tree. "
-        "Each upgrade item needs a package plus version, or a concrete reason. "
+        "Each upgrade item needs a concrete package and a target version. "
+        "A major upgrade also needs a reason. "
         "At most 4 upgrade_items and 4 refactor_items. "
         "acceptance_criteria needs at least 3 items. Each statement must be measurable "
         "(include a number, an exit code, or an explicit pass/fail bound) and check_id must be one of "

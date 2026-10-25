@@ -39,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--iterations", type=int, default=4)
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--gate-verdict", default=None, help="Reuse an earlier gate-1 verdict instead of re-judging (CANDIDATE, ALREADY_EXISTS, ...).")
+    ap.add_argument("--time-budget", type=float, default=2400, dest="time_budget", help="Stop starting new upgrade or refactor items after this many seconds (default 2400).")
     return ap
 
 
@@ -84,7 +85,7 @@ def main() -> int:
     except Exception:  # noqa: BLE001
         pass
     client = RelevanceClient()
-    result = revive_loop.revive(target, client, trace, full_name, description=description, gate_verdict=verdict, max_iterations=args.iterations)
+    result = revive_loop.revive(target, client, trace, full_name, description=description, gate_verdict=verdict, max_iterations=args.iterations, time_budget_s=args.time_budget)
 
     if result.files_changed:
         _git(["add", "-A"], target)

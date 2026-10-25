@@ -212,3 +212,84 @@ def test_missing_platform_module_is_read_from_the_error():
     assert rl.missing_platform_module(out) == "@rollup/rollup-win32-x64-msvc"
     assert rl.missing_platform_module("Cannot find module 'left-pad'") is None
     assert rl.missing_platform_module("") is None
+
+
+def test_ensure_env_installs_the_missing_platform_package_and_reruns(tmp_path):
+    repo = _make_repo(tmp_path)
+    calls = []
+
+    def runner(cmd, cwd, timeout):
+        calls.append(cmd)
+        if cmd.startswith("npm install"):
+            return rl.CmdResult(cmd, 0, "added")
+        if any(call.startswith("npm install") for call in calls):
+            return rl.CmdResult(cmd, 0, "pass")
+        return rl.CmdResult(cmd, 1, "Error: Cannot find module '@rollup/rollup-win32-x64-msvc'")
+
+    trace = _Trace()
+    repairs = []
+    result = rl.ensure_env(repo, runner, "npm test --silent", trace=trace, repairs=repairs)
+    assert result.ok
+    assert any("--no-save" in call and "@rollup/rollup-win32-x64-msvc" in call for call in calls)
+    assert repairs[0]["package"] == "@rollup/rollup-win32-x64-msvc"
+    assert [event["action"] for event in trace.events] == ["REVIVE_ENV_REPAIR"]
+    assert rl.is_environment_failure("Error: Cannot find module '@rollup/rollup-win32-x64-msvc'")
+    assert rl.is_environment_failure("npm ERR! network request failed ECONNRESET")
+    assert rl.is_environment_failure("spawn npm ENOENT")
+    assert rl.is_environment_failure("'npm' is not recognized as an internal or external command")
+    assert not rl.is_environment_failure("Error: ENOENT: no such file or directory, open 'src.js'")
+    assert not rl.is_environment_failure("AssertionError expected 2")
+    before = [{"id": "tests", "status": "pass", "detail_tail": "ok"}]
+    env_fail = [{"id": "tests", "status": "fail", "detail_tail": "Cannot find module '@rollup/rollup-win32-x64-msvc'"}]
+    real_fail = [{"id": "tests", "status": "fail", "detail_tail": "AssertionError expected 2"}]
+    assert rl.regression_ids(before, env_fail) == []
+    assert rl.regression_ids(before, real_fail) == ["tests"]
+
+
+def test_docs_may_be_replaced_wholesale_and_source_may_not(tmp_path):
+    repo = _make_repo(tmp_path)
+    (repo / "CONTRIBUTING.md").write_text("# contributing\n", encoding="utf-8")
+    (repo / "docs").mkdir()
+    (repo / "docs" / "guide.txt").write_text("old\n", encoding="utf-8")
+    (repo / "src").mkdir()
+    (repo / "src" / "notes.md").write_text("notes\n", encoding="utf-8")
+    changed, rejected = rl.apply_edits(
+        repo,
+        [
+            {"path": "CONTRIBUTING.md", "content": "# contributing\n\nRun npm test.\n"},
+            {"path": "docs/guide.txt", "content": "new guide\n"},
+            {"path": "src/notes.md", "content": "replaced\n"},
+            {"path": "src.js", "content": "nope\n"},
+            {"path": "tests/a.test.js", "content": "skip\n"},
+            {"path": "package-lock.json", "content": "{}\n"},
+        ],
+    )
+    assert changed == ["CONTRIBUTING.md", "docs/guide.txt"]
+    assert (repo / "CONTRIBUTING.md").read_text(encoding="utf-8").endswith("Run npm test.\n")
+    assert (repo / "docs" / "guide.txt").read_text(encoding="utf-8") == "new guide\n"
+    assert (repo / "src" / "notes.md").read_text(encoding="utf-8") == "notes\n"
+    assert (repo / "src.js").read_text(encoding="utf-8").startswith("module.exports")
+    assert any("src/notes.md" in item and "content may only create a new file" in item for item in rejected)
+    assert any("src.js" in item and "content may only create a new file" in item for item in rejected)
+    assert any("protected" in item for item in rejected)
+
+    (repo / "README.md").write_text("a" * (200 * 1024), encoding="utf-8")
+    changed, rejected = rl.apply_edits(repo, [{"path": "README.md", "content": "short\n"}])
+    assert changed == []
+    assert any("README.md" in item and "content may only create a new file" in item for item in rejected)
+    assert (repo / "README.md").read_text(encoding="utf-8").startswith("a")
+
+
+def test_version_probe_command_is_quoted_for_the_host_shell(tmp_path, monkeypatch):
+    import subprocess
+
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+    assert rl.version_probe_command(tmp_path, "left-pad", "1.3.0") == "npm view left-pad@1.3.0 version"
+    monkeypatch.setattr(rl.os, "name", "nt")
+    windows = rl.version_probe_command(tmp_path, "@scope/pkg", "1.2.3")
+    assert windows == "npm view " + subprocess.list2cmdline(["@scope/pkg@1.2.3"]) + " version"
+    monkeypatch.setattr(rl.os, "name", "posix")
+    py = tmp_path / "py"
+    py.mkdir()
+    (py / "requirements.txt").write_text("left-pad==1.2.0\n", encoding="utf-8")
+    assert rl.version_probe_command(py, "left-pad", "1.3.0") == "python -m pip index versions left-pad"

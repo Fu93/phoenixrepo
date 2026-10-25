@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import difflib
 import json
+import os
 import re
+import shlex
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -27,6 +30,29 @@ MAX_ITEMS_PER_KIND = 4
 TEST_PATH_RE = re.compile(r"(^|/)(tests?|__tests__|spec|specs)(/|$)|(^|/)(test_[^/]*|[^/]*\.(test|spec)\.[a-z]+|[^/]*_test\.(py|go))$", re.IGNORECASE)
 ENV_BINARY_RE = re.compile(r"Cannot find module '@(rollup|esbuild|swc|parcel)/|@(rollup|esbuild)/[a-z0-9-]+-(win32|linux|darwin)", re.IGNORECASE)
 PROTECTED_NAMES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock"}
+MANIFEST_NAMES = {
+    "package.json",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "npm-shrinkwrap.json",
+    "requirements.txt",
+    "pyproject.toml",
+    "go.mod",
+    "setup.py",
+}
+DOC_SUFFIXES = {".md", ".rst", ".txt"}
+DOC_CONTENT_MAX_BYTES = 200 * 1024
+ENV_FAILURE_RE = re.compile(
+    r"@(?:parcel/watcher|rollup/|swc/|esbuild/|parcel/)|"
+    r"not recognized as an internal or external command|"
+    r"npm ERR! network|"
+    r"npm ERR! code (?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN)|"
+    r"\b(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND)\b|"
+    r"getaddrinfo|"
+    r"spawn[^\n]{0,120}ENOENT",
+    re.IGNORECASE,
+)
 
 BUILDER_SYSTEM = (
     "You are the builder in a repository revival. Fix the failure with the smallest correct change to NON-TEST source, "
@@ -65,6 +91,7 @@ class ReviveResult:
     prd_items_done: list[dict[str, Any]] = field(default_factory=list)
     prd_items_not_done: list[dict[str, Any]] = field(default_factory=list)
     review: dict[str, Any] | None = None
+    env_repairs: list[dict[str, Any]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -79,6 +106,7 @@ class ReviveResult:
             "prd_items_done": self.prd_items_done,
             "prd_items_not_done": self.prd_items_not_done,
             "review": self.review,
+            "env_repairs": self.env_repairs,
         }
 
 
@@ -97,6 +125,169 @@ def missing_platform_module(output: str) -> str | None:
 def reinstall_command(install: str) -> str:
     """After a manifest edit the lockfile no longer matches, so `npm ci` would fail by design."""
     return install.replace("npm ci", "npm install", 1) if install.startswith("npm ci") else install
+
+
+def _shell_arg(value: str) -> str:
+    if os.name == "nt":
+        return subprocess.list2cmdline([value])
+    return shlex.quote(value)
+
+
+def is_environment_failure(output: str) -> bool:
+    """Missing platform packages, a missing tool, or a network error. A missing source file is not one."""
+    text = output or ""
+    if missing_platform_module(text) or ENV_BINARY_RE.search(text):
+        return True
+    return bool(ENV_FAILURE_RE.search(text))
+
+
+def ensure_env(
+    repo: Path,
+    runner: Runner,
+    test_cmd: str,
+    *,
+    trace: Any = None,
+    timeout: int = 300,
+    install_timeout: int = 900,
+    repairs: list[dict[str, Any]] | None = None,
+) -> CmdResult:
+    """Run the test command. If a platform package is missing, `npm install --no-save` it and re-run.
+
+    One REVIVE_ENV_REPAIR trace event is recorded for each package installed this way.
+    """
+    result = runner(test_cmd, repo, timeout)
+    for _ in range(3):
+        if result.ok or not (repo / "package.json").is_file():
+            return result
+        missing = missing_platform_module(result.output)
+        if not missing:
+            return result
+        cmd = f"npm install --no-save --no-audit --no-fund {_shell_arg(missing)}"
+        installed = runner(cmd, repo, install_timeout)
+        result = runner(test_cmd, repo, timeout)
+        record = {"package": missing, "install_cmd": cmd, "install_exit": installed.code, "test_exit": result.code}
+        if repairs is not None:
+            repairs.append(record)
+        if trace is not None:
+            trace.event(
+                agent_name="builder",
+                action="REVIVE_ENV_REPAIR",
+                input_summary=f"npm install --no-save {missing}",
+                output_summary={"package": missing, "install_exit": installed.code, "test_exit": result.code, "tail": tail(result.output, 300)},
+                status="ok" if result.ok else "failed",
+            )
+    return result
+
+
+def version_probe_command(repo: Path, package: str, version: str) -> str:
+    """Ask the ecosystem whether this exact version exists. Quoted for the host shell."""
+    if (repo / "package.json").is_file():
+        return f"npm view {_shell_arg(f'{package}@{version}')} version"
+    return f"python -m pip index versions {_shell_arg(package)}"
+
+
+def _semver(text: str) -> tuple[int, int, int] | None:
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", text or "")
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2)), int(match.group(3))
+
+
+def _locked_version(repo: Path, package: str) -> str | None:
+    pkg_path = repo / "package.json"
+    if pkg_path.is_file():
+        try:
+            data = json.loads(pkg_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        if isinstance(data, dict):
+            for key in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
+                deps = data.get(key) or {}
+                if isinstance(deps, dict) and package in deps:
+                    return str(deps[package])
+    req = repo / "requirements.txt"
+    if req.is_file():
+        prefix = package.lower() + "=="
+        for line in req.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if stripped.lower().startswith(prefix):
+                return stripped.split("==", 1)[1].strip()
+    return None
+
+
+def _is_major_upgrade(repo: Path, package: str, version: str) -> bool:
+    current = _locked_version(repo, package)
+    if not current:
+        return False
+    cur = _semver(current)
+    tgt = _semver(version)
+    if not cur or not tgt:
+        return False
+    return tgt[0] > cur[0]
+
+
+def _order_work_items(repo: Path, items: list[tuple[str, dict[str, Any]]]) -> list[tuple[str, dict[str, Any]]]:
+    """Minor and patch upgrades before majors. Refactors stay after upgrades."""
+    upgrades = [pair for pair in items if pair[0] == "upgrade"]
+    rest = [pair for pair in items if pair[0] != "upgrade"]
+
+    def rank(pair: tuple[str, dict[str, Any]]) -> int:
+        item = pair[1]
+        package = str(item.get("package") or "")
+        version = str(item.get("version") or item.get("to_version") or "")
+        return 1 if _is_major_upgrade(repo, package, version) else 0
+
+    upgrades.sort(key=rank)
+    return upgrades + rest
+
+
+def _upgrade_skip_reason(repo: Path, runner: Runner, item: dict[str, Any], timeout: int) -> str | None:
+    """None when the item may be attempted. Version misses are not retried."""
+    package = str(item.get("package") or "").strip()
+    version = str(item.get("version") or item.get("to_version") or "").strip()
+    if not package or not version:
+        return "target version not found"
+    if _is_major_upgrade(repo, package, version) and len(str(item.get("reason") or "").strip()) < 12:
+        return "major upgrade needs a stated reason"
+    cmd = version_probe_command(repo, package, version)
+    try:
+        probed = runner(cmd, repo, timeout)
+    except Exception:  # noqa: BLE001
+        return "target version not found"
+    output = str(getattr(probed, "output", "") or "")
+    code = int(getattr(probed, "code", 1))
+    if code != 0 or version not in output:
+        return "target version not found"
+    return None
+
+
+def regression_ids(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> list[str]:
+    """Real regressions only. An environment failure is not a code regression."""
+    after_by = {str(row.get("id")): row for row in after}
+    kept: list[str] = []
+    for check_id in qg.regressions(before, after):
+        detail = str((after_by.get(check_id) or {}).get("detail_tail") or "")
+        if is_environment_failure(detail):
+            continue
+        kept.append(check_id)
+    return kept
+
+
+def _is_whole_file_doc(rel: str) -> bool:
+    norm = rel.replace("\\", "/").lstrip("./")
+    if not norm or ".." in norm.split("/"):
+        return False
+    suffix = Path(norm).suffix.lower()
+    if suffix not in DOC_SUFFIXES:
+        return False
+    return "/" not in norm or norm.startswith("docs/")
+
+
+def _manifest_touched(paths: list[str] | dict[str, Any]) -> bool:
+    names = set()
+    for rel in paths:
+        names.add(str(rel).replace("\\", "/").rsplit("/", 1)[-1])
+    return bool(names & MANIFEST_NAMES)
 
 
 def decode_output(raw: bytes | None) -> str:
@@ -265,6 +456,11 @@ def apply_edits(repo: Path, edits: list[dict[str, Any]]) -> tuple[list[str], lis
             continue
         if "content" in edit and "find" not in edit:
             if target.exists():
+                # Whole-file replacement is only for short docs. Source, tests, and lockfiles stay find/replace.
+                if _is_whole_file_doc(rel) and target.stat().st_size < DOC_CONTENT_MAX_BYTES:
+                    target.write_text(str(edit["content"]), encoding="utf-8", newline="\n")
+                    changed.append(rel)
+                    continue
                 rejected.append(f"{rel}: content may only create a new file")
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -344,7 +540,16 @@ def decide_revival_state(
     items_applied: int,
     not_done_reason: str = "",
 ) -> tuple[str, str]:
-    """Final state from deterministic checks. The reviewer is not an input."""
+    """Final state from deterministic checks. The reviewer is not an input.
+
+    A green baseline with nothing kept is NOTHING_TO_FIX even if a later environment-broken
+    check is red. RESURRECTION_FAILED is only a still-failing own test command.
+    """
+    if baseline_tests_passed and items_applied == 0:
+        if not had_work_items:
+            return "NOTHING_TO_FIX", "the repository's own tests already pass; there is no failing build to revive"
+        extra = f" ({not_done_reason})" if not_done_reason else ""
+        return "NOTHING_TO_FIX", "the repository's own tests already pass; no upgrade or refactor item was applied" + extra
     if not tests_passed:
         return "RESURRECTION_FAILED", "the repository's own test command still fails"
     if regressed:
@@ -352,11 +557,6 @@ def decide_revival_state(
         if baseline_tests_passed:
             return "NOTHING_TO_FIX", f"the repository's own tests already pass; quality checks regressed ({names}) so the patches were not accepted"
         return "RESURRECTION_FAILED", f"quality checks regressed versus the baseline: {names}"
-    if baseline_tests_passed and not had_work_items:
-        return "NOTHING_TO_FIX", "the repository's own tests already pass; there is no failing build to revive"
-    if baseline_tests_passed and items_applied == 0:
-        extra = f" ({not_done_reason})" if not_done_reason else ""
-        return "NOTHING_TO_FIX", "the repository's own tests already pass; no upgrade or refactor item was applied" + extra
     if not verified_criteria:
         if baseline_tests_passed:
             return "NOTHING_TO_FIX", "no acceptance criterion was verified by a passing quality check"
@@ -377,6 +577,18 @@ def _line_delta(before: bytes | None, after: bytes | None) -> int:
         if line.startswith(("+", "-")):
             delta += 1
     return delta
+
+
+_CHECK_ID_RE = re.compile(r"\b(?:tests|lint|types|build|audit|smoke|diff_scope)\b")
+_FILE_REF_RE = re.compile(
+    r"(?:^|[\s`'\"(=])([A-Za-z0-9_@./\\-]+\.(?:js|jsx|ts|tsx|mjs|cjs|py|go|md|rst|txt|json|toml|yml|yaml|css|html))\b",
+    re.IGNORECASE,
+)
+
+
+def _issue_is_concrete(detail: str) -> bool:
+    """An issue counts only when it names a file or a quality-check id."""
+    return bool(_CHECK_ID_RE.search(detail) or _FILE_REF_RE.search(detail))
 
 
 def _concrete_issues(raw: Any) -> list[dict[str, str]]:
@@ -416,6 +628,7 @@ def revive(
     runner: Runner = shell_runner,
     install_timeout: int = 900,
     test_timeout: int = 300,
+    time_budget_s: float = 2400,
 ) -> ReviveResult:
     if gate_verdict != "CANDIDATE":
         # Gate 1 is a hard precondition: an idea that is not worth rescuing is never built, so a
@@ -434,6 +647,19 @@ def revive(
             return runner(cmd, cwd, timeout)
         except Exception as exc:  # noqa: BLE001
             return CmdResult(cmd, 1, f"runner error: {type(exc).__name__}")
+
+    started = time.monotonic()
+    env_repairs: list[dict[str, Any]] = []
+
+    def _ensure() -> CmdResult:
+        return ensure_env(repo, _run, test, trace=trace, timeout=test_timeout, install_timeout=install_timeout, repairs=env_repairs)
+
+    def _restore(snap: dict[str, bytes | None]) -> None:
+        """Roll files back, then reinstall when a manifest came back so node_modules matches it."""
+        restore_snapshot(repo, snap)
+        if install and _manifest_touched(snap):
+            _run(reinstall_command(install), repo, install_timeout)
+        _ensure()
 
     originals: dict[str, bytes | None] = {}
 
@@ -492,23 +718,8 @@ def revive(
     if install:
         inst = _run(install, repo, install_timeout)
         trace.event(agent_name="builder", action="REVIVE_INSTALL", input_summary=install, output_summary={"exit": inst.code, "tail": tail(inst.output, 400)}, status="ok" if inst.ok else "failed")
-    baseline = _run(test, repo, test_timeout)
+    baseline = _ensure()
     trace.event(agent_name="validator", action="REVIVE_BASELINE", input_summary=test, output_summary={"exit": baseline.code, "tail": tail(baseline.output, 400)}, status="ok" if baseline.ok else "failed")
-    if not baseline.ok and ENV_BINARY_RE.search(baseline.output) and (repo / "package.json").exists():
-        # A missing platform binary (npm optional-dependency bug) is an environment problem, not a code
-        # defect: clean-install once before blaming the repository, and record that we did.
-        import shutil
-
-        shutil.rmtree(repo / "node_modules", ignore_errors=True)
-        again = _run("npm install --no-audit --no-fund", repo, install_timeout)
-        baseline = _run(test, repo, test_timeout)
-        missing = missing_platform_module(baseline.output)
-        if not baseline.ok and missing:
-            # npm skipped the optional platform package again: install exactly that package without
-            # touching package.json or the lockfile.
-            again = _run(f"npm install --no-save --no-audit --no-fund {missing}", repo, install_timeout)
-            baseline = _run(test, repo, test_timeout)
-        trace.event(agent_name="builder", action="REVIVE_ENV_REPAIR", input_summary="clean reinstall of node_modules (platform binary was missing)", output_summary={"install_exit": again.code, "test_exit": baseline.code, "tail": tail(baseline.output, 300)}, status="ok" if baseline.ok else "failed")
 
     prd = draft_prd(client, repo, repo_id, description, baseline)
     trace.event(
@@ -519,7 +730,7 @@ def revive(
         status="degraded" if prd.get("degraded") else "ok",
         summary_limit=20000,
     )
-    result = ReviveResult("RESURRECTION_FAILED", "", baseline=baseline, prd=prd)
+    result = ReviveResult("RESURRECTION_FAILED", "", baseline=baseline, prd=prd, env_repairs=env_repairs)
     before = _gate(baseline, prd)
     work_items, capped = _work_items(prd)
     for skipped in capped:
@@ -530,6 +741,7 @@ def revive(
         files, lines = _changes()
         result.files_changed = files
         result.quality = qg.quality_report(before, final_checks, files, lines, verified)
+        result.quality["regressed"] = regression_ids(before, final_checks)
         trace.event(agent_name="validator", action="REVIVE_QUALITY", input_summary=repo_id, output_summary=result.quality, status="ok" if not result.quality["regressed"] else "failed", summary_limit=12000)
 
     def _emit_result() -> None:
@@ -577,15 +789,15 @@ def revive(
                 result.iterations.append({"n": n, "patch": "rejected", "rejected": rejected, "exit": last.code})
                 history.append(f"iteration {n}: every edit was rejected: {'; '.join(rejected)}")
                 continue
-            if install and any(path in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "setup.py") for path in changed):
+            if install and _manifest_touched(changed):
                 _run(reinstall_command(install), repo, install_timeout)
-            run = _run(test, repo, test_timeout)
+            run = _ensure()
             accepted = run.ok
             if accepted:
                 gate = _gate(run, prd)
-                regs = qg.regressions(accepted_checks, gate)
+                regs = regression_ids(accepted_checks, gate)
                 if regs:
-                    restore_snapshot(repo, snap)
+                    _restore(snap)
                     detail = _failure_text(regs, gate)
                     accepted = False
                     run = CmdResult(test, 1, detail)
@@ -600,14 +812,34 @@ def revive(
             history.append(f"iteration {n}: changed {changed}, test exit {run.code}; output tail: {tail(run.output, 600)}")
 
     if stage_a_ok and work_items:
-        for kind, item in work_items:
+        ordered = _order_work_items(repo, work_items)
+        index = 0
+        while index < len(ordered):
+            if time.monotonic() - started >= float(time_budget_s):
+                for kind, item in ordered[index:]:
+                    record = {"id": str(item.get("id") or kind), "kind": kind, "reason": "time budget"}
+                    result.prd_items_not_done.append(record)
+                    trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": record["id"], "kind": kind}, output_summary={"status": "not_done", "reason": record["reason"]}, status="not_done")
+                break
+            kind, item = ordered[index]
+            index += 1
             item_id = str(item.get("id") or kind)
+            if kind == "upgrade":
+                skip = _upgrade_skip_reason(repo, _run, item, test_timeout)
+                if skip:
+                    record = {"id": item_id, "kind": kind, "reason": skip}
+                    result.prd_items_not_done.append(record)
+                    trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind}, output_summary={"status": "not_done", "reason": skip}, status="not_done")
+                    continue
             done = False
             last_reason = "no patch was applied"
             kept_files: list[str] = []
+            package = str(item.get("package") or "").strip()
+            version = str(item.get("version") or item.get("to_version") or "").strip()
             for attempt in range(1, MAX_ITEM_ATTEMPTS + 1):
+                one_package = f" Apply exactly one package in this patch: {package}@{version}." if kind == "upgrade" and package else ""
                 note = (
-                    f"Apply this single {kind} item and nothing else. Item attempt {attempt} of {MAX_ITEM_ATTEMPTS}.\n"
+                    f"Apply this single {kind} item and nothing else.{one_package} Item attempt {attempt} of {MAX_ITEM_ATTEMPTS}.\n"
                     f"Item: {json.dumps(item, ensure_ascii=False)}"
                 )
                 files = context_files(repo, last.output)
@@ -621,13 +853,15 @@ def revive(
                     last_reason = "; ".join(rejected) or "every edit was rejected"
                     trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind, "attempt": attempt}, output_summary={"status": "reverted", "reason": last_reason, "rejected": rejected}, retry_count=attempt, status="failed")
                     continue
-                if install and any(path in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "setup.py") for path in changed):
+                if install and _manifest_touched(changed):
                     _run(reinstall_command(install), repo, install_timeout)
-                run = _run(test, repo, test_timeout)
+                run = _ensure()
                 gate = _gate(run, prd)
-                regs = qg.regressions(accepted_checks, gate)
+                regs = regression_ids(accepted_checks, gate)
+                # ensure_env has already run. An environment failure that survives it can be reverted;
+                # one that ensure_env fixed is a pass and is kept.
                 if regs or not run.ok:
-                    restore_snapshot(repo, snap)
+                    _restore(snap)
                     detail = _failure_text(regs, gate) if regs else run.output
                     last_reason = tail(detail, 600) or "quality check failed"
                     last = CmdResult(test, 1, last_reason)
@@ -652,7 +886,7 @@ def revive(
             result.prd_items_not_done.append(record)
             trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": record["id"], "kind": kind}, output_summary={"status": "not_done", "reason": record["reason"]}, status="not_done")
 
-    review = _review(client, repo_id, prd, _unified(), accepted_checks)
+    review = _review(client, repo_id, prd, _unified(), before, accepted_checks)
     result.review = review
     trace.event(agent_name="reviewer", action="REVIVE_REVIEW", input_summary=repo_id, output_summary=review, status="degraded" if review.get("degraded") else ("ok" if review.get("approve") else "rejected"), summary_limit=4000)
     if review.get("approve") is False and review.get("issues"):
@@ -663,19 +897,19 @@ def revive(
             changed, rejected, snap = _apply_tracked(patch["edits"])
             trace.event(agent_name="builder", action="REVIVE_PATCH", input_summary={"iteration": "review-1"}, output_summary={"changed": changed, "rejected": rejected}, status="ok" if changed else "failed")
             if changed:
-                if install and any(path in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "setup.py") for path in changed):
+                if install and _manifest_touched(changed):
                     _run(reinstall_command(install), repo, install_timeout)
-                run = _run(test, repo, test_timeout)
+                run = _ensure()
                 gate = _gate(run, prd)
-                regs = qg.regressions(accepted_checks, gate)
+                regs = regression_ids(accepted_checks, gate)
                 if regs or not run.ok:
-                    restore_snapshot(repo, snap)
+                    _restore(snap)
                     trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": "review-1", "kind": "review"}, output_summary={"status": "reverted", "reason": _failure_text(regs, gate) if regs else tail(run.output, 400)}, status="reverted")
                 else:
                     accepted_checks = gate
                     last = run
 
-    final_run = _run(test, repo, test_timeout)
+    final_run = _ensure()
     final_checks = _gate(final_run, prd)
     verified = qg.verified_criteria(prd, final_checks)
     _emit_quality(final_checks, verified)
@@ -703,14 +937,24 @@ def _failure_text(regs: list[str], gate: list[dict[str, Any]]) -> str:
     return "\n".join(parts) or "quality check regressed"
 
 
-def _review(client: Any, repo_id: str, prd: dict[str, Any], diff: str, checks: list[dict[str, Any]]) -> dict[str, Any]:
-    table = [{"id": row["id"], "status": row["status"], "detail_tail": row.get("detail_tail", ""), "high": row.get("high"), "critical": row.get("critical")} for row in checks]
+def _quality_table(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{"id": row["id"], "status": row["status"], "detail_tail": row.get("detail_tail", ""), "high": row.get("high"), "critical": row.get("critical")} for row in checks]
+
+
+def _review(client: Any, repo_id: str, prd: dict[str, Any], diff: str, before_checks: list[dict[str, Any]], after_checks: list[dict[str, Any]]) -> dict[str, Any]:
     prompt = (
         f"Repository: {repo_id}. Review iteration 1.\n"
         "You may only add issues. Approving cannot override a failed deterministic check.\n"
+        "Environment-caused test failures are not code defects. A missing platform package "
+        "(@rollup/*, @swc/*, @esbuild/*, @parcel/watcher), ENOENT of a tool, or a network error "
+        "is an environment failure, not a defect in the patch.\n"
         f"PRD: {json.dumps(prd, ensure_ascii=False)}\n\n"
         f"Diff:\n{diff}\n\n"
-        f"Quality table: {json.dumps(table, ensure_ascii=False)}\n\n"
+        f"Quality before: {json.dumps(_quality_table(before_checks), ensure_ascii=False)}\n"
+        f"Quality after: {json.dumps(_quality_table(after_checks), ensure_ascii=False)}\n\n"
+        "Each issue must name a concrete file or one of these check ids: "
+        + ", ".join(qg.CHECK_IDS)
+        + ". Issues that do not are dropped.\n"
         'Reply with {"approve": bool, "issues": [{"id": str, "detail": str}]}.'
     )
 
@@ -723,4 +967,5 @@ def _review(client: Any, repo_id: str, prd: dict[str, Any], diff: str, checks: l
         return {"approve": None, "issues": [], "degraded": True, "reason": f"llm call failed: {type(exc).__name__}"}
     if not isinstance(obj, dict):
         return {"approve": None, "issues": [], "degraded": True, "reason": "reviewer returned no JSON object"}
-    return {"approve": obj.get("approve"), "issues": _concrete_issues(obj.get("issues")), "degraded": False}
+    issues = [issue for issue in _concrete_issues(obj.get("issues")) if _issue_is_concrete(issue["detail"])]
+    return {"approve": obj.get("approve"), "issues": issues, "degraded": False}
