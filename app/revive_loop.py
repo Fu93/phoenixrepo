@@ -23,6 +23,7 @@ MAX_FILE_BYTES = 12_000
 MAX_CONTEXT_FILES = 6
 MAX_OUTPUT_CHARS = 6_000
 TEST_PATH_RE = re.compile(r"(^|/)(tests?|__tests__|spec|specs)(/|$)|(^|/)(test_[^/]*|[^/]*\.(test|spec)\.[a-z]+|[^/]*_test\.(py|go))$", re.IGNORECASE)
+ENV_BINARY_RE = re.compile(r"Cannot find module '@(rollup|esbuild|swc|parcel)/|@(rollup|esbuild)/[a-z0-9-]+-(win32|linux|darwin)", re.IGNORECASE)
 PROTECTED_NAMES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock"}
 
 PRD_SYSTEM = (
@@ -263,6 +264,15 @@ def revive(
         trace.event(agent_name="builder", action="REVIVE_INSTALL", input_summary=install, output_summary={"exit": inst.code, "tail": tail(inst.output, 400)}, status="ok" if inst.ok else "failed")
     baseline = runner(test, repo, test_timeout)
     trace.event(agent_name="validator", action="REVIVE_BASELINE", input_summary=test, output_summary={"exit": baseline.code, "tail": tail(baseline.output, 400)}, status="ok" if baseline.ok else "failed")
+    if not baseline.ok and ENV_BINARY_RE.search(baseline.output) and (repo / "package.json").exists():
+        # A missing platform binary (npm optional-dependency bug) is an environment problem, not a code
+        # defect: clean-install once before blaming the repository, and record that we did.
+        import shutil
+
+        shutil.rmtree(repo / "node_modules", ignore_errors=True)
+        again = runner("npm install --no-audit --no-fund", repo, install_timeout)
+        baseline = runner(test, repo, test_timeout)
+        trace.event(agent_name="builder", action="REVIVE_ENV_REPAIR", input_summary="clean reinstall of node_modules (platform binary was missing)", output_summary={"install_exit": again.code, "test_exit": baseline.code, "tail": tail(baseline.output, 300)}, status="ok" if baseline.ok else "failed")
     result = ReviveResult("RESURRECTION_FAILED", "", baseline=baseline)
     if baseline.ok:
         result.final = baseline

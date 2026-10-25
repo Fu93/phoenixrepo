@@ -138,3 +138,23 @@ def test_passing_baseline_is_not_called_a_revival(tmp_path):
     runner, _ = _runner_factory(repo)
     res = rl.revive(repo, _Client([]), _Trace(), "o/r", runner=runner)
     assert res.state == "NOTHING_TO_FIX"
+
+def test_missing_platform_binary_triggers_one_clean_reinstall_before_blaming_code(tmp_path):
+    repo = _make_repo(tmp_path)
+    (repo / "node_modules").mkdir()
+    calls = []
+
+    def runner(cmd, cwd, timeout):
+        calls.append(cmd)
+        if cmd.startswith("npm install") and "--no-audit" in cmd and len([c for c in calls if c.startswith("npm install")]) >= 2:
+            return rl.CmdResult(cmd, 0, "ok")
+        if cmd.startswith("npm test") and any("npm install" in c for c in calls[1:]):
+            return rl.CmdResult(cmd, 0, "pass")
+        if cmd.startswith("npm test"):
+            return rl.CmdResult(cmd, 1, "Error: Cannot find module '@rollup/rollup-win32-x64-msvc'")
+        return rl.CmdResult(cmd, 0, "installed")
+
+    trace = _Trace()
+    res = rl.revive(repo, _Client([]), trace, "o/r", runner=runner)
+    assert res.state == "NOTHING_TO_FIX"
+    assert any(e["action"] == "REVIVE_ENV_REPAIR" for e in trace.events)
