@@ -1033,11 +1033,12 @@ def judge_discovery(
     )
     user_prompt = "\n\n".join(user_prompt_lines)
 
-    text, req_m, srv_m = client.complete(
-        user_prompt, prompt_record.text, repo_id=repo_id, step="discovery"
+    # Retry an unusable answer (and drop it from the cache, so it is never replayed): one malformed
+    # reply must not turn a repo into NEEDS_REVIEW for every later run.
+    obj, text, req_m, srv_m = _complete_json(
+        client, user_prompt, prompt_record.text, repo_id, "discovery",
+        validate=lambda o: "verdict" in o,
     )
-
-    obj = extract_json_object(text)
     if obj is None:
         verdict = "NEEDS_REVIEW"
         reason = "unverified LLM quote: LLM response was not valid JSON"
