@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
 
 from app import revive_loop  # noqa: E402
 from app.agents.relevance import RelevanceClient  # noqa: E402
+from app.revive_prd import write_reports  # noqa: E402
 from app.trace_log import HackathonTrace  # noqa: E402
 from scripts import judge_repo  # noqa: E402
 
@@ -31,14 +32,18 @@ def _git(args: list[str], cwd: Path) -> str:
     return proc.stdout
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("url")
     ap.add_argument("--workdir", type=Path, default=ROOT / "work")
     ap.add_argument("--iterations", type=int, default=4)
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--gate-verdict", default=None, help="Reuse an earlier gate-1 verdict instead of re-judging (CANDIDATE, ALREADY_EXISTS, ...).")
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     full_name = judge_repo.parse_repo_url(args.url)
     rid = args.run_id or "revive-" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
@@ -60,6 +65,7 @@ def main() -> int:
         trace.event(agent_name="orchestrator", action="REVIVE_RESULT", input_summary=full_name, output_summary={"state": result.state, "reason": result.reason, "gate1": verdict})
         trace.seal()
         payload = result.as_dict() | {"repo": full_name, "gate1": verdict, "run_id": rid, "run_hash": trace.run_hash}
+        write_reports(out, result, full_name, rid)
         (out / "revive.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         print(json.dumps({k: payload[k] for k in ("repo", "gate1", "state", "reason", "run_id")}, indent=2, ensure_ascii=False))
         return 3
@@ -83,9 +89,10 @@ def main() -> int:
     if result.files_changed:
         _git(["add", "-A"], target)
         _git(["-c", "user.name=PhoenixRepo", "-c", "user.email=phoenix@example.invalid", "commit", "-q", "-m", f"PhoenixRepo revival {rid}: {result.state}"], target)
-    trace.event(agent_name="orchestrator", action="REVIVE_RESULT", input_summary=full_name, output_summary={"state": result.state, "reason": result.reason, "gate1": verdict, "models": sorted(client.served_models)})
+    trace.event(agent_name="orchestrator", action="REVIVE_RESULT", input_summary=full_name, output_summary={"state": result.state, "reason": result.reason, "gate1": verdict, "models": sorted(client.served_models), "regressed": (result.quality or {}).get("regressed") or []})
     trace.seal()
     payload = result.as_dict() | {"repo": full_name, "gate1": verdict, "run_id": rid, "run_hash": trace.run_hash, "clone": str(target), "served_models": sorted(client.served_models)}
+    write_reports(out, result, full_name, rid)
     (out / "revive.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps({k: payload[k] for k in ("repo", "gate1", "state", "reason", "files_changed", "run_id", "clone")}, indent=2, ensure_ascii=False))
     return 0 if result.state in ("RESURRECTED", "NOTHING_TO_FIX") else 1

@@ -1,17 +1,14 @@
-"""Revival loop: draft a PRD, let the model patch the code, run the repository's own tests, send failures back.
+"""Revival loop: draft a PRD, patch in two stages, and accept only on real checks.
 
-This is the part of the second gate that actually builds. The loop is deliberately small:
-
-1. Run the repository's real install and test commands (baseline). The output is evidence.
-2. A model drafts an upgrade PRD from the repository's own files and that baseline output.
-3. A model proposes exact-text edits. The builder may not touch tests or the test command.
-4. The validator applies nothing on trust: it re-runs the real test command. Only an exit code of
-   0 from that command accepts the revival. A failure goes back to the builder with the real output.
+Stage A makes the repository's own test command pass. Stage B applies the PRD's upgrade and
+refactor items one at a time. A patch that breaks a check that was already passing is reverted.
+The reviewer can add issues and send the builder back once. It cannot turn a failed check into a pass.
 
 Every step is written to the hash-chained trace. Nothing here pushes or opens a pull request.
 """
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import subprocess
@@ -19,21 +16,27 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from app import quality_gate as qg
+from app.revive_prd import draft_prd
+
 MAX_FILE_BYTES = 12_000
 MAX_CONTEXT_FILES = 6
 MAX_OUTPUT_CHARS = 6_000
+MAX_ITEM_ATTEMPTS = 3
+MAX_ITEMS_PER_KIND = 4
 TEST_PATH_RE = re.compile(r"(^|/)(tests?|__tests__|spec|specs)(/|$)|(^|/)(test_[^/]*|[^/]*\.(test|spec)\.[a-z]+|[^/]*_test\.(py|go))$", re.IGNORECASE)
 ENV_BINARY_RE = re.compile(r"Cannot find module '@(rollup|esbuild|swc|parcel)/|@(rollup|esbuild)/[a-z0-9-]+-(win32|linux|darwin)", re.IGNORECASE)
 PROTECTED_NAMES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock"}
 
-PRD_SYSTEM = (
-    "You are the architect of a repository revival. You only use facts from the files and command output you are given. "
-    "Reply with one strict JSON object and nothing else."
-)
 BUILDER_SYSTEM = (
     "You are the builder in a repository revival. Fix the failure with the smallest correct change to NON-TEST source, "
     "configuration or dependency files. You may not edit tests, test configuration or the test command, and you may not "
     "delete features to make tests pass. Reply with one strict JSON object and nothing else."
+)
+REVIEWER_SYSTEM = (
+    "You are an independent reviewer of a repository revival. You may only report issues. "
+    "You cannot declare a failing test, lint, typecheck, build, audit, smoke check, or diff check to be a pass. "
+    "Reply with one strict JSON object and nothing else."
 )
 
 
@@ -58,6 +61,10 @@ class ReviveResult:
     iterations: list[dict[str, Any]] = field(default_factory=list)
     prd: dict[str, Any] | None = None
     files_changed: list[str] = field(default_factory=list)
+    quality: dict[str, Any] = field(default_factory=dict)
+    prd_items_done: list[dict[str, Any]] = field(default_factory=list)
+    prd_items_not_done: list[dict[str, Any]] = field(default_factory=list)
+    review: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -68,6 +75,10 @@ class ReviveResult:
             "iterations": self.iterations,
             "files_changed": self.files_changed,
             "prd": self.prd,
+            "quality": self.quality,
+            "prd_items_done": self.prd_items_done,
+            "prd_items_not_done": self.prd_items_not_done,
+            "review": self.review,
         }
 
 
@@ -148,20 +159,20 @@ def context_files(repo: Path, output: str) -> dict[str, str]:
     for name in ("package.json", "pyproject.toml", "requirements.txt", "setup.py", "go.mod", "tsconfig.json", "README.md"):
         if (repo / name).exists():
             wanted.append(name)
-    for m in re.finditer(r"([A-Za-z0-9_./\\-]+\.(?:js|ts|tsx|jsx|mjs|cjs|py|go|json|toml|cfg|yml|yaml))", output):
-        rel = m.group(1).replace("\\", "/")
+    for match in re.finditer(r"([A-Za-z0-9_./\\-]+\.(?:js|ts|tsx|jsx|mjs|cjs|py|go|json|toml|cfg|yml|yaml))", output):
+        rel = match.group(1).replace("\\", "/")
         if "node_modules" in rel or rel in wanted:
             continue
         for candidate in (rel, rel.split("/", 1)[-1]):
-            p = _safe_path(repo, candidate)
-            if p and p.is_file() and candidate not in wanted:
+            path = _safe_path(repo, candidate)
+            if path and path.is_file() and candidate not in wanted:
                 wanted.append(candidate)
                 break
     files: dict[str, str] = {}
-    for rel in wanted[:MAX_CONTEXT_FILES + 2]:
-        p = _safe_path(repo, rel)
-        if p and p.is_file():
-            files[rel] = p.read_text(encoding="utf-8", errors="replace")[:MAX_FILE_BYTES]
+    for rel in wanted[: MAX_CONTEXT_FILES + 2]:
+        path = _safe_path(repo, rel)
+        if path and path.is_file():
+            files[rel] = path.read_text(encoding="utf-8", errors="replace")[:MAX_FILE_BYTES]
     return files
 
 
@@ -169,28 +180,21 @@ def _files_block(files: dict[str, str]) -> str:
     return "\n\n".join(f"=== {name} ===\n{body}" for name, body in files.items())
 
 
-def draft_prd(client: Any, repo_id: str, description: str, baseline: CmdResult, files: dict[str, str]) -> dict[str, Any] | None:
-    prompt = (
-        f"Repository: {repo_id}\nDescription: {description}\n\n"
-        f"Baseline command: {baseline.cmd}\nExit code: {baseline.code}\nOutput (tail):\n{tail(baseline.output)}\n\n"
-        f"Files:\n{_files_block(files)}\n\n"
-        "Write a short upgrade PRD for reviving this repository so that its own test command passes. "
-        'Schema: {"goal": str, "failure_summary": str, "tasks": [{"id": str, "title": str, "acceptance": str}], '
-        '"out_of_scope": [str]}. At most 4 tasks. Do not invent features.'
-    )
-
-    def valid(obj: dict[str, Any]) -> bool:
-        return isinstance(obj.get("goal"), str) and isinstance(obj.get("tasks"), list) and bool(obj["tasks"])
-
-    obj, *_ = client.complete_json(prompt, PRD_SYSTEM, repo_id=repo_id, step="revive_prd", attempts=2, validate=valid)
-    return obj
-
-
-def propose_patch(client: Any, repo_id: str, prd: dict[str, Any] | None, iteration: int, last: CmdResult, files: dict[str, str], history: list[str]) -> dict[str, Any] | None:
+def propose_patch(
+    client: Any,
+    repo_id: str,
+    prd: dict[str, Any] | None,
+    iteration: int | str,
+    last: CmdResult,
+    files: dict[str, str],
+    history: list[str],
+    note: str = "",
+) -> dict[str, Any] | None:
     prompt = (
         f"Repository: {repo_id}. Iteration {iteration}.\n"
         f"PRD: {json.dumps(prd, ensure_ascii=False) if prd else '(none)'}\n\n"
-        f"Earlier attempts that did not make the test command pass:\n{chr(10).join(history) or '(none)'}\n\n"
+        f"Earlier attempts that did not make the checks pass:\n{chr(10).join(history) or '(none)'}\n\n"
+        f"{note}\n\n"
         f"Test command: {last.cmd}\nExit code: {last.code}\nOutput (tail):\n{tail(last.output)}\n\n"
         f"Files:\n{_files_block(files)}\n\n"
         'Reply with {"rationale": str, "edits": [{"path": str, "find": str, "replace": str}]}. '
@@ -201,7 +205,11 @@ def propose_patch(client: Any, repo_id: str, prd: dict[str, Any] | None, iterati
     def valid(obj: dict[str, Any]) -> bool:
         return isinstance(obj.get("edits"), list) and bool(obj["edits"])
 
-    obj, *_ = client.complete_json(prompt, BUILDER_SYSTEM, repo_id=repo_id, step=f"revive_patch_{iteration}", attempts=2, validate=valid)
+    step = f"revive_patch_{iteration}"
+    try:
+        obj, *_ = client.complete_json(prompt, BUILDER_SYSTEM, repo_id=repo_id, step=step, attempts=2, validate=valid)
+    except Exception:  # noqa: BLE001 — a failed call must not become a pass
+        return None
     return obj
 
 
@@ -239,7 +247,125 @@ def apply_edits(repo: Path, edits: list[dict[str, Any]]) -> tuple[list[str], lis
             continue
         target.write_text(text.replace(find, replace, 1), encoding="utf-8", newline="\n")
         changed.append(rel)
+    if any(rel.endswith(".py") for rel in changed):
+        # A same-size edit in the same mtime second leaves a stale .pyc, so the next pytest
+        # run executes the old bytecode and a real fix looks like a failure.
+        _drop_python_bytecode(repo)
     return changed, rejected
+
+
+def _drop_python_bytecode(repo: Path) -> None:
+    import os
+    import shutil
+
+    skip = {".git", ".venv", "venv", "node_modules"}
+    for cache in repo.rglob("__pycache__"):
+        if any(part in skip for part in cache.parts):
+            continue
+        shutil.rmtree(cache, ignore_errors=True)
+    for rel in file_py_paths(repo):
+        path = _safe_path(repo, rel)
+        if path and path.is_file():
+            os.utime(path, None)
+
+
+def file_py_paths(repo: Path) -> list[str]:
+    found: list[str] = []
+    skip = {".git", ".venv", "venv", "node_modules", "__pycache__"}
+    for path in repo.rglob("*.py"):
+        if any(part in skip for part in path.parts):
+            continue
+        found.append(path.relative_to(repo).as_posix())
+    return found
+
+
+def restore_snapshot(repo: Path, snap: dict[str, bytes | None]) -> None:
+    """Put files back. Git checkout runs first when the clone has a history; the snapshot is authoritative."""
+    if (repo / ".git").exists():
+        existing = [rel for rel, data in snap.items() if data is not None and _safe_path(repo, rel) is not None]
+        if existing:
+            subprocess.run(["git", "checkout", "--", *existing], cwd=str(repo), capture_output=True)
+    for rel, data in snap.items():
+        target = _safe_path(repo, rel)
+        if target is None:
+            continue
+        if data is None:
+            if target.is_file():
+                target.unlink()
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+
+
+def decide_revival_state(
+    *,
+    baseline_tests_passed: bool,
+    tests_passed: bool,
+    regressed: list[str],
+    verified_criteria: list[str],
+    had_work_items: bool,
+    items_applied: int,
+    not_done_reason: str = "",
+) -> tuple[str, str]:
+    """Final state from deterministic checks. The reviewer is not an input."""
+    if not tests_passed:
+        return "RESURRECTION_FAILED", "the repository's own test command still fails"
+    if regressed:
+        names = ", ".join(regressed)
+        if baseline_tests_passed:
+            return "NOTHING_TO_FIX", f"the repository's own tests already pass; quality checks regressed ({names}) so the patches were not accepted"
+        return "RESURRECTION_FAILED", f"quality checks regressed versus the baseline: {names}"
+    if baseline_tests_passed and not had_work_items:
+        return "NOTHING_TO_FIX", "the repository's own tests already pass; there is no failing build to revive"
+    if baseline_tests_passed and items_applied == 0:
+        extra = f" ({not_done_reason})" if not_done_reason else ""
+        return "NOTHING_TO_FIX", "the repository's own tests already pass; no upgrade or refactor item was applied" + extra
+    if not verified_criteria:
+        if baseline_tests_passed:
+            return "NOTHING_TO_FIX", "no acceptance criterion was verified by a passing quality check"
+        return "NEEDS_REVIEW", "tests pass but no PRD acceptance criterion was verified by a passing quality check"
+    if baseline_tests_passed:
+        return "RESURRECTED", "upgrade or refactor items were applied and no quality check regressed; verified locally, not yet on fork CI"
+    shown = ", ".join(verified_criteria)
+    return "RESURRECTED", f"the repository's own test command passes and no quality check regressed; acceptance criteria verified: {shown}; verified locally, not yet on fork CI"
+
+
+def _line_delta(before: bytes | None, after: bytes | None) -> int:
+    old = (before or b"").decode("utf-8", "replace").splitlines()
+    new = (after or b"").decode("utf-8", "replace").splitlines()
+    delta = 0
+    for line in difflib.unified_diff(old, new, lineterm=""):
+        if line.startswith(("+++", "---", "@@")):
+            continue
+        if line.startswith(("+", "-")):
+            delta += 1
+    return delta
+
+
+def _concrete_issues(raw: Any) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    if not isinstance(raw, list):
+        return issues
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            issues.append({"id": "", "detail": item.strip()})
+        elif isinstance(item, dict):
+            detail = str(item.get("detail") or item.get("issue") or "").strip()
+            if detail:
+                issues.append({"id": str(item.get("id") or ""), "detail": detail})
+    return issues
+
+
+def _work_items(prd: dict[str, Any]) -> tuple[list[tuple[str, dict[str, Any]]], list[dict[str, Any]]]:
+    selected: list[tuple[str, dict[str, Any]]] = []
+    skipped: list[dict[str, Any]] = []
+    for kind, key in (("upgrade", "upgrade_items"), ("refactor", "refactor_items")):
+        items = [item for item in (prd.get(key) or []) if isinstance(item, dict)]
+        for item in items[:MAX_ITEMS_PER_KIND]:
+            selected.append((kind, item))
+        for item in items[MAX_ITEMS_PER_KIND:]:
+            skipped.append({"id": str(item.get("id") or ""), "kind": kind, "reason": f"not attempted: capped at {MAX_ITEMS_PER_KIND} {kind} items"})
+    return selected, skipped
 
 
 def revive(
@@ -262,12 +388,74 @@ def revive(
     install, test = detect_commands(repo)
     if not test:
         trace.event(agent_name="validator", action="REVIVE_UNSUPPORTED", input_summary=repo_id, output_summary="No runnable test command found in the manifest.", status="needs_review")
-        return ReviveResult("NEEDS_REVIEW", "no test command could be detected, so a revival cannot be verified")
+        result = ReviveResult("NEEDS_REVIEW", "no test command could be detected, so a revival cannot be verified")
+        trace.event(agent_name="orchestrator", action="REVIVE_RESULT", input_summary=repo_id, output_summary={"state": result.state, "reason": result.reason}, status="needs_review")
+        return result
+
+    def _run(cmd: str, cwd: Path, timeout: int) -> CmdResult:
+        try:
+            return runner(cmd, cwd, timeout)
+        except Exception as exc:  # noqa: BLE001
+            return CmdResult(cmd, 1, f"runner error: {type(exc).__name__}")
+
+    originals: dict[str, bytes | None] = {}
+
+    def _apply_tracked(edits: list[dict[str, Any]]) -> tuple[list[str], list[str], dict[str, bytes | None]]:
+        snap: dict[str, bytes | None] = {}
+        for edit in edits[:5]:
+            rel = str(edit.get("path") or "")
+            target = _safe_path(repo, rel)
+            if target is None:
+                continue
+            data = target.read_bytes() if target.is_file() else None
+            snap[rel] = data
+            originals.setdefault(rel, data)
+        changed, rejected = apply_edits(repo, edits)
+        return changed, rejected, snap
+
+    def _changes() -> tuple[list[str], int]:
+        files: list[str] = []
+        lines = 0
+        for rel, before in originals.items():
+            target = _safe_path(repo, rel)
+            if target is None:
+                continue
+            after = target.read_bytes() if target.is_file() else None
+            if after == before:
+                continue
+            files.append(rel)
+            lines += _line_delta(before, after)
+        return files, lines
+
+    def _unified() -> str:
+        chunks: list[str] = []
+        for rel, before in originals.items():
+            target = _safe_path(repo, rel)
+            after = target.read_bytes() if target and target.is_file() else None
+            if after == before:
+                continue
+            old = (before or b"").decode("utf-8", "replace").splitlines(keepends=True)
+            new = (after or b"").decode("utf-8", "replace").splitlines(keepends=True)
+            chunks.extend(difflib.unified_diff(old, new, fromfile=f"a/{rel}", tofile=f"b/{rel}"))
+        return ("".join(chunks)[:8000]) or "(no diff)"
+
+    def _gate(test_result: CmdResult | None, prd_obj: dict[str, Any] | None) -> list[dict[str, Any]]:
+        files, lines = _changes()
+        return qg.run_quality_gate(
+            repo,
+            _run,
+            test,
+            test_timeout=test_timeout,
+            changed_files=files,
+            lines_changed=lines,
+            prd=prd_obj,
+            test_result=test_result,
+        )
 
     if install:
-        inst = runner(install, repo, install_timeout)
+        inst = _run(install, repo, install_timeout)
         trace.event(agent_name="builder", action="REVIVE_INSTALL", input_summary=install, output_summary={"exit": inst.code, "tail": tail(inst.output, 400)}, status="ok" if inst.ok else "failed")
-    baseline = runner(test, repo, test_timeout)
+    baseline = _run(test, repo, test_timeout)
     trace.event(agent_name="validator", action="REVIVE_BASELINE", input_summary=test, output_summary={"exit": baseline.code, "tail": tail(baseline.output, 400)}, status="ok" if baseline.ok else "failed")
     if not baseline.ok and ENV_BINARY_RE.search(baseline.output) and (repo / "package.json").exists():
         # A missing platform binary (npm optional-dependency bug) is an environment problem, not a code
@@ -275,54 +463,221 @@ def revive(
         import shutil
 
         shutil.rmtree(repo / "node_modules", ignore_errors=True)
-        again = runner("npm install --no-audit --no-fund", repo, install_timeout)
-        baseline = runner(test, repo, test_timeout)
+        again = _run("npm install --no-audit --no-fund", repo, install_timeout)
+        baseline = _run(test, repo, test_timeout)
         trace.event(agent_name="builder", action="REVIVE_ENV_REPAIR", input_summary="clean reinstall of node_modules (platform binary was missing)", output_summary={"install_exit": again.code, "test_exit": baseline.code, "tail": tail(baseline.output, 300)}, status="ok" if baseline.ok else "failed")
-    result = ReviveResult("RESURRECTION_FAILED", "", baseline=baseline)
-    if baseline.ok:
+
+    prd = draft_prd(client, repo, repo_id, description, baseline)
+    trace.event(
+        agent_name="architect",
+        action="REVIVE_PRD",
+        input_summary={"repo": repo_id, "degraded": bool(prd.get("degraded"))},
+        output_summary=prd,
+        status="degraded" if prd.get("degraded") else "ok",
+        summary_limit=20000,
+    )
+    result = ReviveResult("RESURRECTION_FAILED", "", baseline=baseline, prd=prd)
+    before = _gate(baseline, prd)
+    work_items, capped = _work_items(prd)
+    for skipped in capped:
+        result.prd_items_not_done.append(skipped)
+        trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": skipped["id"], "kind": skipped["kind"]}, output_summary=skipped, status="not_done")
+
+    def _emit_quality(final_checks: list[dict[str, Any]], verified: list[str]) -> None:
+        files, lines = _changes()
+        result.files_changed = files
+        result.quality = qg.quality_report(before, final_checks, files, lines, verified)
+        trace.event(agent_name="validator", action="REVIVE_QUALITY", input_summary=repo_id, output_summary=result.quality, status="ok" if not result.quality["regressed"] else "failed", summary_limit=12000)
+
+    def _emit_result() -> None:
+        trace.event(
+            agent_name="orchestrator",
+            action="REVIVE_RESULT",
+            input_summary=repo_id,
+            output_summary={
+                "state": result.state,
+                "reason": result.reason,
+                "prd_items_done": [item.get("id") for item in result.prd_items_done],
+                "prd_items_not_done": [item.get("id") for item in result.prd_items_not_done],
+                "regressed": (result.quality or {}).get("regressed") or [],
+                "verified_criteria": (result.quality or {}).get("verified_criteria") or [],
+            },
+            status="ok" if result.state in ("RESURRECTED", "NOTHING_TO_FIX") else "failed",
+            summary_limit=4000,
+        )
+
+    if baseline.ok and not work_items:
+        verified = qg.verified_criteria(prd, before)
+        _emit_quality(before, verified)
         result.final = baseline
         result.state = "NOTHING_TO_FIX"
         result.reason = "the repository's own tests already pass; there is no failing build to revive"
+        _emit_result()
         return result
-
-    files = context_files(repo, baseline.output)
-    prd = draft_prd(client, repo_id, description, baseline, files)
-    result.prd = prd
-    trace.event(agent_name="architect", action="REVIVE_PRD", input_summary=repo_id, output_summary=prd if prd else "PRD generation failed", status="ok" if prd else "degraded")
 
     history: list[str] = []
     last = baseline
-    changed_all: list[str] = []
-    for n in range(1, max_iterations + 1):
+    accepted_checks = before
+    stage_a_ok = baseline.ok
+    if not baseline.ok:
+        for n in range(1, max_iterations + 1):
+            files = context_files(repo, last.output)
+            patch = propose_patch(client, repo_id, prd, n, last, files, history)
+            if not patch:
+                trace.event(agent_name="builder", action="REVIVE_PATCH", input_summary=f"iteration {n}", output_summary="no usable patch from the model", retry_count=n, status="failed")
+                result.iterations.append({"n": n, "patch": None, "exit": last.code})
+                history.append(f"iteration {n}: the model returned no usable patch")
+                continue
+            changed, rejected, snap = _apply_tracked(patch["edits"])
+            trace.event(agent_name="builder", action="REVIVE_PATCH", input_summary={"iteration": n, "rationale": str(patch.get("rationale", ""))[:300]}, output_summary={"changed": changed, "rejected": rejected}, retry_count=n, status="ok" if changed else "failed")
+            if not changed:
+                result.iterations.append({"n": n, "patch": "rejected", "rejected": rejected, "exit": last.code})
+                history.append(f"iteration {n}: every edit was rejected: {'; '.join(rejected)}")
+                continue
+            if install and any(path in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "setup.py") for path in changed):
+                _run(install, repo, install_timeout)
+            run = _run(test, repo, test_timeout)
+            accepted = run.ok
+            if accepted:
+                gate = _gate(run, prd)
+                regs = qg.regressions(accepted_checks, gate)
+                if regs:
+                    restore_snapshot(repo, snap)
+                    detail = _failure_text(regs, gate)
+                    accepted = False
+                    run = CmdResult(test, 1, detail)
+                    history.append(f"iteration {n}: reverted because quality checks regressed ({', '.join(regs)}). {tail(detail, 600)}")
+            trace.event(agent_name="validator", action="REVIVE_VALIDATE", input_summary=test, output_summary={"exit": run.code, "accepted": accepted, "tail": tail(run.output, 400)}, retry_count=n, status="ok" if accepted else "rejected")
+            result.iterations.append({"n": n, "changed": changed, "rejected": rejected, "exit": run.code, "accepted": accepted})
+            last = run
+            if accepted:
+                accepted_checks = gate
+                stage_a_ok = True
+                break
+            history.append(f"iteration {n}: changed {changed}, test exit {run.code}; output tail: {tail(run.output, 600)}")
+
+    if stage_a_ok and work_items:
+        for kind, item in work_items:
+            item_id = str(item.get("id") or kind)
+            done = False
+            last_reason = "no patch was applied"
+            kept_files: list[str] = []
+            for attempt in range(1, MAX_ITEM_ATTEMPTS + 1):
+                note = (
+                    f"Apply this single {kind} item and nothing else. Item attempt {attempt} of {MAX_ITEM_ATTEMPTS}.\n"
+                    f"Item: {json.dumps(item, ensure_ascii=False)}"
+                )
+                files = context_files(repo, last.output)
+                patch = propose_patch(client, repo_id, prd, f"{item_id}-{attempt}", last, files, history, note=note)
+                if not patch:
+                    last_reason = "the model returned no usable patch"
+                    trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind, "attempt": attempt}, output_summary={"status": "reverted", "reason": last_reason}, retry_count=attempt, status="failed")
+                    continue
+                changed, rejected, snap = _apply_tracked(patch["edits"])
+                if not changed:
+                    last_reason = "; ".join(rejected) or "every edit was rejected"
+                    trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind, "attempt": attempt}, output_summary={"status": "reverted", "reason": last_reason, "rejected": rejected}, retry_count=attempt, status="failed")
+                    continue
+                if install and any(path in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "setup.py") for path in changed):
+                    _run(install, repo, install_timeout)
+                run = _run(test, repo, test_timeout)
+                gate = _gate(run, prd)
+                regs = qg.regressions(accepted_checks, gate)
+                if regs or not run.ok:
+                    restore_snapshot(repo, snap)
+                    detail = _failure_text(regs, gate) if regs else run.output
+                    last_reason = tail(detail, 600) or "quality check failed"
+                    last = CmdResult(test, 1, last_reason)
+                    history.append(f"item {item_id} attempt {attempt}: reverted. {last_reason}")
+                    trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind, "attempt": attempt}, output_summary={"status": "reverted", "reason": last_reason, "changed": changed, "regressed": regs}, retry_count=attempt, status="reverted")
+                    continue
+                accepted_checks = gate
+                last = run
+                done = True
+                kept_files = changed
+                trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind, "attempt": attempt}, output_summary={"status": "applied", "changed": changed}, retry_count=attempt, status="applied")
+                break
+            if done:
+                result.prd_items_done.append({"id": item_id, "kind": kind, "files": kept_files})
+            else:
+                record = {"id": item_id, "kind": kind, "reason": last_reason}
+                result.prd_items_not_done.append(record)
+                trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind}, output_summary={"status": "not_done", "reason": last_reason}, status="not_done")
+    elif work_items and not stage_a_ok:
+        for kind, item in work_items:
+            record = {"id": str(item.get("id") or kind), "kind": kind, "reason": "baseline tests still fail, so the item was not attempted"}
+            result.prd_items_not_done.append(record)
+            trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": record["id"], "kind": kind}, output_summary={"status": "not_done", "reason": record["reason"]}, status="not_done")
+
+    review = _review(client, repo_id, prd, _unified(), accepted_checks)
+    result.review = review
+    trace.event(agent_name="reviewer", action="REVIVE_REVIEW", input_summary=repo_id, output_summary=review, status="degraded" if review.get("degraded") else ("ok" if review.get("approve") else "rejected"), summary_limit=4000)
+    if review.get("approve") is False and review.get("issues"):
+        note = "Reviewer iteration review-1. The reviewer rejected the revival with these issues:\n" + "\n".join(f"- {issue['detail']}" for issue in review["issues"])
         files = context_files(repo, last.output)
-        patch = propose_patch(client, repo_id, prd, n, last, files, history)
-        if not patch:
-            trace.event(agent_name="builder", action="REVIVE_PATCH", input_summary=f"iteration {n}", output_summary="no usable patch from the model", retry_count=n, status="failed")
-            result.iterations.append({"n": n, "patch": None, "exit": last.code})
-            history.append(f"iteration {n}: the model returned no usable patch")
-            continue
-        changed, rejected = apply_edits(repo, patch["edits"])
-        trace.event(agent_name="builder", action="REVIVE_PATCH", input_summary={"iteration": n, "rationale": str(patch.get("rationale", ""))[:300]}, output_summary={"changed": changed, "rejected": rejected}, retry_count=n, status="ok" if changed else "failed")
-        if not changed:
-            result.iterations.append({"n": n, "patch": "rejected", "rejected": rejected, "exit": last.code})
-            history.append(f"iteration {n}: every edit was rejected: {'; '.join(rejected)}")
-            continue
-        changed_all.extend(c for c in changed if c not in changed_all)
-        if install and any(c in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "setup.py") for c in changed):
-            runner(install, repo, install_timeout)
-        run = runner(test, repo, test_timeout)
-        accepted = run.ok
-        trace.event(agent_name="validator", action="REVIVE_VALIDATE", input_summary=test, output_summary={"exit": run.code, "accepted": accepted, "tail": tail(run.output, 400)}, retry_count=n, status="ok" if accepted else "rejected")
-        result.iterations.append({"n": n, "changed": changed, "rejected": rejected, "exit": run.code, "accepted": accepted})
-        last = run
-        if accepted:
-            result.final = run
-            result.files_changed = changed_all
-            result.state = "RESURRECTED"
-            result.reason = f"the repository's own test command passes after {n} model-written patch iteration(s); verified locally, not yet on fork CI"
-            return result
-        history.append(f"iteration {n}: changed {changed}, test exit {run.code}; output tail: {tail(run.output, 600)}")
-    result.final = last
-    result.files_changed = changed_all
-    result.reason = f"the test command still fails after {max_iterations} iterations"
+        patch = propose_patch(client, repo_id, prd, "review-1", last, files, history, note=note)
+        if patch and patch.get("edits"):
+            changed, rejected, snap = _apply_tracked(patch["edits"])
+            trace.event(agent_name="builder", action="REVIVE_PATCH", input_summary={"iteration": "review-1"}, output_summary={"changed": changed, "rejected": rejected}, status="ok" if changed else "failed")
+            if changed:
+                if install and any(path in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "setup.py") for path in changed):
+                    _run(install, repo, install_timeout)
+                run = _run(test, repo, test_timeout)
+                gate = _gate(run, prd)
+                regs = qg.regressions(accepted_checks, gate)
+                if regs or not run.ok:
+                    restore_snapshot(repo, snap)
+                    trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": "review-1", "kind": "review"}, output_summary={"status": "reverted", "reason": _failure_text(regs, gate) if regs else tail(run.output, 400)}, status="reverted")
+                else:
+                    accepted_checks = gate
+                    last = run
+
+    final_run = _run(test, repo, test_timeout)
+    final_checks = _gate(final_run, prd)
+    verified = qg.verified_criteria(prd, final_checks)
+    _emit_quality(final_checks, verified)
+    result.final = final_run
+    not_done_reason = "; ".join(str(item.get("reason") or "") for item in result.prd_items_not_done if item.get("reason"))
+    result.state, result.reason = decide_revival_state(
+        baseline_tests_passed=baseline.ok,
+        tests_passed=qg.counts_as_pass(next((row for row in final_checks if row["id"] == "tests"), None)),
+        regressed=list(result.quality.get("regressed") or []),
+        verified_criteria=verified,
+        had_work_items=bool(work_items),
+        items_applied=len(result.prd_items_done),
+        not_done_reason=not_done_reason[:400],
+    )
+    _emit_result()
     return result
+
+
+def _failure_text(regs: list[str], gate: list[dict[str, Any]]) -> str:
+    by_id = {str(row["id"]): row for row in gate}
+    parts = []
+    for check_id in regs:
+        row = by_id.get(check_id) or {}
+        parts.append(f"{check_id} {row.get('status')}: {row.get('detail_tail') or ''}")
+    return "\n".join(parts) or "quality check regressed"
+
+
+def _review(client: Any, repo_id: str, prd: dict[str, Any], diff: str, checks: list[dict[str, Any]]) -> dict[str, Any]:
+    table = [{"id": row["id"], "status": row["status"], "detail_tail": row.get("detail_tail", ""), "high": row.get("high"), "critical": row.get("critical")} for row in checks]
+    prompt = (
+        f"Repository: {repo_id}. Review iteration 1.\n"
+        "You may only add issues. Approving cannot override a failed deterministic check.\n"
+        f"PRD: {json.dumps(prd, ensure_ascii=False)}\n\n"
+        f"Diff:\n{diff}\n\n"
+        f"Quality table: {json.dumps(table, ensure_ascii=False)}\n\n"
+        'Reply with {"approve": bool, "issues": [{"id": str, "detail": str}]}.'
+    )
+
+    def valid(obj: dict[str, Any]) -> bool:
+        return isinstance(obj.get("approve"), bool) and isinstance(obj.get("issues"), list)
+
+    try:
+        obj, *_ = client.complete_json(prompt, REVIEWER_SYSTEM, repo_id=repo_id, step="revive_review", attempts=1, validate=valid)
+    except Exception as exc:  # noqa: BLE001
+        return {"approve": None, "issues": [], "degraded": True, "reason": f"llm call failed: {type(exc).__name__}"}
+    if not isinstance(obj, dict):
+        return {"approve": None, "issues": [], "degraded": True, "reason": "reviewer returned no JSON object"}
+    return {"approve": obj.get("approve"), "issues": _concrete_issues(obj.get("issues")), "degraded": False}

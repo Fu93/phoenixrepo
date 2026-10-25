@@ -38,6 +38,34 @@ def _make_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _valid_prd(scope=("src.js",), upgrades=None, refactors=None, checks=("tests", "diff_scope", "audit")):
+    criteria = []
+    statements = {
+        "tests": "The test command exits 0.",
+        "diff_scope": "The diff touches at most 8 files and does not edit tests.",
+        "audit": "High and critical audit findings stay at 0.",
+        "lint": "The linter exits 0.",
+        "types": "The type checker exits 0.",
+        "build": "The build command exits 0.",
+        "smoke": "The smoke command exits 0.",
+    }
+    for check_id in checks:
+        criteria.append({"id": f"ac-{check_id}", "statement": statements[check_id], "check_id": check_id})
+    while len(criteria) < 3:
+        criteria.append({"id": f"ac-extra-{len(criteria)}", "statement": "The diff touches at most 8 files and does not edit tests.", "check_id": "diff_scope"})
+    return {
+        "problem": "src.js returns the wrong value for the repository test command.",
+        "target_user": "Maintainers running the repository test command.",
+        "scope": list(scope),
+        "non_goals": ["Do not edit tests."],
+        "upgrade_items": list(upgrades or []),
+        "refactor_items": list(refactors or []),
+        "docs_items": [],
+        "acceptance_criteria": criteria,
+        "risks": ["The assertion may point at the wrong file."],
+    }
+
+
 def _runner_factory(repo: Path):
     calls = []
 
@@ -71,7 +99,7 @@ def test_revive_succeeds_only_when_the_real_test_command_passes(tmp_path):
     runner, _ = _runner_factory(repo)
     client = _Client(
         [
-            {"goal": "g", "tasks": [{"id": "1", "title": "t", "acceptance": "a"}]},
+            _valid_prd(),
             {"rationale": "r", "edits": [{"path": "src.js", "find": "=> 1", "replace": "=> 2"}]},
         ]
     )
@@ -100,7 +128,7 @@ def test_failure_goes_back_to_the_builder_with_real_output(tmp_path):
     runner, _ = _runner_factory(repo)
     client = _Client(
         [
-            {"goal": "g", "tasks": [{"id": "1"}]},
+            _valid_prd(),
             {"edits": [{"path": "src.js", "find": "=> 1", "replace": "=> 3"}]},
             {"edits": [{"path": "src.js", "find": "=> 3", "replace": "=> 2"}]},
         ]
@@ -131,7 +159,7 @@ def test_builder_cannot_edit_tests_or_escape_the_repo(tmp_path):
 def test_failure_after_all_iterations_is_resurrection_failed(tmp_path):
     repo = _make_repo(tmp_path)
     runner, _ = _runner_factory(repo)
-    client = _Client([{"goal": "g", "tasks": [{"id": "1"}]}])
+    client = _Client([_valid_prd()])
     res = rl.revive(repo, client, _Trace(), "o/r", max_iterations=2, runner=runner)
     assert res.state == "RESURRECTION_FAILED"
     assert res.final is not None and res.final.code == 1
