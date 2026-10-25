@@ -199,3 +199,16 @@ def test_decode_output_handles_utf8_empty_and_non_utf8_bytes():
     garbled = "錯誤".encode("cp950")
     out = rl.decode_output(garbled)
     assert isinstance(out, str) and out  # never raises; on Windows it is decoded with the console code page
+
+
+def test_reinstall_after_a_manifest_edit_never_uses_npm_ci():
+    assert rl.reinstall_command("npm ci --no-audit --no-fund") == "npm install --no-audit --no-fund"
+    assert rl.reinstall_command("npm install --no-audit") == "npm install --no-audit"
+    assert rl.reinstall_command("python -m pip install -q -e .") == "python -m pip install -q -e ."
+
+
+def test_missing_platform_module_is_read_from_the_error():
+    out = "Error: Cannot find module '@rollup/rollup-win32-x64-msvc'. npm has a bug"
+    assert rl.missing_platform_module(out) == "@rollup/rollup-win32-x64-msvc"
+    assert rl.missing_platform_module("Cannot find module 'left-pad'") is None
+    assert rl.missing_platform_module("") is None

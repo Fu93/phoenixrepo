@@ -85,6 +85,20 @@ class ReviveResult:
 Runner = Callable[[str, Path, int], CmdResult]
 
 
+MISSING_MODULE_RE = re.compile(r"Cannot find module '(@(?:rollup|esbuild|swc|parcel)/[A-Za-z0-9._-]+)'")
+
+
+def missing_platform_module(output: str) -> str | None:
+    """The scoped platform package a failed JS run could not find (e.g. @rollup/rollup-win32-x64-msvc)."""
+    match = MISSING_MODULE_RE.search(output or "")
+    return match.group(1) if match else None
+
+
+def reinstall_command(install: str) -> str:
+    """After a manifest edit the lockfile no longer matches, so `npm ci` would fail by design."""
+    return install.replace("npm ci", "npm install", 1) if install.startswith("npm ci") else install
+
+
 def decode_output(raw: bytes | None) -> str:
     """Decode child output: UTF-8 first, then the Windows console code page (cmd.exe messages on a
     non-English locale are not UTF-8 and would otherwise reach the model as replacement characters)."""
@@ -488,6 +502,12 @@ def revive(
         shutil.rmtree(repo / "node_modules", ignore_errors=True)
         again = _run("npm install --no-audit --no-fund", repo, install_timeout)
         baseline = _run(test, repo, test_timeout)
+        missing = missing_platform_module(baseline.output)
+        if not baseline.ok and missing:
+            # npm skipped the optional platform package again: install exactly that package without
+            # touching package.json or the lockfile.
+            again = _run(f"npm install --no-save --no-audit --no-fund {missing}", repo, install_timeout)
+            baseline = _run(test, repo, test_timeout)
         trace.event(agent_name="builder", action="REVIVE_ENV_REPAIR", input_summary="clean reinstall of node_modules (platform binary was missing)", output_summary={"install_exit": again.code, "test_exit": baseline.code, "tail": tail(baseline.output, 300)}, status="ok" if baseline.ok else "failed")
 
     prd = draft_prd(client, repo, repo_id, description, baseline)
@@ -558,7 +578,7 @@ def revive(
                 history.append(f"iteration {n}: every edit was rejected: {'; '.join(rejected)}")
                 continue
             if install and any(path in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "setup.py") for path in changed):
-                _run(install, repo, install_timeout)
+                _run(reinstall_command(install), repo, install_timeout)
             run = _run(test, repo, test_timeout)
             accepted = run.ok
             if accepted:
@@ -602,7 +622,7 @@ def revive(
                     trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind, "attempt": attempt}, output_summary={"status": "reverted", "reason": last_reason, "rejected": rejected}, retry_count=attempt, status="failed")
                     continue
                 if install and any(path in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "setup.py") for path in changed):
-                    _run(install, repo, install_timeout)
+                    _run(reinstall_command(install), repo, install_timeout)
                 run = _run(test, repo, test_timeout)
                 gate = _gate(run, prd)
                 regs = qg.regressions(accepted_checks, gate)
@@ -644,7 +664,7 @@ def revive(
             trace.event(agent_name="builder", action="REVIVE_PATCH", input_summary={"iteration": "review-1"}, output_summary={"changed": changed, "rejected": rejected}, status="ok" if changed else "failed")
             if changed:
                 if install and any(path in ("package.json", "requirements.txt", "pyproject.toml", "go.mod", "setup.py") for path in changed):
-                    _run(install, repo, install_timeout)
+                    _run(reinstall_command(install), repo, install_timeout)
                 run = _run(test, repo, test_timeout)
                 gate = _gate(run, prd)
                 regs = qg.regressions(accepted_checks, gate)
