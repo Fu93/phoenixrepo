@@ -1293,3 +1293,32 @@ def test_github_partial_overlap_blocks_candidate(tmp_path: Path):
     verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[gh_alt])
     assert verdict == "NEEDS_REVIEW"
     assert "ALTERNATIVE_OVERLAP" in reason
+
+
+def test_filter_relevant_alternatives_uses_chunks_and_falls_back_per_failed_chunk(tmp_path: Path):
+    from app.agents.relevance import ALTERNATIVE_CHUNK_SIZE, filter_relevant_alternatives
+
+    n = ALTERNATIVE_CHUNK_SIZE + 2
+    alts = [
+        {"alternative_id": f"x/r{i}", "url": f"https://github.com/x/r{i}", "description": f"Tool number {i} syncs things.", "source": "github"}
+        for i in range(n)
+    ]
+    batch_calls = []
+    single_calls = []
+
+    def llm(prompt: str, sys: str) -> str:
+        if "results" in sys and "one entry per alternative" in sys:
+            batch_calls.append(prompt)
+            if "Tool number 0 " not in prompt:
+                raise RuntimeError("Nightshift returned HTTP 502")
+            idx = [int(x.split("]")[0]) for x in prompt.split("\n[")[1:]] if False else None
+            import re
+            ids = [int(m) for m in re.findall(r"^\[(\d+)\] Alternative", prompt, flags=re.M)]
+            return json.dumps({"results": [{"index": i, "same_problem": False, "overlap": "none", "reason": "no", "quotes": []} for i in ids]})
+        single_calls.append(prompt)
+        return json.dumps({"same_problem": False, "overlap": "none", "reason": "no", "quotes": []})
+
+    client = RelevanceClient(mock_handler=llm, cache_dir=tmp_path / "c")
+    assert filter_relevant_alternatives(_PROB, "cand/x", alts, client=client) == []
+    assert len(batch_calls) == 1 + 2  # chunk 1 once, chunk 2 failed and retried once
+    assert len(single_calls) == 2  # only the failed chunk (2 alternatives) fell back

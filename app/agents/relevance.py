@@ -1601,6 +1601,7 @@ BATCH_INSTRUCTION = (
 
 
 BATCH_CALL_ATTEMPTS = 2
+ALTERNATIVE_CHUNK_SIZE = 5
 
 
 def judge_alternatives_batch(
@@ -1763,19 +1764,25 @@ def filter_relevant_alternatives(
     Tries one batched LLM call first; falls back to one call per alternative when the batch
     answer is unusable.
     """
-    if len(search_results) > 1:
-        batch = judge_alternatives_batch(problem_statement, candidate_repo_id, search_results, client=client, trace=trace)
-        if batch is not None:
-            return batch
-    verified_alts = []
-    for res in search_results:
-        alt_row, meta = judge_alternative_relevance(
-            problem_statement=problem_statement,
-            candidate_repo_id=candidate_repo_id,
-            search_result=res,
-            client=client,
-            trace=trace,
-        )
-        if alt_row is not None and alt_row.get("same_problem"):
-            verified_alts.append(alt_row)
+    verified_alts: list[dict[str, Any]] = []
+    # Chunks keep each LLM answer short enough to finish inside the wall-clock cap (one call with
+    # 15 alternatives timed out every time on Nightshift); a failed chunk falls back to one call
+    # per alternative for THAT chunk only, so no alternative is ever skipped.
+    for start in range(0, len(search_results), ALTERNATIVE_CHUNK_SIZE):
+        chunk = search_results[start:start + ALTERNATIVE_CHUNK_SIZE]
+        if len(chunk) > 1:
+            batch = judge_alternatives_batch(problem_statement, candidate_repo_id, chunk, client=client, trace=trace)
+            if batch is not None:
+                verified_alts.extend(batch)
+                continue
+        for res in chunk:
+            alt_row, meta = judge_alternative_relevance(
+                problem_statement=problem_statement,
+                candidate_repo_id=candidate_repo_id,
+                search_result=res,
+                client=client,
+                trace=trace,
+            )
+            if alt_row is not None and alt_row.get("same_problem"):
+                verified_alts.append(alt_row)
     return verified_alts
