@@ -7,7 +7,7 @@ Never judge quality by candidate repository stars or forks.
 
 ## Rubric
 
-- `problem`: One clear, concise sentence describing the user problem or struggling job being solved (Jobs-To-Be-Done framing).
+- `problem`: One clear, concise sentence describing the user problem or struggling job being solved (Jobs-To-Be-Done framing). Name the device, platform or environment the job happens in when the README makes it part of the product (for example a smart mirror, a browser extension, a CLI), and do not abstract it away into a generic goal.
 - `target_user`: The specific user persona or audience who experiences this friction.
 - `category`: Broad product category (e.g. developer-tools, note-taking, system-monitoring, productivity, automation).
 - `search_queries`: 3 to 5 short, problem-oriented search queries (2 to 4 words each) to find other tools or prior art solving the same user problem. Do NOT use the candidate repository name, owner name, or implementation trivia.
