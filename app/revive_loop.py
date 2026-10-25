@@ -254,6 +254,11 @@ def revive(
     install_timeout: int = 900,
     test_timeout: int = 300,
 ) -> ReviveResult:
+    if gate_verdict != "CANDIDATE":
+        # Gate 1 is a hard precondition: an idea that is not worth rescuing is never built, so a
+        # refused repository can never end up RESURRECTED (or "revived anyway").
+        trace.event(agent_name="orchestrator", action="REVIVE_BLOCKED_BY_GATE1", input_summary=repo_id, output_summary={"gate1": gate_verdict, "note": "revival not attempted"}, status="blocked")
+        return ReviveResult("NOT_ATTEMPTED_GATE1", f"gate 1 said {gate_verdict}, so no revival was attempted")
     install, test = detect_commands(repo)
     if not test:
         trace.event(agent_name="validator", action="REVIVE_UNSUPPORTED", input_summary=repo_id, output_summary="No runnable test command found in the manifest.", status="needs_review")
@@ -313,12 +318,8 @@ def revive(
         if accepted:
             result.final = run
             result.files_changed = changed_all
-            if gate_verdict == "CANDIDATE":
-                result.state = "RESURRECTED"
-                result.reason = f"the repository's own test command passes after {n} model-written patch iteration(s); verified locally, not yet on fork CI"
-            else:
-                result.state = "REVIVED_NOT_RECOMMENDED"
-                result.reason = f"technically revived, but gate 1 said {gate_verdict}, so it is not recommended"
+            result.state = "RESURRECTED"
+            result.reason = f"the repository's own test command passes after {n} model-written patch iteration(s); verified locally, not yet on fork CI"
             return result
         history.append(f"iteration {n}: changed {changed}, test exit {run.code}; output tail: {tail(run.output, 600)}")
     result.final = last

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -82,12 +82,17 @@ def test_revive_succeeds_only_when_the_real_test_command_passes(tmp_path):
     assert [e["action"] for e in trace.events if e["action"].startswith("REVIVE_VALIDATE")] == ["REVIVE_VALIDATE"]
 
 
-def test_gate_one_refusal_downgrades_a_passing_revival(tmp_path):
+def test_gate_one_refusal_blocks_revival_entirely(tmp_path):
     repo = _make_repo(tmp_path)
-    runner, _ = _runner_factory(repo)
-    client = _Client([{"goal": "g", "tasks": [{"id": "1"}]}, {"edits": [{"path": "src.js", "find": "=> 1", "replace": "=> 2"}]}])
-    res = rl.revive(repo, client, _Trace(), "o/r", gate_verdict="ALREADY_EXISTS", runner=runner)
-    assert res.state == "REVIVED_NOT_RECOMMENDED"
+    runner, calls = _runner_factory(repo)
+    client = _Client([])
+    trace = _Trace()
+    for verdict in ("ALREADY_EXISTS", "NO_GO", "NEEDS_REVIEW", "UNJUDGED"):
+        res = rl.revive(repo, client, trace, "o/r", gate_verdict=verdict, runner=runner)
+        assert res.state == "NOT_ATTEMPTED_GATE1"
+        assert res.files_changed == []
+    assert not calls  # nothing was installed, tested or patched
+    assert [e["action"] for e in trace.events] == ["REVIVE_BLOCKED_BY_GATE1"] * 4
 
 
 def test_failure_goes_back_to_the_builder_with_real_output(tmp_path):

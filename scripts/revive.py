@@ -54,6 +54,16 @@ def main() -> int:
     else:
         trace.event(agent_name="market_judge", action="GATE1", input_summary=full_name, output_summary={"verdict": verdict, "source": "supplied"})
 
+    if verdict != "CANDIDATE":
+        # Do not even clone: gate 1 refused (or could not judge) this repository.
+        result = revive_loop.revive(Path("."), None, trace, full_name, gate_verdict=verdict)
+        trace.event(agent_name="orchestrator", action="REVIVE_RESULT", input_summary=full_name, output_summary={"state": result.state, "reason": result.reason, "gate1": verdict})
+        trace.seal()
+        payload = result.as_dict() | {"repo": full_name, "gate1": verdict, "run_id": rid, "run_hash": trace.run_hash}
+        (out / "revive.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(json.dumps({k: payload[k] for k in ("repo", "gate1", "state", "reason", "run_id")}, indent=2, ensure_ascii=False))
+        return 3
+
     target = args.workdir / full_name.replace("/", "__")
     if target.exists():
         sys.stderr.write(f"{target} already exists; remove it or pick another --workdir\n")
@@ -78,7 +88,7 @@ def main() -> int:
     payload = result.as_dict() | {"repo": full_name, "gate1": verdict, "run_id": rid, "run_hash": trace.run_hash, "clone": str(target), "served_models": sorted(client.served_models)}
     (out / "revive.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps({k: payload[k] for k in ("repo", "gate1", "state", "reason", "files_changed", "run_id", "clone")}, indent=2, ensure_ascii=False))
-    return 0 if result.state in ("RESURRECTED", "REVIVED_NOT_RECOMMENDED", "NOTHING_TO_FIX") else 1
+    return 0 if result.state in ("RESURRECTED", "NOTHING_TO_FIX") else 1
 
 
 if __name__ == "__main__":
