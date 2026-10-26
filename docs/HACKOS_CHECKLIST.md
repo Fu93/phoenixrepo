@@ -10,4 +10,4 @@ Open Agent Hackathon 2026. Repository `Fu93/phoenixrepo`. Solo team PhoenixRepo.
 - [ ] Final submission by **27 Oct 2026 21:00 UTC**.
 - [ ] Hard deadline **27 Oct 2026 23:45 UTC**.
 
-Before the final submit, paste the `eval_summary` table into the **TBD** slot in `README.md` and fill the same `TODO(numbers)` markers in `docs/SUBMISSION_DRAFT.md` and `docs/VIDEO_SCRIPT.md`. Leave a marker as **TBD** when the live file does not contain that number.
+Before the final submit, on the commit you submit: `python scripts/fill_results.py logs/eval-nemotron-v3.json --write`, then commit. It fills every numbers slot in `README.md` and `docs/SUBMISSION_DRAFT.md` from the report and the traces, and leaves TBD where a file has no number.
