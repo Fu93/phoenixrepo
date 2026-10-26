@@ -1933,6 +1933,14 @@ def judge_discovery(
         verdict = "NEEDS_REVIEW"
         reason = f"unverified LLM quote: unexpected verdict '{raw_verdict}'"
 
+    if verdict == "CANDIDATE" and coverage_blocked:
+        # One rule for every path that can reach CANDIDATE (the own-identity and must-beat
+        # paths included): a search that errored, was cut short or found nothing is not
+        # evidence of no competition.
+        verdict = "NEEDS_REVIEW"
+        reason = coverage_reason
+        picked = []
+
     clean_reason = reason.rstrip().rstrip(".")
     labeled_reason = f"{clean_reason}. Method: llm+verified quote (requested={req_m}, served={srv_m})."
     show = _evidence_rows(picked) if verdict in {"ALREADY_EXISTS", "NEEDS_REVIEW"} else []
