@@ -98,6 +98,9 @@
     .layout { grid-template-columns: 1fr; }
     h1 { font-size: 26px; }
   }
+  blockquote.reasoning { white-space: pre-wrap; max-height: 16rem; overflow: auto; font-size: 0.92em; }
+  /* Hashes, URLs and model ids are long unbroken strings; let them wrap on a phone. */
+  .panel, .banner, .step, #verdict-body, #served-models, #chain-result { overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -295,12 +298,30 @@
     var acceptable = card.acceptable && card.acceptable.length
       ? "<p>Human-acceptable labels: " + esc(card.acceptable.join(", ")) + "</p>"
       : "";
+    var models = replay.models || {};
+    var usedAnswers = models.answers_used || 0;
+    var nemotronBadge = usedAnswers
+      ? "<p><span class=\"flag" + (models.answers_by_nemotron === usedAnswers ? " quiet" : "") + "\">" +
+        esc(models.answers_by_nemotron || 0) + " of " + esc(usedAnswers) + " answers by NVIDIA Nemotron</span></p>"
+      : "";
+    var thought = replay.verdict_reasoning;
+    var thoughtHtml = "";
+    if (thought && thought.text) {
+      thoughtHtml =
+        "<h2>" + (thought.nemotron ? "Nemotron's reasoning" : "Model reasoning") + "</h2>" +
+        "<p class=\"muted\">Written by " + esc(thought.served_model || "an unrecorded model") +
+        (thought.provider && thought.provider !== "nightshift" ? " via " + esc(thought.provider) : " via Meterless Nightshift") +
+        " (step " + esc(thought.step_index) + "). It is the model's account; the verdict stands only on the verbatim quote below.</p>" +
+        "<blockquote class=\"reasoning\">" + esc(thought.text) + "</blockquote>";
+    }
     node.innerHTML =
       "<p class=\"verdict-name" + (refuse ? " refuse" : "") + "\">" + esc(name) + "</p>" +
+      nemotronBadge +
       "<p><span class=\"flag quiet\">" + esc(replay.data_class) + "</span> <span class=\"" + (replay.trace_class === "SAMPLE" ? "flag" : "flag quiet") + "\">" + esc(replay.trace_class) + "</span></p>" +
       "<p>" + (replay.repo_url ? "<a href=\"" + esc(replay.repo_url) + "\">" + esc(replay.repo_id) + "</a>" : esc(replay.repo_id)) + "</p>" +
       acceptable +
       "<p>" + esc(card.reason || "") + "</p>" +
+      thoughtHtml +
       "<h2>Verbatim quote</h2>" +
       "<blockquote>" + esc(card.quote || "") + "</blockquote>" +
       "<p><a href=\"" + esc(card.quote_source_url || "#") + "\">" + esc(card.quote_source_url || "") + "</a></p>" +

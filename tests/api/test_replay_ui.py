@@ -328,3 +328,46 @@ def test_import_replay_refuses_a_trace_that_contains_a_secret(tmp_path, monkeypa
     with pytest.raises(ReplayImportError, match="credential"):
         import_replay(trace.path, verdict_path, replays_root=replays)
     assert not (replays / "acme-widget").exists()
+
+
+def test_verdict_card_carries_the_nemotron_reasoning_and_share(tmp_path, monkeypatch):
+    from app.trace_log import HackathonTrace
+    from scripts.import_replay import import_replay
+
+    trace = HackathonTrace("live-nemo", log_dir=tmp_path)
+    trace.event(
+        agent_name="orchestrator", action="LLM_CALL",
+        input_summary={"repo_id": "acme/widget", "step": "alternative"},
+        output_summary={"requested_model": "nvidia/nemotron-3.5-lightning-30b-a3b", "served_model": "nvidia/nemotron-3.5-lightning-30b-a3b"},
+        llm={"requested_model": "nvidia/nemotron-3.5-lightning-30b-a3b", "served_model": "nvidia/nemotron-3.5-lightning-30b-a3b"},
+    )
+    trace.event(
+        agent_name="orchestrator", action="LLM_CALL",
+        input_summary={"repo_id": "acme/widget", "step": "discovery"},
+        output_summary={"served_model": "gemini-3.1-flash-lite", "reasoning": "discarded answer"},
+        llm={"requested_model": "nvidia/nemotron-3-ultra-550b-a55b", "served_model": "gemini-3.1-flash-lite"},
+        status="rejected",
+    )
+    trace.event(
+        agent_name="orchestrator", action="LLM_CALL",
+        input_summary={"repo_id": "acme/widget", "step": "discovery"},
+        output_summary={"served_model": "nvidia/nemotron-3-ultra-550b-a55b", "reasoning": "Docs page does the same job.", "tier": "deep"},
+        llm={"requested_model": "nvidia/nemotron-3-ultra-550b-a55b", "served_model": "nvidia/nemotron-3-ultra-550b-a55b"},
+        summary_limit=4000,
+    )
+    trace.seal()
+    verdict_path = tmp_path / "v.json"
+    verdict_path.write_text(json.dumps({"repo_id": "acme/widget", "verdict": "ALREADY_EXISTS", "reason": "full overlap"}), encoding="utf-8")
+    replays = tmp_path / "replays"
+    replays.mkdir()
+    (replays / "manifest.json").write_text(json.dumps({"replays": [], "missing": []}), encoding="utf-8")
+    import_replay(trace.path, verdict_path, replays_root=replays)
+    monkeypatch.setattr("app.replay_ui.REPLAYS_ROOT", replays)
+    body = CLIENT.get("/api/replays/acme-widget").json()
+    thought = body["verdict_reasoning"]
+    assert thought["text"] == "Docs page does the same job."
+    assert thought["served_model"] == "nvidia/nemotron-3-ultra-550b-a55b" and thought["nemotron"] is True
+    assert body["models"]["answers_used"] == 2 and body["models"]["answers_by_nemotron"] == 2
+    assert body["models"]["discarded_by_policy"] == 1
+    page = CLIENT.get("/ui").text
+    assert "Nemotron's reasoning" in page and "answers by NVIDIA Nemotron" in page

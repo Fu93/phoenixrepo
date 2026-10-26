@@ -12,7 +12,7 @@ python main.py
 # open http://127.0.0.1:8000/ui
 ```
 
-Or `docker build -t phoenixrepo . && docker run --rm -p 8000:8000 phoenixrepo`. The page replays recorded gate-1 runs step by step: which model answered each call, the alternative that blocked the idea, the quote that was checked word for word, and the hash chain. **Tamper** changes one character of a copy in memory and the chain check fails. Replays labelled SAMPLE are reconstructions; RECORDED ones are real trace files copied byte for byte.
+No install at all: **https://fu93.github.io/phoenixrepo/** is the same page as a static copy, rebuilt from `main` by `.github/workflows/pages.yml` (`scripts/export_static_ui.py`; the chain and tamper results there were computed by `scripts/verify_trace.py` at export time). Or `docker build -t phoenixrepo . && docker run --rm -p 8000:8000 phoenixrepo`. The page replays recorded gate-1 runs step by step: which model answered each call, the alternative that blocked the idea, the quote that was checked word for word, and the hash chain. **Tamper** changes one character of a copy in memory and the chain check fails. Replays labelled SAMPLE are reconstructions; RECORDED ones are real trace files copied byte for byte.
 
 ## How it decides
 
