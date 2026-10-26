@@ -11,24 +11,40 @@
       "eligibility_path": "Nemotron is called through Meterless Nightshift. Every gate-1 call requests an nvidia/nemotron-* model through Nightshift, and each LLM_CALL trace line records requested_model and the served_model that actually answered, inside the hash chain.",
       "where_used": [
         "Problem extraction and search-query writing (fast tier, MODEL_NAME)",
-        "Every alternative-overlap judgement (fast tier, MODEL_NAME; PHOENIX_LLM_EXTRA_BODY can switch Nemotron's thinking off for it)",
-        "The final gate-1 verdict (deep tier, MODEL_NAME_DEEP, reasoning on); the reasoning is stored on the trace line and shown in /ui next to the verbatim quote the verdict must agree with",
-        "Gate 2 plan and patch drafting (revive loop)"
+        "Every alternative-overlap judgement (fast tier, MODEL_NAME; PHOENIX_LLM_EXTRA_BODY can switch Nemotron's thinking off)",
+        "The final gate-1 verdict (deep tier, MODEL_NAME_DEEP, thinking not switched off; PHOENIX_LLM_DEEP_EXTRA_BODY was empty on the scored run). Reasoning the model returns is stored on the trace line and shown in /ui next to the verbatim quote; the README counts how many verdict answers carried it.",
+        "Gate 2 (revive loop) requests the same Nightshift route by design; it has not run on a real CANDIDATE in this submission."
       ],
       "policy": "PHOENIX_NEMOTRON_POLICY: label (flag a non-Nemotron answer), require (discard it and ask again), fallback-nvidia (Nightshift first; after a Nightshift timeout, HTTP 5xx or non-Nemotron answer the same request goes to NVIDIA's API and the line is traced provider nvidia-direct). The scored run used fallback-nvidia.",
       "proof": "python scripts/verify_trace.py logs/trace-<run_id>.jsonl --require-nemotron fails unless every answer the run used was served by nvidia/nemotron-*, and prints the count and the Nightshift / nvidia-direct split.",
       "measured": "README.md, sections Results and Why Nemotron: Nemotron share of answers used, final-verdict answers by Nemotron, provider split, served model per provider, latency per served model. Written by scripts/fill_results.py from the scored run's report and verified traces.",
       "zetaris_run": "Gate 1 with Zetaris evidence on 2 repositories (26 Oct 2026, run hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad): 27 of 27 answers used were Nemotron's, 21 through Nightshift and 6 through nvidia-direct.",
-      "where": ["app/agents/relevance.py", "config/settings.py", "scripts/verify_trace.py", "scripts/fill_results.py", "app/ui/index.html"]
+      "where": [
+        "app/agents/relevance.py",
+        "config/settings.py",
+        "scripts/verify_trace.py",
+        "scripts/fill_results.py",
+        "app/ui/index.html"
+      ]
     },
     "meterless_runtime": {
-      "role": "Nightshift is the model route for gate 1 and gate 2 and is tried first on every call. Requests are OpenAI-compatible (POST /v1/chat/completions) with meterless-app: phoenixrepo and meterless-scope: user. Routing detail returned by Nightshift (for example winning_provider and winning_model) is stored on the trace line.",
-      "settings": ["METERLESS_BASE_URL", "METERLESS_RUNTIME_TOKEN", "MODEL_NAME", "MODEL_NAME_DEEP", "PHOENIX_LLM_ATTEMPT_TIMEOUT_S", "PHOENIX_LLM_TOTAL_TIMEOUT_S"],
+      "role": "Nightshift is the model route for gate 1, tried first on every call, and the route gate 2 requests by design. Requests are OpenAI-compatible (POST /v1/chat/completions) with meterless-app: phoenixrepo and meterless-scope: user. Routing detail returned by Nightshift (for example winning_provider and winning_model) is stored on the trace line.",
+      "settings": [
+        "METERLESS_BASE_URL",
+        "METERLESS_RUNTIME_TOKEN",
+        "MODEL_NAME",
+        "MODEL_NAME_DEEP",
+        "PHOENIX_LLM_ATTEMPT_TIMEOUT_S",
+        "PHOENIX_LLM_TOTAL_TIMEOUT_S"
+      ],
       "probe": "python scripts/nightshift_probe.py lists the nvidia/nemotron-* ids Nightshift offers and records which request settings are actually served by Nemotron.",
       "observed": "On 26 Oct 2026 Nightshift often returned HTTP 502; those calls were answered by NVIDIA's API under fallback-nvidia and are counted separately in the README."
     },
     "meterless_engine": {
-      "engines": ["H-MEM", "Markovian"],
+      "engines": [
+        "H-MEM",
+        "Markovian"
+      ],
       "where": "app/engines/hmem/ and app/engines/markovian.py, used by the evidence-policy track (POST /run). Gate 1 does not use them.",
       "hmem": "MemoryStoreService, MemoryRetrievalService and TrustLedgerService, implemented from the published H-MEM spec. Evidence memories are recalled into the judge step; verdicts are promoted to long-term memory and retrieved by type; repeated evidence for the same claim is refreshed, not stacked; superseded memories are kept, not deleted.",
       "markovian": "ChunkManager with a bounded carryover (at most 1200 characters) between agent steps, stopping after 24 chunks.",
@@ -38,7 +54,12 @@
     "zetaris": {
       "role": "Gate 1 can read its evidence (phoenix.discovery_candidates, phoenix.prior_art, phoenix.demand_signals) over the REST SQL contract with EVIDENCE_SOURCE=zetaris. Each statement is a trace line with its SQL, query_id and content_hash; a read-only preflight stops the run if Zetaris does not answer.",
       "scope": "Exercised live and read-only on the 2 repositories in data/real (tharani-2006/Invoice-generator-application, SergioMendolia/ytkb): scripts/zetaris_check.py loads and seals the evidence rows, and a gate-1 run read its evidence from Zetaris. The 16 scored evaluation repositories were fetched live from GitHub with evidence_source=csv.",
-      "where": ["app/adapters/zetaris_evidence.py", "app/sql_catalog.py", "scripts/zetaris_check.py", "scripts/zetaris/04_phoenix_views.sql"]
+      "where": [
+        "app/adapters/zetaris_evidence.py",
+        "app/sql_catalog.py",
+        "scripts/zetaris_check.py",
+        "scripts/zetaris/04_phoenix_views.sql"
+      ]
     },
     "ai_assistance": {
       "tools": "Cursor cloud coding agents and Claude (Anthropic), working under the author's direction. The author set the design and rules, reviewed and merged the changes, and ran the live checks.",

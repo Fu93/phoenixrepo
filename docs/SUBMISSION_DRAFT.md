@@ -22,7 +22,7 @@ A live run on one machine, not a stored accuracy.
 
 What is already fixed in the repository, with no live count attached:
 
-- Gate 1 has two Nemotron tiers. `MODEL_NAME` with `PHOENIX_LLM_EXTRA_BODY` (thinking off) does the bulk overlap checks. `MODEL_NAME_DEEP` with `PHOENIX_LLM_DEEP_EXTRA_BODY` writes the final verdict and keeps its reasoning.
+- Gate 1 has two Nemotron tiers. `MODEL_NAME` does the bulk overlap checks (`PHOENIX_LLM_EXTRA_BODY` can switch thinking off). `MODEL_NAME_DEEP` writes the final verdict and keeps any reasoning the model returns.
 - `PHOENIX_NEMOTRON_POLICY` is `label`, `require`, or `fallback-nvidia`. The prize path described here is `fallback-nvidia`: Nightshift is tried first; on a timeout, an HTTP 5xx, or a non-Nemotron answer, the same request goes to NVIDIA's official API and the trace records provider `nvidia-direct`.
 - `served_model` is inside the hash chain. `scripts/verify_trace.py` recomputes that chain and checks `--expected-run-hash`. With `--require-nemotron` it also fails unless every used answer was served by `nvidia/nemotron-*`, and prints the provider split. The family check is the policy, the `/ui` badge "N of M answers by NVIDIA Nemotron", and the Nemotron reasoning card.
 - A blocker needs a verified verbatim quote plus a mature or official alternative. Infrastructure failures are `NEEDS_REVIEW` or `UNJUDGED`, never a silent pass. `BUDGET_EXHAUSTED` can never produce `CANDIDATE`.
@@ -61,7 +61,7 @@ Gate 1 asks whether the idea is worth rescuing. It reads the repository, searche
 
 The fix that matters most is fewer wrong refusals. CalendarSyncProject was once refused because FullCalendar "displays public Google Calendar events"; a human audit says that is the opposite direction. The current gate 1 no longer refuses it.
 
-Gate 1's judgements are asked of NVIDIA Nemotron in two tiers: a fast tier for the many overlap checks and a reasoning tier for the verdict, whose reasoning is kept next to the quote. Meterless Nightshift is tried first, and NVIDIA's own API answers when Nightshift fails. On the scored run, Nemotron wrote **TBD** of the **TBD** answers used.
+Gate 1's judgements are asked of NVIDIA Nemotron in two tiers: a fast tier for the many overlap checks and a deeper tier for the verdict, whose reasoning, when the model returns it, is kept next to the quote. Meterless Nightshift is tried first, and NVIDIA's own API answers when Nightshift fails. On the scored run, Nemotron wrote **TBD** of the **TBD** answers used.
 
 Every step is a line in a hash-chained trace that records the model that actually answered; one command verifies the chain and that every used answer was Nemotron. Gate 1 can load its evidence from Zetaris over SQL; this submission ran gate 1 that way, read-only, on two repositories, with every answer verified as Nemotron's (one of the two verdicts disagrees with the human label, and the README says so). The 16 scored evaluation repositories were fetched live from GitHub instead.
 
@@ -85,9 +85,9 @@ Commit count after the skeleton, on the final submitted commit: **TBD**. Command
 
 ## (vi) Sponsor technology explanation (HackOS form)
 
-**Meterless Nightshift (Runtime).** The model route for gate 1 and gate 2, tried first on every call (OpenAI-compatible chat with `meterless-app` and `meterless-scope` headers). Each `LLM_CALL` trace line stores the requested model, the model Nightshift served, latency and Nightshift's routing detail, inside the hash chain. `scripts/nightshift_probe.py` measures which Nemotron ids and settings Nightshift actually serves.
+**Meterless Nightshift (Runtime).** The model route for gate 1, tried first on every call, and the route gate 2 requests by design (gate 2 has not run on a real CANDIDATE here) (OpenAI-compatible chat with `meterless-app` and `meterless-scope` headers). Each `LLM_CALL` trace line stores the requested model, the model Nightshift served, latency and Nightshift's routing detail, inside the hash chain. `scripts/nightshift_probe.py` measures which Nemotron ids and settings Nightshift actually serves.
 
-**NVIDIA Nemotron through Nightshift.** Problem extraction, every overlap check and the final verdict are Nemotron answers in two tiers: a fast model for the many short checks and a reasoning model for the verdict, whose reasoning is kept next to the quote it must agree with. `PHOENIX_NEMOTRON_POLICY=fallback-nvidia` sends a call to NVIDIA's API only when Nightshift fails, and traces it as `nvidia-direct`. Proof: `python scripts/verify_trace.py <trace> --require-nemotron`; measured share and provider split in the README.
+**NVIDIA Nemotron through Nightshift.** Problem extraction, every overlap check and the final verdict are Nemotron answers in two tiers: a fast model for the many short checks and a deeper model for the verdict, whose reasoning, when returned, is kept next to the quote it must agree with (the README counts how often). `PHOENIX_NEMOTRON_POLICY=fallback-nvidia` sends a call to NVIDIA's API only when Nightshift fails, and traces it as `nvidia-direct`. Proof: `python scripts/verify_trace.py <trace> --require-nemotron`; measured share and provider split in the README.
 
 **Meterless Engines: H-MEM and Markovian.** Implemented from the published specs in `app/engines/`, used by the evidence-policy track (`POST /run`), not by gate 1. H-MEM stores evidence claims and verdicts, recalls them into the judge step, promotes verdicts to long-term memory and supersedes without deleting. Markovian runs the investigation as a chunk loop with a bounded carryover (1200 characters, 24 chunks). Tests: `tests/engines/test_hmem_conformance.py` (store, ranking formula, promotion, decay, supersede-without-delete) and `tests/engines/test_markovian.py`, run in CI on every pull request. They are project tests modelled on the spec; the official TypeScript conformance suite was not run.
 
