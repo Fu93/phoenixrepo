@@ -63,3 +63,30 @@ def test_budget_cut_blocks_candidate_even_with_alternatives_found(tmp_path: Path
     assert "tool budget exhausted" in reason and "npm, web" in reason
     # The rerun and the eval treat it as unfinished work, not as a judgement.
     assert is_infra_review({"verdict": verdict, "reason": reason})
+
+
+def test_must_beat_and_own_identity_paths_cannot_pass_a_cut_search(tmp_path):
+    import json
+
+    from app.agents.relevance import RelevanceClient, judge_discovery
+
+    cand = {"repo_id": "me/tool", "description": "Sync tool.", "readme_excerpt": "A small sync tool for notes."}
+    immature = {
+        "alternative_id": "other/tiny", "url": "https://github.com/other/tiny", "same_problem": True, "overlap": "full",
+        "quotes": ["sync"], "description": "sync", "stars": 3, "pushed_at": "2026-10-01T00:00:00Z", "archived": False,
+        "licence_spdx": "MIT", "page_kind": "product",
+    }
+
+    def says(alt: str):
+        return lambda prompt, sys: json.dumps({
+            "verdict": "ALREADY_EXISTS", "reason": "r", "problem_quote": "A small sync tool",
+            "alternative_repo": alt, "alternative_quote": "sync",
+        })
+
+    status = {"github": "BUDGET_EXHAUSTED", "npm": "ok", "web": "BUDGET_EXHAUSTED"}
+    for alt, rows in (("other/tiny", [immature]), ("me/tool", [])):
+        client = RelevanceClient(cache_dir=tmp_path / alt.replace("/", "_"), mock_handler=says(alt))
+        verdict, reason = judge_discovery(cand, prior_rows=[], demand_rows=[], client=client, problem_alternatives=rows,
+                                          source_status=status, source_counts={"github": 1, "npm": 0, "web": 0})
+        assert verdict == "NEEDS_REVIEW", (alt, reason)
+        assert "tool budget exhausted" in reason

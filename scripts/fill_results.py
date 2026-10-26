@@ -52,6 +52,28 @@ def _cache_hits(path: Path) -> int:
     return hits
 
 
+def _verdict_answer(path: Path) -> dict[str, str] | None:
+    """The used answer of the last discovery (final-verdict) call in the trace."""
+    found = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if "served_model" not in record or str(record.get("status") or "") in {"error", "rejected"}:
+            continue
+        inp = record.get("input_summary")
+        if isinstance(inp, str):
+            try:
+                inp = json.loads(inp)
+            except json.JSONDecodeError:
+                inp = {"step": "discovery"} if '"step": "discovery"' in inp else {}
+        if isinstance(inp, dict) and inp.get("step") == "discovery":
+            out = str(record.get("output_summary") or "")
+            found = {"served_model": str(record.get("served_model") or ""),
+                     "provider": "nvidia-direct" if '"provider": "nvidia-direct"' in out else "nightshift"}
+    return found
+
+
 def trace_facts(run_id: str | None, logs: Path) -> dict[str, Any]:
     if not run_id:
         return {"found": False}
@@ -64,6 +86,7 @@ def trace_facts(run_id: str | None, logs: Path) -> dict[str, Any]:
         facts["run_hash"] = detail
         facts.update(nemotron_report(path))
         facts["cache_hits"] = _cache_hits(path)
+        facts["verdict_answer"] = _verdict_answer(path)
     else:
         facts["chain_error"] = detail
     return facts
@@ -74,7 +97,7 @@ def collect(report: dict[str, Any], labels: dict[str, Any], logs: Path) -> dict[
     rows = [r for r in report.get("results") or [] if isinstance(r, dict) and r.get("repo_id") in cases]
     per_case = []
     totals = {"traces": 0, "chain_ok": 0, "answers_used": 0, "answers_by_nemotron": 0, "cache_hits": 0,
-              "providers": {}, "not_nemotron": []}
+              "providers": {}, "not_nemotron": [], "verdicts": 0, "verdicts_by_nemotron": 0}
     for row in rows:
         facts = trace_facts(row.get("run_id"), logs)
         if facts.get("found"):
@@ -87,6 +110,10 @@ def collect(report: dict[str, Any], labels: dict[str, Any], logs: Path) -> dict[
             for name, count in facts["providers"].items():
                 totals["providers"][name] = totals["providers"].get(name, 0) + count
             totals["not_nemotron"] += [f"{row['repo_id']} {item}" for item in facts["not_nemotron"]]
+            answer = facts.get("verdict_answer")
+            if answer:
+                totals["verdicts"] += 1
+                totals["verdicts_by_nemotron"] += int(answer["served_model"].startswith("nvidia/nemotron-"))
         infra = not row.get("verdict") or is_infra_review({"verdict": row.get("verdict"), "reason": row.get("reason") or ""})
         acceptable = cases[row["repo_id"]].get("acceptable") or []
         per_case.append({
@@ -118,11 +145,13 @@ def _commit_count() -> str:
 
 def per_case_table(data: dict[str, Any]) -> str:
     lines = [
-        "| Repository | Human label | Verdict | Outcome | Nemotron answers used | Providers | Chain | Reason (shortened) |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Repository | Human label | Verdict | Outcome | Verdict answer by | Nemotron answers used | Providers | Chain | Reason (shortened) |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for case in data["per_case"]:
         t = case["trace"]
+        answer = t.get("verdict_answer") if t.get("chain_ok") else None
+        by = f"`{answer['served_model']}` ({answer['provider']})" if answer else "none"
         if t.get("chain_ok"):
             nemo = f"{t['answers_by_nemotron']} of {t['answers_used']}"
             prov = ", ".join(f"{k} {v}" for k, v in t["providers"].items()) or "none"
@@ -133,7 +162,7 @@ def per_case_table(data: dict[str, Any]) -> str:
             nemo, prov, chain = "TBD", "TBD", "trace not found"
         lines.append(
             f"| `{case['repo_id']}` | {' or '.join(case['acceptable'])} | {case['verdict'] or 'none'} | {case['outcome']} "
-            f"| {nemo} | {prov} | {chain} | {_cell(case['reason'])} |"
+            f"| {by} | {nemo} | {prov} | {chain} | {_cell(case['reason'])} |"
         )
     lines.append("")
     lines.append("Each row's trace is `logs/trace-<run_id>.jsonl` on the author's machine; the chain column is `scripts/verify_trace.py` on that file.")
@@ -149,6 +178,9 @@ def slots(data: dict[str, Any], source: str, readme: bool) -> dict[str, str]:
     traced = f"{t['chain_ok']} of {data['rows']} case traces verified"
     if t["chain_ok"]:
         share = f"**{t['answers_by_nemotron']}** of **{t['answers_used']}** answers used ({traced}, `{source}`)."
+        if t["verdicts"]:
+            share += (f" The final-verdict answer (the `discovery` step) was written by Nemotron in **{t['verdicts_by_nemotron']}** "
+                      f"of the **{t['verdicts']}** cases whose trace has one.")
         if t["not_nemotron"]:
             share += " Not Nemotron: " + "; ".join(t["not_nemotron"]) + "."
         split = ", ".join(f"{name} **{count}**" for name, count in sorted(t["providers"].items()))

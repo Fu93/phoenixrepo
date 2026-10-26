@@ -79,7 +79,7 @@ Commit count after the skeleton, on the final submitted commit: **TBD**. Command
 
 ## (iv) AI-assistance disclosure
 
-- Most of the code was written with AI coding assistance: Cursor cloud coding agents and an AI assistant working under the author's direction. The author (solo entrant) set the design and rules, reviewed and merged the changes, and ran the live checks on a Windows machine.
+- Most of the code was written with AI coding assistance: Cursor cloud coding agents and Claude (Anthropic) working under the author's direction. The author (solo entrant) set the design and rules, reviewed and merged the changes, and ran the live checks on a Windows machine.
 - Gate 1 and gate 2 call models through Meterless Nightshift and record `requested_model` and `served_model` on every LLM trace line. Under `PHOENIX_NEMOTRON_POLICY=fallback-nvidia`, gate 1 sends the same request to NVIDIA's official API after a Nightshift timeout, HTTP 5xx, or non-Nemotron answer, and traces it as provider `nvidia-direct`. Exa and Keenable are keyless web search sources, not AI providers.
 - This draft, the video script, and the HackOS checklist were written with AI assistance and checked against the repository.
 

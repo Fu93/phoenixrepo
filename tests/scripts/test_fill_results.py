@@ -22,7 +22,8 @@ def _trace(logs: Path, run_id: str, providers: list[str], cached: int = 0) -> st
             summary["provider"] = provider
         if i < cached:
             summary["cache_hit"] = True
-        trace.event(agent_name="orchestrator", action="LLM_CALL", input_summary={"repo_id": "x", "step": "problem"},
+        trace.event(agent_name="orchestrator", action="LLM_CALL",
+                    input_summary={"repo_id": "x", "step": "discovery" if i == len(providers) - 1 else "problem"},
                     output_summary=summary, llm={"requested_model": NEMO, "served_model": NEMO})
     return trace.seal()
 
@@ -42,6 +43,8 @@ def test_fill_writes_only_verified_numbers(tmp_path: Path):
     values = fr.slots(data, "logs/eval.json", readme=True)
     assert "**4** of **4** answers used (2 of 3 case traces verified" in values["nemotron-answer-share"]
     assert "nightshift **2**" in values["provider-split"] and "nvidia-direct **2**" in values["provider-split"]
+    assert "Nemotron in **2** of the **2** cases" in values["nemotron-answer-share"]
+    assert f"`{NEMO}` (nvidia-direct)" in values["per-case-table"]
     assert "1 of the used answers were replayed from the LLM cache" in values["provider-split"]
     assert "**CANDIDATE** (agrees with the human label)" in values["calendarsync-final-verdict"]
     assert h1 in values["calendarsync-final-run-hash"] and "--require-nemotron" in values["calendarsync-final-run-hash"]
