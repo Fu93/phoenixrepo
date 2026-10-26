@@ -138,7 +138,7 @@ Target prize: Best use of NVIDIA Nemotron.
 | Requirement | Where it is met |
 | --- | --- |
 | At least one Nemotron model, through Meterless Nightshift | Every gate-1 call requests `nvidia/nemotron-*` from Nightshift first; the provider split below counts the Nightshift answers. The Zetaris-backed run: 21 of its 27 answers came through Nightshift. |
-| In a working feature | The gate-1 judge (problem extraction, every overlap check, the verdict) and gate 2's rescue plan. |
+| In a working feature | The gate-1 judge: problem extraction, every overlap check, and the verdict. (Gate 2's rescue plan is built for the same route; it is listed here only after its first live Nemotron run.) |
 | Shows which model handled the request | `served_model` on every `LLM_CALL` trace line, the served-model table and badge in `/ui`, the evidence report, and `python scripts/verify_trace.py <trace> --require-nemotron`. |
 
 Nemotron is used through Meterless Nightshift, in the working gate-1 judge, and the model that handled each request is shown on every trace line, in `/ui` and in the evidence report. NVIDIA's own API is a fallback for calls Nightshift fails; the provider split below counts both. The same facts are in `metadata.json`.
