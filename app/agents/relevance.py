@@ -21,8 +21,8 @@ import json
 import os
 import re
 import sys
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,6 +78,49 @@ RETRY_DELAYS = (0, 3, 8, 20, 45)
 class RelevanceLLMError(InvestigationError):
     def __init__(self, message: str, *, status_code: int = 502) -> None:
         super().__init__("RelevanceLLMError", message, status_code)
+
+
+class InfraFallbackStop(Exception):
+    """Per-alternative fallback hit repeated infrastructure failures inside its time cap.
+
+    The row is NEEDS_REVIEW. It is not a judgement of the idea, and it is not RESURRECTED.
+    """
+
+
+# One repository must not spend an hour re-judging every alternative after HTTP 502.
+FALLBACK_BUDGET_S = 120.0
+FALLBACK_INFRA_LIMIT = 2
+
+
+class FallbackBudget:
+    """Clock for the per-item fallback of one repository."""
+
+    def __init__(self, seconds: float = FALLBACK_BUDGET_S, clock: Callable[[], float] | None = None) -> None:
+        self.seconds = seconds
+        self.clock = clock or time.monotonic
+        self.started: float | None = None
+        self.failures = 0
+
+    def remaining(self) -> float:
+        if self.started is None:
+            return self.seconds
+        return self.seconds - (self.clock() - self.started)
+
+    def allow(self) -> float:
+        if self.started is None:
+            self.started = self.clock()
+        left = self.remaining()
+        if self.failures >= FALLBACK_INFRA_LIMIT or left <= 1.0:
+            raise InfraFallbackStop(
+                f"infra: HTTP 502 during per-alternative fallback; stopped after {self.failures} "
+                f"infrastructure failure(s) within the {self.seconds:.0f}s cap"
+            )
+        return left
+
+    def note(self, message: str) -> None:
+        low = str(message or "").lower()
+        if any(token in low for token in ("502", "503", "504", "429", "timeout", "timed out", "http 5")):
+            self.failures += 1
 
 
 def extract_json_object(text: str) -> dict[str, Any] | None:
@@ -258,9 +301,11 @@ class RelevanceClient:
         system_prompt: str = "",
         repo_id: str = "",
         step: str = "",
+        call_budget_s: float | None = None,
     ) -> tuple[str, str, str]:
         """Return (response_text, requested_model, served_model)."""
         call_start = time.monotonic()
+        total_cap = self.total_timeout if call_budget_s is None else min(self.total_timeout, max(0.0, call_budget_s))
         prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
         input_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         cache_key = hashlib.sha256(f"{self.model}\n---\n{prompt_hash}\n---\n{input_hash}".encode("utf-8")).hexdigest()
@@ -358,31 +403,46 @@ class RelevanceClient:
         last_exc: Exception | None = None
         for delay in RETRY_DELAYS:
             now = time.monotonic()
-            if now - call_start + delay > self.total_timeout:
+            if now - call_start + delay > total_cap:
                 raise RelevanceLLMError(
-                    f"Nightshift call exceeded total timeout limit of {self.total_timeout}s across retries."
+                    f"Nightshift call exceeded total timeout limit of {total_cap}s across retries."
                 )
             if delay > 0:
                 time.sleep(delay)
 
-            time_left = max(0.01, min(self.wall_clock_timeout, self.total_timeout - (time.monotonic() - call_start)))
+            time_left = max(0.01, min(self.wall_clock_timeout, total_cap - (time.monotonic() - call_start)))
 
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_do_post)
+            # The worker only fills its own box. Cache, requested_model, and served_model are
+            # written on this thread after a successful join, so an abandoned HTTP 502 or a late
+            # 200 cannot overwrite provenance for the call that the fallback cap already gave up on.
+            box: dict[str, Any] = {}
+
+            def run(box: dict[str, Any] = box) -> None:
                 try:
-                    resp = future.result(timeout=time_left)
-                except FutureTimeoutError:
-                    raise RelevanceLLMError(
-                        f"Nightshift request timed out (wall-clock cap of {self.wall_clock_timeout}s exceeded)."
-                    )
-                except httpx.HTTPError as exc:
+                    box["resp"] = _do_post()
+                except Exception as exc:
+                    box["error"] = exc
+
+            worker = threading.Thread(target=run, name="nightshift-relevance", daemon=True)
+            worker.start()
+            worker.join(time_left)
+            if worker.is_alive():
+                raise RelevanceLLMError(
+                    f"Nightshift request timed out (wall-clock cap of {self.wall_clock_timeout}s exceeded)."
+                )
+            if "error" in box:
+                exc = box["error"]
+                if isinstance(exc, httpx.HTTPError):
                     last_exc = RelevanceLLMError(f"Nightshift request failed: {exc}")
                     continue
-                except Exception as exc:
-                    if isinstance(exc, RelevanceLLMError):
-                        raise
-                    last_exc = RelevanceLLMError(str(exc))
-                    continue
+                if isinstance(exc, RelevanceLLMError):
+                    raise
+                last_exc = RelevanceLLMError(str(exc))
+                continue
+            resp = box.get("resp")
+            if resp is None:
+                last_exc = RelevanceLLMError("Nightshift request returned no response.")
+                continue
 
             if resp.status_code == 200:
                 data = resp.json()
@@ -1059,6 +1119,11 @@ def judge_discovery(
         seen_ids[alt_key] = r
         combined_priors.append(r)
 
+    from app.agents.own_identity import build_identity, names_own_identity, own_reason
+
+    identity = build_identity(candidate)
+    combined_priors = [row for row in combined_priors if not own_reason(identity, row)]
+
     # Check multi-source coverage guards
     has_source_error = source_status is not None and any(st == "SOURCE_ERROR" for st in source_status.values())
     zero_results = source_counts is not None and sum(source_counts.values()) == 0 and len(combined_priors) == 0
@@ -1237,6 +1302,14 @@ def judge_discovery(
                 if decision["role"] != "mature_partial":
                     must_beat.append(_must(row, decision))
             verdict = "CANDIDATE"
+    elif raw_verdict == "ALREADY_EXISTS" and names_own_identity(identity, alt_repo or ""):
+        # The model cited this repository's own package, docs, or mirror. That is not a blocker.
+        if problem_quote and quote_in_text(problem_quote, cand_text):
+            verdict = "CANDIDATE"
+            reason = f"ignored own identity {alt_repo}"
+        else:
+            verdict = "NEEDS_REVIEW"
+            reason = f"unverified LLM quote: problem_quote '{problem_quote}' not found in candidate README or description"
     elif raw_verdict == "ALREADY_EXISTS":
         # Check alternative repo matches one in combined_priors
         matched_row = None
@@ -1455,9 +1528,20 @@ def search_prior_art(
     Never uses candidate's own stars or forks anywhere.
     Tracks per-source counts and status.
     """
+    from app.agents.own_identity import build_identity, own_reason
+
     cand_id = str(candidate.get("repo_id") or "").strip()
     cand_name = cand_id.split("/")[-1].casefold() if "/" in cand_id else cand_id.casefold()
     cand_url = str(candidate.get("html_url") or "").strip().casefold().rstrip("/")
+    identity = build_identity(candidate)
+    own_filtered: list[dict[str, str]] = []
+
+    def _own(row: dict[str, Any], why: str) -> None:
+        own_filtered.append({
+            "alternative": str(row.get("alternative_id") or row.get("full_name") or row.get("name") or ""),
+            "url": str(row.get("url") or row.get("html_url") or ""),
+            "reason": why,
+        })
 
     results: list[dict[str, Any]] = []
     seen_ids: set[str] = {cand_id.casefold()}
@@ -1510,6 +1594,7 @@ def search_prior_art(
                         continue
                     fn_lower = full_name.casefold()
                     if fn_lower == cand_id.casefold():
+                        _own(it, "same repository")
                         continue
                     is_fork = bool(it.get("fork")) or bool(it.get("is_fork"))
                     parent_fn = str((it.get("parent") or {}).get("full_name") or "").casefold()
@@ -1517,14 +1602,17 @@ def search_prior_art(
                     it_name = str(it.get("name") or "").casefold()
                     it_desc = str(it.get("description") or "").casefold()
                     if parent_fn == cand_id.casefold() or source_fn == cand_id.casefold():
+                        _own(it, "fork of this repository")
                         continue
                     if is_fork and (it_name == cand_name or f"forked from {cand_id.casefold()}" in it_desc):
+                        _own(it, "fork of this repository")
                         continue
                     if it.get("is_fork_of_candidate"):
+                        _own(it, "fork of this repository")
                         continue
                     lic = it.get("license") or {}
                     spdx = str(lic.get("spdx_id") or "") if isinstance(lic, dict) else str(lic or "")
-                    bucket.append((fn_lower, {
+                    gh_row = {
                         "alternative_id": full_name,
                         "url": str(it.get("html_url") or it.get("url") or f"https://github.com/{full_name}").strip(),
                         "description": str(it.get("description") or "").strip(),
@@ -1534,7 +1622,14 @@ def search_prior_art(
                         "pushed_at": str(it.get("pushed_at") or ""),
                         "source": "github",
                         "query": q,
-                    }))
+                        "fork": is_fork,
+                        "parent": it.get("parent") if isinstance(it.get("parent"), dict) else {},
+                    }
+                    why_own = own_reason(identity, gh_row)
+                    if why_own:
+                        _own(gh_row, why_own)
+                        continue
+                    bucket.append((fn_lower, gh_row))
             elif not gh_res.ok and str(gh_res.error or "") != "BUDGET_EXHAUSTED":
                 # A rate limit (HTTP 403/429), an HTTP error or a network error is a source error,
                 # the same as for npm and web. It used to count only when the message contained
@@ -1549,9 +1644,11 @@ def search_prior_art(
                 for it in (npm_res.data.get("items") or [])[:5]:
                     pkg_name = str(it.get("name") or "").strip()
                     if not pkg_name or pkg_name.casefold() == cand_name:
+                        if pkg_name:
+                            _own({"alternative_id": f"npm:{pkg_name}", "url": it.get("url") or ""}, "own registry package")
                         continue
                     alt_id = f"npm:{pkg_name}"
-                    bucket.append((alt_id.casefold(), {
+                    npm_row = {
                         "alternative_id": alt_id,
                         "url": it.get("url") or f"https://www.npmjs.com/package/{pkg_name}",
                         "description": str(it.get("description") or ""),
@@ -1561,7 +1658,12 @@ def search_prior_art(
                         "pushed_at": "",
                         "source": "npm",
                         "query": q,
-                    }))
+                    }
+                    why_own = own_reason(identity, npm_row)
+                    if why_own:
+                        _own(npm_row, why_own)
+                        continue
+                    bucket.append((alt_id.casefold(), npm_row))
             elif not npm_res.ok:
                 source_status["npm"] = "SOURCE_ERROR"
 
@@ -1577,7 +1679,15 @@ def search_prior_art(
                     if not url:
                         continue
                     url_lower = url.casefold().rstrip("/")
-                    if (cand_url and cand_url in url_lower) or cand_id.casefold() in url_lower:
+                    web_row = {
+                        "alternative_id": f"web:{url}",
+                        "url": url,
+                        "description": f"{title} - {snippet}" if title and snippet else (title or snippet),
+                        "readme": snippet,
+                    }
+                    why = own_reason(identity, web_row)
+                    if (cand_url and cand_url in url_lower) or cand_id.casefold() in url_lower or why:
+                        _own(web_row, why or "own repository URL")
                         continue
                     desc = f"{title} - {snippet}" if title and snippet else (title or snippet)
                     bucket.append((url_lower, {
@@ -1656,12 +1766,14 @@ def search_prior_art(
     else:
         insufficient_coverage = zero_found or has_source_error
 
-    return SearchResultsList(
+    found = SearchResultsList(
         results[:15],
         source_counts=source_counts,
         source_status=source_status,
         insufficient_coverage=insufficient_coverage,
     )
+    found.own_filtered = own_filtered
+    return found
 
 
 def judge_alternative_relevance(
@@ -1670,6 +1782,7 @@ def judge_alternative_relevance(
     search_result: dict[str, Any],
     client: RelevanceClient | None = None,
     trace: Any | None = None,
+    call_budget_s: float | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Judge if a search result solves the same problem as the candidate (step="alternative").
 
@@ -1701,7 +1814,8 @@ def judge_alternative_relevance(
 
     try:
         text, req_m, srv_m = client.complete(
-            user_prompt, prompt_record.text, repo_id=candidate_repo_id, step="alternative"
+            user_prompt, prompt_record.text, repo_id=candidate_repo_id, step="alternative",
+            call_budget_s=call_budget_s,
         )
     except Exception as exc:
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
@@ -1937,6 +2051,39 @@ def _apply_entries(
     return verified, missing
 
 
+def _per_item(
+    problem_statement: dict[str, Any],
+    candidate_repo_id: str,
+    res: dict[str, Any],
+    client: RelevanceClient | None,
+    trace: Any | None,
+    budget: FallbackBudget | None,
+    index: int | None = None,
+) -> dict[str, Any] | None:
+    """Judge one alternative. Repeated HTTP 502 stops the rest of this repository's fallback."""
+    left = budget.allow() if budget is not None else None
+    alt_row, meta = judge_alternative_relevance(
+        problem_statement=problem_statement,
+        candidate_repo_id=candidate_repo_id,
+        search_result=res,
+        client=client,
+        trace=trace,
+        call_budget_s=left,
+    )
+    _trace_llm(
+        trace, "ALTERNATIVE_CALL", candidate_repo_id,
+        str(meta.get("requested_model") or (client.model if client is not None else "")),
+        str(meta.get("served_model") or ""),
+        {"alternative": res.get("alternative_id"), "indexes": [index] if index is not None else None, "reason": meta.get("error") or meta.get("reason")},
+        status="error" if meta.get("error") or meta.get("fallback") else "ok",
+    )
+    if budget is not None and meta.get("error"):
+        budget.note(str(meta.get("error") or ""))
+    if alt_row is not None and alt_row.get("same_problem"):
+        return alt_row
+    return None
+
+
 def judge_alternatives_batch(
     problem_statement: dict[str, Any],
     candidate_repo_id: str,
@@ -1944,6 +2091,7 @@ def judge_alternatives_batch(
     client: RelevanceClient | None = None,
     trace: Any | None = None,
     max_chars_per_item: int = 900,
+    fallback_budget: FallbackBudget | None = None,
 ) -> list[dict[str, Any]] | None:
     """Judge alternatives in one call (step="alternative_batch").
 
@@ -2087,23 +2235,27 @@ def judge_alternatives_batch(
                 more, missing = _apply_entries(follow, missing, candidate_repo_id, problem_statement, trace)
                 verified.extend(more)
         for _i, res, _rtext in missing:
-            alt_row, meta = judge_alternative_relevance(
-                problem_statement=problem_statement,
-                candidate_repo_id=candidate_repo_id,
-                search_result=res,
-                client=client,
-                trace=trace,
+            alt_row = _per_item(
+                problem_statement, candidate_repo_id, res, client, trace, fallback_budget, _i,
             )
-            _trace_llm(
-                trace, "ALTERNATIVE_CALL", candidate_repo_id,
-                str(meta.get("requested_model") or client.model),
-                str(meta.get("served_model") or ""),
-                {"alternative": res.get("alternative_id"), "indexes": [_i], "reason": meta.get("error") or meta.get("reason")},
-                status="error" if meta.get("error") or meta.get("fallback") else "ok",
-            )
-            if alt_row is not None and alt_row.get("same_problem"):
+            if alt_row is not None:
                 verified.append(alt_row)
     return verified
+
+
+def _trace_own(trace: Any | None, repo_id: str, identity: Any, dropped: list[dict[str, str]]) -> None:
+    if trace is None or not dropped:
+        return
+    trace.event(
+        agent_name="orchestrator",
+        action="own_identity",
+        input_summary={"repo_id": repo_id},
+        output_summary={
+            "own_identity": dropped,
+            "identities": identity.as_dict() if hasattr(identity, "as_dict") else {},
+        },
+        status="ok",
+    )
 
 
 def filter_relevant_alternatives(
@@ -2112,36 +2264,43 @@ def filter_relevant_alternatives(
     search_results: list[dict[str, Any]],
     client: RelevanceClient | None = None,
     trace: Any | None = None,
+    candidate: dict[str, Any] | None = None,
+    fallback_budget: FallbackBudget | None = None,
+    clock: Callable[[], float] | None = None,
 ) -> list[dict[str, Any]]:
     """Evaluate candidate search results and return only those with same_problem=true and verified quotes.
 
     Tries one batched LLM call per chunk of ALTERNATIVE_CHUNK_SIZE. A chunk that returns no
     parseable entry falls back to one call per alternative for that chunk only. A chunk that
     parses in part is finished inside judge_alternatives_batch, which retries only the missing items.
+    The per-item fallback shares one time cap per repository. Repeated HTTP 502 raises
+    InfraFallbackStop instead of calling Nightshift for every remaining alternative.
+    The candidate's own package, docs, homepage, fork, and mirror are removed before the call
+    and again from whatever the model returns.
     """
+    from app.agents.own_identity import build_identity, split_own
+
+    rows = list(search_results)
+    identity = build_identity(candidate or {"repo_id": candidate_repo_id})
+    rows, dropped = split_own(identity, rows)
+    _trace_own(trace, candidate_repo_id, identity, dropped)
+    budget = fallback_budget if fallback_budget is not None else FallbackBudget(clock=clock)
     verified_alts: list[dict[str, Any]] = []
-    for start in range(0, len(search_results), ALTERNATIVE_CHUNK_SIZE):
-        chunk = search_results[start:start + ALTERNATIVE_CHUNK_SIZE]
+    for start in range(0, len(rows), ALTERNATIVE_CHUNK_SIZE):
+        if budget.failures >= FALLBACK_INFRA_LIMIT or (budget.started is not None and budget.remaining() <= 1.0):
+            budget.allow()
+        chunk = rows[start:start + ALTERNATIVE_CHUNK_SIZE]
         if len(chunk) > 1:
-            batch = judge_alternatives_batch(problem_statement, candidate_repo_id, chunk, client=client, trace=trace)
+            batch = judge_alternatives_batch(
+                problem_statement, candidate_repo_id, chunk, client=client, trace=trace, fallback_budget=budget,
+            )
             if batch is not None:
                 verified_alts.extend(batch)
                 continue
         for res in chunk:
-            alt_row, meta = judge_alternative_relevance(
-                problem_statement=problem_statement,
-                candidate_repo_id=candidate_repo_id,
-                search_result=res,
-                client=client,
-                trace=trace,
-            )
-            _trace_llm(
-                trace, "ALTERNATIVE_CALL", candidate_repo_id,
-                str(meta.get("requested_model") or ""),
-                str(meta.get("served_model") or ""),
-                {"alternative": res.get("alternative_id"), "reason": meta.get("error") or meta.get("reason")},
-                status="error" if meta.get("error") or meta.get("fallback") else "ok",
-            )
-            if alt_row is not None and alt_row.get("same_problem"):
+            alt_row = _per_item(problem_statement, candidate_repo_id, res, client, trace, budget)
+            if alt_row is not None:
                 verified_alts.append(alt_row)
+    verified_alts, dropped_after = split_own(identity, verified_alts)
+    _trace_own(trace, candidate_repo_id, identity, dropped_after)
     return verified_alts
