@@ -187,7 +187,18 @@ def _summary_fields(record: dict[str, Any]) -> dict[str, Any]:
         fields["cache_hit"] = True
     if '"reasoning": "' in text:
         fields["reasoning"] = "(truncated)"
+    m = re.search(r'"fallback_reason": "([^"]*)"', text)
+    if m:
+        fields["routing"] = {"fallback_reason": m.group(1)}
     return fields
+
+
+def _reason_label(reason: str) -> str:
+    """'nightshift HTTP 502' -> 'HTTP 502'; 'nightshift served x' -> 'non-Nemotron answer'."""
+    r = reason.strip()
+    if r.startswith("nightshift served"):
+        return "non-Nemotron answer"
+    return r.replace("nightshift ", "", 1) or "unknown"
 
 
 def nemotron_evidence(data: dict[str, Any]) -> str:
@@ -195,7 +206,8 @@ def nemotron_evidence(data: dict[str, Any]) -> str:
     tiers: dict[str, dict[str, int]] = {}
     reasoning_kept = deep_used = 0
     seconds: dict[str, list[float]] = {}
-    nightshift_failed = direct_used = direct_failed = 0
+    nightshift_error = nightshift_rejected = direct_used = direct_failed = direct_rejected = 0
+    reasons: dict[str, int] = {}
     for case in data["per_case"]:
         t = case["trace"]
         if not t.get("chain_ok"):
@@ -211,11 +223,15 @@ def nemotron_evidence(data: dict[str, Any]) -> str:
             status = str(record.get("status") or "")
             if status == "error":
                 if provider == "nightshift":
-                    nightshift_failed += 1
+                    nightshift_error += 1
                 else:
                     direct_failed += 1
                 continue
             if status == "rejected":
+                if provider == "nightshift":
+                    nightshift_rejected += 1
+                else:
+                    direct_rejected += 1
                 continue
             model = str(record.get("served_model") or "(missing)")
             tier = str(fields.get("tier") or "single")
@@ -225,6 +241,9 @@ def nemotron_evidence(data: dict[str, Any]) -> str:
                 reasoning_kept += int(bool(fields.get("reasoning")))
             if provider == "nvidia-direct":
                 direct_used += 1
+                routing = fields.get("routing") if isinstance(fields.get("routing"), dict) else {}
+                label = _reason_label(str(routing.get("fallback_reason") or ""))
+                reasons[label] = reasons.get(label, 0) + 1
             if not fields.get("cache_hit") and isinstance(fields.get("elapsed_s"), (int, float)):
                 seconds.setdefault(model, []).append(float(fields["elapsed_s"]))
     if not tiers:
@@ -240,9 +259,12 @@ def nemotron_evidence(data: dict[str, Any]) -> str:
     lost = sum(1 for c in data["per_case"] if c["outcome"] == "not judged")
     lines += [
         "",
-        f"Final-verdict (deep tier) answers with Nemotron's reasoning kept in the trace: **{reasoning_kept}** of **{deep_used}**. "
-        f"Nightshift calls that failed (timeout, HTTP 5xx or non-Nemotron answer): **{nightshift_failed}**; "
-        f"answers then written by NVIDIA's API (`nvidia-direct`): **{direct_used}**; failed `nvidia-direct` calls: **{direct_failed}**. "
+        f"Final-verdict (deep tier) answers that carried a separate reasoning field or `<think>` block: **{reasoning_kept}** of **{deep_used}**. "
+        f"Calls sent to NVIDIA's API after Nightshift failed or served a non-Nemotron answer: **{direct_used + direct_failed + direct_rejected}** "
+        f"(answered **{direct_used}**, failed **{direct_failed}**, rejected **{direct_rejected}**)"
+        + (f"; the recorded reason on the answered ones: {', '.join(f'{k} {v}' for k, v in sorted(reasons.items(), key=lambda kv: -kv[1]))}" if reasons else "")
+        + f". Nightshift answers discarded as non-Nemotron: **{nightshift_rejected}**; other Nightshift errors traced: **{nightshift_error}**. "
+        "A Nightshift failure that was retried on Nightshift itself writes no trace line, so the failure counts are lower bounds. "
         f"Cases left not judged on this run: **{lost}** of **{len(data['per_case'])}**. Cached answers are counted as used but not timed.",
     ]
     return "\n".join(lines)
@@ -367,7 +389,8 @@ def main(argv: list[str] | None = None) -> int:
         values = slots(data, source, readme=target.name == "README.md")
         if args.write:
             text, done = apply(target.read_text(encoding="utf-8"), values)
-            target.write_text(text, encoding="utf-8")
+            with open(target, "w", encoding="utf-8", newline="\n") as handle:  # LF on Windows too
+                handle.write(text)
             print(f"{target.relative_to(ROOT)}: wrote {', '.join(done) or 'nothing'}")
         else:
             print(f"===== {target.relative_to(ROOT)}")

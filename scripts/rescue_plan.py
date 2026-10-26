@@ -27,6 +27,12 @@ from app.rescue_plan import build_plan, render_markdown, repo_tree, to_json  # n
 from app.trace_log import HackathonTrace  # noqa: E402
 
 
+def _write_lf(path: Path, text: str) -> None:
+    """LF line endings on every platform, so a file written on Windows diffs cleanly in git."""
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+
+
 def candidate_rows(data: dict, repo: str | None) -> list[dict]:
     rows = [r for r in (data.get("candidates") or []) if isinstance(r, dict) and r.get("verdict") == "CANDIDATE"]
     if repo:
@@ -86,8 +92,8 @@ def main(argv: list[str] | None = None) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     md = args.out / f"{slug}.rescue.md"
     js = args.out / f"{slug}.rescue.json"
-    md.write_text(render_markdown(plan, run_id=run_id, run_hash=run_hash), encoding="utf-8")
-    js.write_text(to_json({**plan, "run_id": run_id, "run_hash": run_hash}), encoding="utf-8")
+    _write_lf(md, render_markdown(plan, run_id=run_id, run_hash=run_hash))
+    _write_lf(js, to_json({**plan, "run_id": run_id, "run_hash": run_hash}))
     counts = ", ".join(f"{s['stage']} {len(s['items'])}" for s in plan["stages"])
     print(f"{repo_id}: drafted by {plan['drafted_by']}" + (f" ({plan['served_model']})" if plan["served_model"] else ""))
     print(f"items: {counts}; dropped by the check: {len(plan['rejected_items'])}; gate 2 can verify: {plan['organised']['status']}")

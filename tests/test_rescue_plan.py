@@ -50,6 +50,8 @@ def _answer() -> dict:
                 {"title": "Fake claim", "why": "x", "acceptance": "x", "evidence": ["candidate:DSRegoitia/CalendarSyncProject"], "quote": "10,000 users rely on it"},
             ]},
             {"stage": "UPGRADE", "items": [
+                {"title": "Publish to a package registry", "why": "x", "acceptance": "x",
+                 "evidence": ["candidate:DSRegoitia/CalendarSyncProject"], "quote": "Runs as a small Node service."},
                 {"title": "Two-way sync", "why": "the gap", "acceptance": "an edit in Google Calendar shows on the page",
                  "evidence": ["must_beat:fullcalendar/fullcalendar"], "quote": "FullCalendar can display events from a public Google Calendar."},
             ]},
@@ -69,6 +71,7 @@ def test_model_plan_keeps_only_verified_items_and_adds_the_test_item(tmp_path: P
     assert stages["OPTIMISE"] == [] and [i["title"] for i in stages["UPGRADE"]] == ["Two-way sync"]
     reasons = {r["title"]: r["reason"] for r in plan["rejected_items"]}
     assert "unknown evidence" in reasons["Invented item"] and "not found verbatim" in reasons["Fake claim"]
+    assert "no must-beat gap" in reasons["Publish to a package registry"]
     assert plan["organised"]["status"] == "needs_test_command"
     path = tmp_path / "trace-rescue-t.jsonl"
     assert verify(path)[0]
