@@ -2,7 +2,7 @@
 
 Solo entry, team PhoenixRepo. Repository: `Fu93/phoenixrepo`. Deadline: **27 Oct 2026 23:45 UTC**. Plan: first version submitted by **12:00 UTC**, final by **21:00 UTC**. Video: 1 to 4 minutes. The shot list is cut for 3:00 in `docs/VIDEO_SCRIPT.md`. The HackOS clicks are in `docs/HACKOS_CHECKLIST.md`. Everything submitted is in English.
 
-Rules for this draft: a measured number is copied from the live eval file named below. Anything that file does not yet contain is a `<!-- TODO(numbers): ... -->` marker plus the visible word **TBD**. This draft does not claim that an AI-written patch has fixed a real repository. It does not claim that all 16 evaluation repositories went through Zetaris.
+Rules for this draft: a measured number is written by `scripts/fill_results.py` from the live eval file named below. Anything that file does not yet contain is a numbers slot showing the visible word **TBD**. This draft does not claim that an AI-written patch has fixed a real repository. It does not claim that all 16 evaluation repositories went through Zetaris.
 
 Rubric: Impact 30, Technical 20, Innovation 15, Demo 15, Product & UX 10, Sponsor 10. Separate in-kind prize: Best use of NVIDIA Nemotron.
 
@@ -11,14 +11,14 @@ Rubric: Impact 30, Technical 20, Innovation 15, Demo 15, Product & UX 10, Sponso
 The scored table is one live run. Produce it on the machine that holds the Nightshift token:
 
 ```bash
-PYTHONPATH=. python scripts/eval_summary.py logs/eval-nemotron-v2.json --markdown
+python scripts/fill_results.py logs/eval-nemotron-v3.json --write
 ```
 
 A live run on one machine, not a stored accuracy.
 
-<!-- TODO(numbers): eval-summary-table -->
-
-**TBD.** Paste that command's stdout here verbatim, including its Source line, and paste the same block into the Results section of `README.md`.
+<!-- BEGIN numbers: eval-summary-table -->
+**TBD.**
+<!-- END numbers: eval-summary-table -->
 
 What is already fixed in the repository, with no live count attached:
 
@@ -29,21 +29,21 @@ What is already fixed in the repository, with no live count attached:
 - Gate 1 can read its evidence from Zetaris (`EVIDENCE_SOURCE=zetaris`). In this submission Zetaris was exercised live, read-only, on the 2 repositories in `data/real`: `tharani-2006/Invoice-generator-application` and `SergioMendolia/ytkb`. `scripts/zetaris_check.py` loads their evidence rows and seals a trace; it calls no model and writes no verdict. The 16 evaluation repositories were fetched live with `evidence_source=csv`. `scripts/zetaris_check.py` sends read-only `SELECT`s and the trace carries a run hash.
 - `DSRegoitia/CalendarSyncProject` was rejected by the older Phoenix because FullCalendar "displays public Google Calendar events". The human label calls that a WRONG over-rejection: the candidate pushes events the other way. The acceptable set is `CANDIDATE` or `NEEDS_REVIEW`. Two independent runs, with different generated queries, returned `CANDIDATE` and `NEEDS_REVIEW`. `NEEDS_REVIEW` on this case is a partial overlap with a verbatim quote handed to a human.
 
-<!-- TODO(numbers): nemotron-answer-share -->
-
+<!-- BEGIN numbers: nemotron-answer-share -->
 Answers by NVIDIA Nemotron on the scored run: **TBD** of **TBD**.
+<!-- END numbers: nemotron-answer-share -->
 
-<!-- TODO(numbers): provider-split -->
-
+<!-- BEGIN numbers: provider-split -->
 Provider split, Nightshift answers used / `nvidia-direct` answers used (`verify_trace.py --require-nemotron`): **TBD** / **TBD**. Every `nvidia-direct` call was served by `nvidia/nemotron-3-ultra-550b-a55b`, because the API answered 404 for the 120B Super model on this account.
+<!-- END numbers: provider-split -->
 
-<!-- TODO(numbers): calendarsync-final-verdict -->
-
+<!-- BEGIN numbers: calendarsync-final-verdict -->
 CalendarSyncProject verdict on the recorded run: **TBD**.
+<!-- END numbers: calendarsync-final-verdict -->
 
-<!-- TODO(numbers): calendarsync-final-run-hash -->
-
+<!-- BEGIN numbers: calendarsync-final-run-hash -->
 CalendarSyncProject run hash: **TBD**.
+<!-- END numbers: calendarsync-final-run-hash -->
 
 The 25 Oct 2026 batch of 30 repositories, described in the README under Current status, is an earlier run. It is not this table.
 
@@ -73,9 +73,9 @@ Limits: no AI-written patch has fixed a real repository yet, and the code was wr
 - **Contents:** the FastAPI process, the Docker image, the evidence graph and pack, the integrity hash, the state machine with the three terminal names, the audit trail, secret redaction, and `FoundationOrchestrator`, which stops at `EVIDENCE_COMPLETE` with `decision: null` and calls no model.
 - **Build window:** 22 to 27 Oct 2026. Everything after `62a1540` was built in it: the Zetaris REST client and gate-1 Zetaris evidence; the Meterless Runtime provider; H-MEM and Markovian; the roles and validator; gate 1 (`scripts/judge_repo.py`, `scripts/score_candidates.py`, `app/agents/relevance.py`, multi-source prior-art search); the two Nemotron tiers and `fallback-nvidia`; the batch and rerun tools; gate 2 (`app/revive_loop.py`, `app/revive_verify.py`, `scripts/revive.py`); the evidence report, trace renderer, and `/ui` replay page; the tests and this README.
 
-<!-- TODO(numbers): build-window-commit-count -->
-
+<!-- BEGIN numbers: build-window-commit-count -->
 Commit count after the skeleton, on the final submitted commit: **TBD**. Command: `git rev-list --count 62a1540..main`. Paste that integer here when `main` is the commit you submit. Do not reuse a count from an earlier commit.
+<!-- END numbers: build-window-commit-count -->
 
 ## (iv) AI-assistance disclosure
 
@@ -89,10 +89,10 @@ See `docs/RUNBOOK_WINDOWS.md` for the Windows commands. Pull requests #17, #18, 
 
 - [ ] On the Windows machine: run `scripts/nightshift_probe.py`. Put the printed `MODEL_NAME`, `MODEL_NAME_DEEP`, and `PHOENIX_LLM_*` lines into `.env`. Set `PHOENIX_NEMOTRON_POLICY=fallback-nvidia` and `NVIDIA_API_KEY` for the prize run.
 - [ ] `python scripts/zetaris_check.py --snapshot data/real` with Zetaris running. Read-only. Keep the printed run hash. The command covers the snapshot's discovery rows, which are the two repositories named above, not the 16 evaluation repositories.
-- [ ] Live eval, resumable: `python scripts/eval_gate1.py --audit-only --deadline 7200 --out logs/eval-nemotron-v2.json`. Then the summary command at the top of this file.
+- [ ] Live eval, one commit for all 16 cases, new file (no `--resume` from a run of older code): `python scripts/eval_gate1.py --audit-only --deadline <seconds to 08:00 UTC> --out logs/eval-nemotron-v3.json`. If it is cut short, continue with `--resume logs/eval-nemotron-v3.json` on the same commit.
 - [ ] Optional, with Zetaris running and nothing else judging: `python scripts/score_candidates.py --snapshot data/real --llm --output-json logs/zetaris-gate1.json --output-md logs/zetaris-gate1.md`. Its verdicts are the only gate-1 verdicts that read Zetaris; fill `zetaris-gate1-run` in the README from it, or delete that paragraph.
 - [ ] For each scored trace: `python scripts/verify_trace.py logs/trace-<run_id>.jsonl --require-nemotron`. Its `nemotron:` line is the provider split.
-- [ ] Paste the summary into `README.md` Results and into the table slot above. Fill `nemotron-answer-share`, `provider-split`, `calendarsync-final-verdict`, and `calendarsync-final-run-hash` from those files. Leave **TBD** where the file has no such number.
+- [ ] `python scripts/fill_results.py logs/eval-nemotron-v3.json --write` and commit. Check the printed warnings: a missing or failing trace stays TBD.
 - [ ] Optional: `python scripts/import_replay.py` for one real trace so `/ui` can show RECORDED. Until that import, say SAMPLE on camera.
 - [ ] **12:00 UTC 27 Oct: submit the first version** (Track 02, description, repository link, declarations). The video may follow.
 - [ ] Record `docs/VIDEO_SCRIPT.md`. Check that no token or `.env` is visible, and that the Zetaris sentence names only the two `data/real` repositories.

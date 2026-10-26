@@ -60,7 +60,10 @@ def test_readme_results_and_why_nemotron():
     assert "## Results" in README
     assert "## Why Nemotron" in README
     assert "Best use of NVIDIA Nemotron" in README
-    assert "scripts/eval_summary.py logs/eval-nemotron-v2.json --markdown" in README
+    assert "scripts/fill_results.py logs/eval-nemotron-v3.json --write" in README
+    for slot in ("eval-summary-table", "per-case-table", "nemotron-answer-share", "provider-split",
+                 "calendarsync-final-verdict", "calendarsync-final-run-hash", "zetaris-gate1-run"):
+        assert f"<!-- BEGIN numbers: {slot} -->" in README and f"<!-- END numbers: {slot} -->" in README, slot
     assert "A live run on one machine, not a stored accuracy." in README
     for needle in ("nvidia-direct", "PHOENIX_NEMOTRON_POLICY", "MODEL_NAME_DEEP", "--require-nemotron",
                    "nvidia/nemotron-3-ultra-550b-a55b", "BUDGET_EXHAUSTED` can never produce `CANDIDATE`"):

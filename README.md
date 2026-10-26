@@ -18,9 +18,9 @@ No install at all: **https://fu93.github.io/phoenixrepo/** is the same page as a
 
 ```mermaid
 flowchart LR
-  A[GitHub repository] --> B[Zetaris SQL views<br/>stored candidate, prior art, demand<br/>query id + content hash]
+  A[GitHub repository] --> B[Zetaris SQL views, when EVIDENCE_SOURCE=zetaris<br/>stored candidate, prior art, demand<br/>query id + content hash]
   A --> C[Live prior-art search<br/>GitHub, npm, web, vendor docs]
-  B --> D[Nemotron via Meterless Nightshift<br/>fast tier: overlap judgements<br/>deep tier: verdict with reasoning]
+  B --> D[NVIDIA Nemotron: Meterless Nightshift first,<br/>NVIDIA API when Nightshift fails<br/>fast tier: overlap judgements<br/>deep tier: verdict with reasoning]
   C --> D
   D --> E{Deterministic checks<br/>quote found verbatim?<br/>alternative maintained, mature, same job?}
   E -->|blocked| F[ALREADY_EXISTS / NO_GO]
@@ -34,7 +34,7 @@ Three rules carry the design:
 
 1. **The model proposes, the code verifies.** A refusal needs a quote that appears verbatim in the alternative's own text and an alternative that passes the maturity checks. Nemotron's reasoning is shown next to the verdict as its account; it never decides on its own.
 2. **A failure is never "no competition".** A search error, a Nightshift 502, an expired token or a stopped Zetaris gives `NEEDS_REVIEW` or `UNJUDGED`, never `CANDIDATE`. Gate 2 cannot run without a `CANDIDATE`.
-3. **Every claim can be checked.** Each step is a line in a hash-chained trace with the model requested and the model that actually answered; `scripts/verify_trace.py` fails if one character changes.
+3. **Every claim can be checked.** Each step is a line in a hash-chained trace with the model requested and the model that actually answered; `scripts/verify_trace.py` fails if one character changes, and with `--require-nemotron` also fails unless every answer used was Nemotron's.
 
 ## Sponsor technology
 
@@ -60,29 +60,30 @@ The honest limits are in [Limits](#limits). This README then documents the curre
 
 ## Results
 
-The scored numbers for this submission are one live gate-1 run. They are filled by pasting the command below. An earlier 30-repository batch, dated 25 Oct 2026, stays under [Current status of the two gates](#current-status-of-the-two-gates-25-oct-2026). That batch is a different run.
-
-<!-- TODO(numbers): eval-summary-table -->
-
-**TBD.** Paste the table here verbatim, including its Source line. Do not retype the cells.
+The scored numbers are one live gate-1 run of the 16 audited cases in `data/eval/gate1_labels.json`, all judged by the same commit. `scripts/fill_results.py` writes every number in this section and the next from that run's report and its trace files, so no cell is retyped. An earlier 30-repository batch, dated 25 Oct 2026, stays under [Current status of the two gates](#current-status-of-the-two-gates-25-oct-2026); it is a different run.
 
 ```bash
-PYTHONPATH=. python scripts/eval_summary.py logs/eval-nemotron-v2.json --markdown
+python scripts/eval_summary.py logs/eval-nemotron-v3.json --markdown
+python scripts/fill_results.py logs/eval-nemotron-v3.json --write
 ```
 
-A live run on one machine, not a stored accuracy.
+A live run on one machine, not a stored accuracy. "False pass" here means the case was not refused automatically; on this run every such case went to `NEEDS_REVIEW` for a person, unless the per-case table says otherwise.
 
-```text
-PASTE eval_summary --markdown OUTPUT HERE
-```
+<!-- BEGIN numbers: eval-summary-table -->
+**TBD.**
+<!-- END numbers: eval-summary-table -->
+
+<!-- BEGIN numbers: per-case-table -->
+**TBD.**
+<!-- END numbers: per-case-table -->
 
 ### Zetaris scope
 
 Gate 1 can read its evidence from Zetaris (`EVIDENCE_SOURCE=zetaris`). In this submission Zetaris was exercised live, read-only, on the 2 repositories in `data/real`: `tharani-2006/Invoice-generator-application` and `SergioMendolia/ytkb`. `scripts/zetaris_check.py` loads their evidence rows and seals a trace; it calls no model and writes no verdict.
 
-<!-- TODO(numbers): zetaris-gate1-run -->
-
+<!-- BEGIN numbers: zetaris-gate1-run -->
 Gate-1 verdicts on those 2 repositories with evidence read from Zetaris: **TBD** (`python scripts/score_candidates.py --snapshot data/real --llm` with Zetaris running; paste the verdicts and the run hash, or delete this paragraph if that run was not made).
+<!-- END numbers: zetaris-gate1-run -->
 
 The 16 evaluation repositories are the audit cases in `data/eval/gate1_labels.json`, the set `scripts/eval_gate1.py --audit-only` judges. Those 16 were fetched live from the GitHub API by `scripts/judge_repo.py`, and each verdict records `evidence_source=csv`. A single repository fetched live is not a row in the curated `phoenix.*` views, so that command does not ask Zetaris for it. This submission does not claim that all 16 went through Zetaris.
 
@@ -96,13 +97,13 @@ The current gate 1 returns `CANDIDATE` or `NEEDS_REVIEW` for this repository. Bo
 
 The run recorded for the submission is still open.
 
-<!-- TODO(numbers): calendarsync-final-verdict -->
-
+<!-- BEGIN numbers: calendarsync-final-verdict -->
 Final verdict on the recorded run: **TBD** (`CANDIDATE` or `NEEDS_REVIEW`).
+<!-- END numbers: calendarsync-final-verdict -->
 
-<!-- TODO(numbers): calendarsync-final-run-hash -->
-
+<!-- BEGIN numbers: calendarsync-final-run-hash -->
 Final run hash (`RUN_SEAL` `line_hash`, the value `scripts/verify_trace.py --expected-run-hash` checks): **TBD**.
+<!-- END numbers: calendarsync-final-run-hash -->
 
 ### What a passing verdict is allowed to mean
 
@@ -139,13 +140,13 @@ python scripts/verify_trace.py logs/trace-<run_id>.jsonl --require-nemotron
 
 `/ui` shows an "N of M answers by NVIDIA Nemotron" badge, built from `answers_by_nemotron` and `answers_used`. The verdict card includes a Nemotron reasoning card: the heading is "Nemotron's reasoning" when the used final-verdict answer is in the Nemotron family, and the page says that text is the model's account. The verdict still stands only when its quotes are found verbatim and the alternative passes the maturity checks.
 
-<!-- TODO(numbers): nemotron-answer-share -->
-
+<!-- BEGIN numbers: nemotron-answer-share -->
 Answers by NVIDIA Nemotron on the scored run: **TBD** of **TBD**. The same share is the Nemotron row of the table in [Results](#results).
+<!-- END numbers: nemotron-answer-share -->
 
-<!-- TODO(numbers): provider-split -->
-
+<!-- BEGIN numbers: provider-split -->
 Provider split on that run, Nightshift answers used / `nvidia-direct` answers used, as printed by `verify_trace.py --require-nemotron`: **TBD** / **TBD**.
+<!-- END numbers: provider-split -->
 
 The same page, with no install, is the static demo at <https://fu93.github.io/phoenixrepo/>. Replays shipped in this repository stay labelled SAMPLE until `scripts/import_replay.py` copies a real trace byte for byte and labels it RECORDED.
 
@@ -237,7 +238,10 @@ python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scor
 
 ## Limits
 
-- **Nightshift is slow and 502-prone.** A call can take from a few seconds to several minutes and can return HTTP 502, so a repository can come back `UNJUDGED` and need a rerun. Nightshift may serve a different model than the one requested. Each trace records `requested_model` and `served_model`. On the author's machine on 26 Oct 2026, requests for `nvidia/nemotron-3-super-120b-a12b` were served by `gemini-3.1-flash-lite`, so those lines carry `MODEL_MISMATCH`; no committed trace yet shows a Nemotron serve. `scripts/nightshift_probe.py` (PR #17) measures which ids and request settings this Nightshift actually serves with Nemotron.
+- **Nightshift is slow and 502-prone.** A call can take from a few seconds to several minutes and can return HTTP 502. On 26 Oct 2026, 8 of the first 14 calls of an evaluation run returned 502 and were answered by NVIDIA's API instead (`PHOENIX_NEMOTRON_POLICY=fallback-nvidia`, traced as `nvidia-direct`); the per-case table in [Results](#results) gives the split for the scored run. Nightshift chooses which Nemotron size answers, and every `nvidia-direct` answer came from `nvidia/nemotron-3-ultra-550b-a55b`, because the API answered 404 for the 120B Super model on this account. Earlier, before `scripts/nightshift_probe.py`, Nightshift served `gemini-3.1-flash-lite` for Nemotron requests; those lines carry `MODEL_MISMATCH` and the current policies never use such an answer.
+- **The search plan comes from the model, so a verdict can move between runs.** Problem extraction writes the search queries. Two runs of CalendarSyncProject searched different queries and returned `CANDIDATE` and `NEEDS_REVIEW`; both are inside the human label. Answers are cached by prompt and input, so a rerun on the same machine replays the same plan. A query set that misses a competitor is a recall gap: in a 26 Oct 2026 run the search for ScrapeServ did not find Gotenberg, the blocker the human audit names.
+- **A commercial web page does not refuse on its own.** A web result has no stars, so it blocks only as a first-party vendor page with a verified quote, or with explicit official or commercial facts. A commercial product found by web search (for example IFTTT's Raindrop.io to WordPress applet) therefore goes to `NEEDS_REVIEW` rather than `ALREADY_EXISTS`. This is deliberate: in the over-refusal audit, vendor listicles and category pages were the commonest wrong blockers.
+- **Zetaris was exercised on 2 repositories, not on the scored 16.** See [Zetaris scope](#zetaris-scope).
 - **An alternative blocks only when it is the same job, maintained, mature or official, and reachable on the same terms.** A verified quote is still required. A first-party vendor docs or feature page is official without stars or a push date. A stale, tiny, generic, or different-form-factor page is kept as "must beat" context and the verdict continues. The alternatives budget scales with the number of chunks and is spent only by failed calls. The rescue-potential score is stored on every row and does not turn a refusal into a candidate.
 - **The revive loop is verified locally only.** `RESURRECTED` from the loop means the repository's own test command exited 0 on one machine. It is not confirmed on CI, and tests that pass are not proof that the product works.
 - **No AI-written patch has yet fixed a real repository.** The local trials in `reports/` (not committed) were: two `NEEDS_REVIEW` (no test command), one `NOTHING_TO_FIX`, and one `RESURRECTION_FAILED` after 4 patch iterations (`package.json` edits only). These trials ran with a manually supplied gate-1 verdict of `NEEDS_REVIEW`, which the current code no longer lets proceed. They were environment cases or had no tests. The loop's behaviour is demonstrated; a successful AI-written revival is not.

@@ -303,6 +303,7 @@ def evaluate(
             "answers_used": int(result.get("answers_used") or 0),
             "answers_by_nemotron": int(result.get("answers_by_nemotron") or 0),
             "run_id": result.get("run_id"),
+            "run_hash": result.get("run_hash"),
         })
         models = report["models"]
         models["answers_used"] += int(result.get("answers_used") or 0)
