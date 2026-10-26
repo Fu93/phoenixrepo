@@ -120,6 +120,8 @@ A blocker needs a verified verbatim quote plus a mature or official alternative.
 
 Target prize: Best use of NVIDIA Nemotron.
 
+Nemotron is used through Meterless Nightshift, in the working gate-1 judge, and the model that handled each request is shown on every trace line, in `/ui` and in the evidence report. NVIDIA's own API is a fallback for calls Nightshift fails; the provider split below counts both. The same facts are in `metadata.json`.
+
 Track 02 asks for an agent that can explain why. Gate 1 keeps Nemotron's reasoning in the trace next to the verbatim quote it rests on, and Nemotron 3 is an open model family, so the judgement can be checked and rerun outside any one vendor's service.
 
 Gate 1 asks NVIDIA Nemotron in two requested tiers. Nightshift is tried first. The served id on each trace line is the id that actually answered.

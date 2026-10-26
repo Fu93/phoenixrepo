@@ -83,6 +83,16 @@ Commit count after the skeleton, on the final submitted commit: **TBD**. Command
 - Gate 1 and gate 2 call models through Meterless Nightshift and record `requested_model` and `served_model` on every LLM trace line. Under `PHOENIX_NEMOTRON_POLICY=fallback-nvidia`, gate 1 sends the same request to NVIDIA's official API after a Nightshift timeout, HTTP 5xx, or non-Nemotron answer, and traces it as provider `nvidia-direct`. Exa and Keenable are keyless web search sources, not AI providers.
 - This draft, the video script, and the HackOS checklist were written with AI assistance and checked against the repository.
 
+## (vi) Sponsor technology explanation (HackOS form)
+
+**Meterless Nightshift (Runtime).** The model route for gate 1 and gate 2, tried first on every call (OpenAI-compatible chat with `meterless-app` and `meterless-scope` headers). Each `LLM_CALL` trace line stores the requested model, the model Nightshift served, latency and Nightshift's routing detail, inside the hash chain. `scripts/nightshift_probe.py` measures which Nemotron ids and settings Nightshift actually serves.
+
+**NVIDIA Nemotron through Nightshift.** Problem extraction, every overlap check and the final verdict are Nemotron answers in two tiers: a fast model for the many short checks and a reasoning model for the verdict, whose reasoning is kept next to the quote it must agree with. `PHOENIX_NEMOTRON_POLICY=fallback-nvidia` sends a call to NVIDIA's API only when Nightshift fails, and traces it as `nvidia-direct`. Proof: `python scripts/verify_trace.py <trace> --require-nemotron`; measured share and provider split in the README.
+
+**Meterless Engines: H-MEM and Markovian.** Implemented from the published specs in `app/engines/`, used by the evidence-policy track (`POST /run`), not by gate 1. H-MEM stores evidence claims and verdicts, recalls them into the judge step, promotes verdicts to long-term memory and supersedes without deleting. Markovian runs the investigation as a chunk loop with a bounded carryover (1200 characters, 24 chunks). Tests: `tests/engines/test_hmem_conformance.py` (store, ranking formula, promotion, decay, supersede-without-delete) and `tests/engines/test_markovian.py`, run in CI on every pull request. They are project tests modelled on the spec; the official TypeScript conformance suite was not run.
+
+**Zetaris.** Gate 1 reads its evidence views over the REST SQL contract with `EVIDENCE_SOURCE=zetaris`; each statement is a trace line with its SQL, `query_id` and `content_hash`, and a read-only preflight stops the run if Zetaris does not answer. Exercised live on the 2 `data/real` repositories (evidence load, and one gate-1 run); the 16 scored repositories used `evidence_source=csv`.
+
 ## (v) Remaining steps, in order
 
 See `docs/RUNBOOK_WINDOWS.md` for the Windows commands. Pull requests #17, #18, and the Nemotron, `/ui`, and eval-summary work through #24 are already on `main`.
