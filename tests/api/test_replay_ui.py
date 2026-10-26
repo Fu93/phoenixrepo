@@ -308,3 +308,23 @@ def test_dockerfile_copies_the_ui_and_replays():
     text = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "app/ui" in text
     assert "data/replays" in text
+
+
+def test_import_replay_refuses_a_trace_that_contains_a_secret(tmp_path, monkeypatch):
+    from app.trace_log import HackathonTrace
+    from scripts.import_replay import ImportError as ReplayImportError
+    from scripts.import_replay import import_replay
+
+    monkeypatch.setenv("GITHUB_TOKEN", "plain-secret-value-123")
+    # A trace written by older code (before script traces redacted) can hold the raw value.
+    trace = HackathonTrace("old-1", log_dir=tmp_path)
+    trace.event(agent_name="toolbox", action="TOOL_CALL", output_summary="header plain-secret-value-123", status="ok")
+    trace.seal()
+    verdict_path = tmp_path / "scores.json"
+    verdict_path.write_text(json.dumps({"repo_id": "acme/widget", "verdict": "ALREADY_EXISTS"}), encoding="utf-8")
+    replays = tmp_path / "replays"
+    replays.mkdir()
+    (replays / "manifest.json").write_text(json.dumps({"replays": [], "missing": []}), encoding="utf-8")
+    with pytest.raises(ReplayImportError, match="credential"):
+        import_replay(trace.path, verdict_path, replays_root=replays)
+    assert not (replays / "acme-widget").exists()

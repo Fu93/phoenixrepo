@@ -190,3 +190,42 @@ def test_main_exits_without_rewriting_when_nightshift_is_not_configured(tmp_path
     assert rr.main() == 2
     assert not out_json.exists()
     assert not out_md.exists()
+
+
+def test_rerun_deadline_stops_starting_repos_and_keeps_their_old_rows():
+    scores = {
+        "candidates": [],
+        "ineligible": [
+            {"repo_id": "b/u", "verdict": "UNJUDGED", "reason": "HTTP 502"},
+            {"repo_id": "c/u", "verdict": "UNJUDGED", "reason": "HTTP 502"},
+            {"repo_id": "d/u", "verdict": "UNJUDGED", "reason": "HTTP 502"},
+        ],
+    }
+    now = {"t": 0.0}
+    called: list[str] = []
+
+    def runner(repo_id: str) -> dict:
+        called.append(repo_id)
+        now["t"] += 700.0  # one slow Nightshift repository
+        return {"candidates": [], "ineligible": [{"repo_id": repo_id, "verdict": "NO_GO", "reason": "toy"}]}
+
+    out = rr.rerun(scores, source="s", runner=runner, sleep=lambda _s: None, backoff_s=0, max_attempts=3, deadline_s=1000, clock=lambda: now["t"])
+    assert called == ["b/u", "c/u"]
+    assert out["rerun"]["not_started"] == ["d/u"]
+    verdicts = {row["repo_id"]: row["verdict"] for row in out["ineligible"]}
+    assert verdicts == {"b/u": "NO_GO", "c/u": "NO_GO", "d/u": "UNJUDGED"}
+
+
+def test_rerun_only_limits_the_repos():
+    scores = {"candidates": [], "ineligible": [
+        {"repo_id": "b/u", "verdict": "UNJUDGED", "reason": "HTTP 502"},
+        {"repo_id": "c/u", "verdict": "UNJUDGED", "reason": "HTTP 502"},
+    ]}
+    called: list[str] = []
+
+    def runner(repo_id: str) -> dict:
+        called.append(repo_id)
+        return {"candidates": [], "ineligible": [{"repo_id": repo_id, "verdict": "NO_GO", "reason": "toy"}]}
+
+    rr.rerun(scores, source="s", runner=runner, sleep=lambda _s: None, only=["c/u"])
+    assert called == ["c/u"]

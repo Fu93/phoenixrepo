@@ -63,6 +63,11 @@ def import_replay(
     if not _ID.match(chosen_id):
         raise ImportError(f"replay id {chosen_id!r} is not a safe catalog id")
     trace_text = trace.read_text(encoding="utf-8")
+    leak = secret_in_trace(trace_text)
+    if leak:
+        # The bytes are copied unchanged so the chain still verifies; a secret cannot be
+        # redacted here without breaking it. Refuse instead of committing it.
+        raise ImportError(f"trace contains {leak}; it was not imported. Re-run the judgement with the current code, which redacts it.")
     record = _record(chosen_id, row, data, verdict, trace_text)
     directory = root / chosen_id
     directory.mkdir(parents=True, exist_ok=True)
@@ -81,6 +86,19 @@ def import_replay(
     }
     _upsert_manifest(root, entry)
     return entry
+
+
+def secret_in_trace(text: str) -> str:
+    """Name what would leak if this trace were committed, or "" when nothing does."""
+    from app.trace_log import _TOKEN_PATTERNS
+    from config.settings import trace_secrets
+
+    if _TOKEN_PATTERNS.search(text):
+        return "a token-shaped string (GitHub, NVIDIA, Anthropic or xAI key format)"
+    for value in trace_secrets():
+        if len(value) >= 8 and value in text:
+            return "a credential from this machine's environment or .env"
+    return ""
 
 
 def _rows(data: Any) -> list[dict[str, Any]]:
