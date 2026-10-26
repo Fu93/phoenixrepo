@@ -144,16 +144,22 @@ def test_prd_fallback_is_recorded_and_a_second_attempt_can_succeed(tmp_path):
     baseline = _result("npm test --silent", 1, "AssertionError expected 2")
     client = _Client([{"problem": "too thin"}, {"problem": "still thin"}])
     drafted = prd.draft_prd(client, tmp_path, "o/r", "demo", baseline)
-    assert drafted["degraded"] is True
-    assert "acceptance_criteria" in drafted["degraded_reason"] or "missing" in drafted["degraded_reason"]
-    assert prd.validate_prd({k: v for k, v in drafted.items() if k not in {"degraded", "degraded_reason"}}, tmp_path) == []
+    assert drafted.get("degraded") is not True
+    assert drafted["drafted_by"] == "deterministic"
+    assert drafted["label"] == "deterministic PRD"
+    assert "missing" in drafted["fallback_reason"]
+    assert prd.validate_prd(drafted, tmp_path) == []
     assert len(client.prompts) == 2
     assert "PRD attempt 2" in client.prompts[1][1]
     assert "Adds numbers." in client.prompts[0][1]
     assert "src.js" in client.prompts[0][1]
     assert "AssertionError expected 2" in client.prompts[0][1]
+    assert "=== " not in client.prompts[0][1]
+    assert len(client.prompts[0][1].encode("utf-8")) <= prd.PROMPT_BUDGET_BYTES
     markdown = prd.render_prd_markdown(drafted)
-    assert "DEGRADED PRD" in markdown
+    assert "deterministic PRD" in markdown
+    assert "without a model call" in markdown
+    assert "DEGRADED PRD" not in markdown
 
     recovered = _prd(["src.js"])
     recovered["original_intent"] = 'The README says "Adds numbers."'
@@ -163,12 +169,14 @@ def test_prd_fallback_is_recorded_and_a_second_attempt_can_succeed(tmp_path):
     assert drafted["problem"] == recovered["problem"]
 
 
-def test_failed_llm_call_degrades_the_prd_and_cannot_pass(tmp_path):
+def test_failed_llm_call_uses_a_deterministic_prd_and_cannot_pass(tmp_path):
     repo = _node_repo(tmp_path)
     res = rl.revive(repo, _Client([], raises=True), _Trace(), "o/r", runner=_passing_after_fix(repo))
     assert res.state == "RESURRECTION_FAILED"
-    assert res.prd["degraded"] is True
-    assert "llm call failed" in res.prd["degraded_reason"]
+    assert res.prd.get("degraded") is not True
+    assert res.prd["drafted_by"] == "deterministic"
+    assert res.prd["label"] == "deterministic PRD"
+    assert "llm call failed" in res.prd["fallback_reason"]
 
 
 def _passing_after_fix(repo: Path):

@@ -200,6 +200,7 @@ def run_job(args: argparse.Namespace, job: dict, index: int) -> int:
         deadline_s=args.deadline,
         step_timeout_s=args.step_timeout,
         commit_each_item=True,
+        run_dir=ROOT / "reports" / rid,
     )
     if result.files_changed:
         try:

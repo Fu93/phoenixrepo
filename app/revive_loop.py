@@ -33,6 +33,10 @@ MAX_OUTPUT_CHARS = 6_000
 MAX_ITEM_ATTEMPTS = 3
 MAX_ITEMS_PER_KIND = 4
 MAX_FILES_PER_ITEM = 5
+REPAIR_FILE_CHARS = 1_200
+REPAIR_FILE_LIMIT = 4
+REPAIR_PROMPT_BYTES = 8_000
+REVIEW_DIFF_CHARS = 2_000
 NPM_FAST_FLAGS = "--prefer-offline --no-audit --no-fund"
 SUMMARY_CHECKS = ("tests", "lint", "types", "build", "audit")
 HUMAN_GATE_VERDICTS = frozenset({"NEEDS_REVIEW", "NEEDS_PRIOR_ART"})
@@ -597,6 +601,125 @@ def _files_block(files: dict[str, str]) -> str:
     return "\n\n".join(f"=== {name} ===\n{body}" for name, body in files.items())
 
 
+def _excerpt_text(text: str, limit: int) -> str:
+    """Head and tail of a long string so a marker buried in the middle is not sent."""
+    if len(text) <= limit:
+        return text
+    marker = "\n...[middle omitted]...\n"
+    keep = limit - len(marker)
+    if keep < 2:
+        return text[:limit]
+    head = keep // 2
+    return text[:head] + marker + text[-(keep - head):]
+
+
+def _fit_bytes(prompt: str, limit: int) -> str:
+    raw = prompt.encode("utf-8")
+    if len(raw) <= limit:
+        return prompt
+    return raw[:limit].decode("utf-8", errors="ignore")
+
+
+def _prd_brief(prd: dict[str, Any] | None) -> str:
+    if not isinstance(prd, dict):
+        return "(none)"
+    items: list[str] = []
+    for key in ("upgrade_items", "work_items"):
+        for item in (prd.get(key) or [])[:4]:
+            if isinstance(item, dict) and item.get("id"):
+                items.append(str(item.get("id")))
+    brief = {
+        "diagnosis": str(prd.get("diagnosis") or "")[:500],
+        "original_intent": str(prd.get("original_intent") or "")[:240],
+        "items": items[:4],
+    }
+    return json.dumps(brief, ensure_ascii=False)
+
+
+def _excerpt_files(files: dict[str, str], only: list[str] | None = None, limit: int = REPAIR_FILE_CHARS) -> dict[str, str]:
+    if only is None:
+        chosen = list(files.items())[:REPAIR_FILE_LIMIT]
+    else:
+        chosen = []
+        for name in only[:REPAIR_FILE_LIMIT]:
+            if name in files:
+                chosen.append((name, files[name]))
+    return {name: _excerpt_text(body, limit) for name, body in chosen}
+
+
+def _is_plan(obj: Any) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    names = obj.get("files")
+    if not isinstance(names, list) or not any(isinstance(name, str) and name.strip() for name in names):
+        return False
+    edits = obj.get("edits")
+    return not isinstance(edits, list) or not edits
+
+
+def _repair_prompt(
+    repo_id: str,
+    iteration: int | str,
+    prd: dict[str, Any] | None,
+    last: CmdResult,
+    files: dict[str, str],
+    history: list[str],
+    note: str,
+    errors: list[str],
+    *,
+    only: list[str] | None = None,
+    ask: str,
+) -> str:
+    quoted = ""
+    if errors:
+        quoted = "Validation errors from the previous attempt:\n" + "\n".join(f"- {error}" for error in errors) + "\n\n"
+    recent = "\n".join(entry[:400] for entry in history[-3:]) or "(none)"
+    head = (
+        f"Repository: {repo_id}. Iteration {iteration}.\n"
+        f"{_excerpt_text(note, 1500)}\n\n"
+        f"{quoted}"
+        f"PRD brief: {_prd_brief(prd)}\n\n"
+        f"Earlier attempts that did not make the checks pass:\n{recent}\n\n"
+        f"Test command: {last.cmd}\nExit code: {last.code}\nOutput (tail):\n{tail(last.output, 1500)}\n\n"
+    )
+    ask_block = f"\n\n{ask}"
+    file_limit = REPAIR_FILE_CHARS
+    prompt = head + ask_block
+    while True:
+        shown = _excerpt_files(files, only, file_limit)
+        files_block = f"Files:\n{_files_block(shown) if shown else '(none)'}"
+        prompt = head + files_block + ask_block
+        if len(prompt.encode("utf-8")) <= REPAIR_PROMPT_BYTES or file_limit <= 240:
+            break
+        file_limit = max(240, file_limit // 2)
+    if len(prompt.encode("utf-8")) > REPAIR_PROMPT_BYTES:
+        budget = REPAIR_PROMPT_BYTES - len((head + ask_block).encode("utf-8"))
+        if budget < 32:
+            prompt = _fit_bytes(head + ask_block, REPAIR_PROMPT_BYTES)
+        else:
+            prompt = head + _fit_bytes(files_block, budget) + ask_block
+    return prompt
+
+
+def _complete_patch(client: Any, prompt: str, repo_id: str, step: str, allow_plan: bool) -> tuple[Any, list[str]]:
+    captured: list[str] = []
+
+    def valid(obj: dict[str, Any]) -> bool:
+        captured.clear()
+        if allow_plan and _is_plan(obj):
+            return True
+        captured.extend(_patch_errors(obj))
+        return not captured
+
+    try:
+        obj, *_ = client.complete_json(prompt, BUILDER_SYSTEM, repo_id=repo_id, step=step, attempts=1, validate=valid)
+    except Exception:  # noqa: BLE001 — a failed call must not become a pass
+        return None, ["model returned no usable patch"]
+    if isinstance(obj, dict) and not captured:
+        return obj, []
+    return None, captured or ["model returned no usable patch"]
+
+
 def _patch_errors(obj: Any) -> list[str]:
     if not isinstance(obj, dict) or not isinstance(obj.get("edits"), list) or not obj["edits"]:
         return ["edits must be a non-empty list"]
@@ -616,40 +739,46 @@ def propose_patch(
     history: list[str],
     note: str = "",
 ) -> dict[str, Any] | None:
-    """Ask for one patch. A shape or file-cap rejection is quoted back once; there is no third call."""
+    """Ask for one patch. A valid patch returns immediately. A plan of file names gets one edits call.
+
+    A shape or file-cap rejection is quoted back once. There is no third call.
+    """
     errors: list[str] = []
     step = f"revive_patch_{iteration}"
-    for attempt in (1, 2):
-        quoted = ""
-        if errors:
-            quoted = "Validation errors from the previous attempt:\n" + "\n".join(f"- {error}" for error in errors) + "\n\n"
-        prompt = (
-            f"Repository: {repo_id}. Iteration {iteration}.\n"
-            f"PRD: {json.dumps(prd, ensure_ascii=False) if prd else '(none)'}\n\n"
-            f"Earlier attempts that did not make the checks pass:\n{chr(10).join(history) or '(none)'}\n\n"
-            f"{note}\n\n"
-            f"{quoted}"
-            f"Test command: {last.cmd}\nExit code: {last.code}\nOutput (tail):\n{tail(last.output)}\n\n"
-            f"Files:\n{_files_block(files)}\n\n"
-            'Reply with {"rationale": str, "edits": [{"path": str, "find": str, "replace": str}]}. '
-            '"find" must be an exact substring that occurs exactly once in that file. To create a new file use {"path": str, "content": str}. '
-            f"At most {MAX_FILES_PER_ITEM} files. Do not touch tests."
-        )
-        captured: list[str] = []
-
-        def valid(obj: dict[str, Any]) -> bool:
-            captured.clear()
-            captured.extend(_patch_errors(obj))
-            return not captured
-
-        obj: Any = None
-        try:
-            obj, *_ = client.complete_json(prompt, BUILDER_SYSTEM, repo_id=repo_id, step=step, attempts=1, validate=valid)
-        except Exception:  # noqa: BLE001 — a failed call must not become a pass
-            captured = ["model returned no usable patch"]
-            obj = None
-        if obj is not None and not captured:
+    ask = (
+        'Reply with {"rationale": str, "edits": [{"path": str, "find": str, "replace": str}]}. '
+        '"find" must be an exact substring that occurs exactly once in that file. To create a new file use {"path": str, "content": str}. '
+        f"At most {MAX_FILES_PER_ITEM} files. Do not touch tests. "
+        'Or reply with {"rationale": str, "files": [str]} naming at most 4 files, and the edits will be requested next.'
+    )
+    for _attempt in (1, 2):
+        prompt = _repair_prompt(repo_id, iteration, prd, last, files, history, note, errors, ask=ask)
+        obj, captured = _complete_patch(client, prompt, repo_id, step, allow_plan=True)
+        if isinstance(obj, dict) and not _patch_errors(obj):
             return obj
+        if _is_plan(obj):
+            names = [str(name) for name in obj.get("files") if isinstance(name, str) and str(name).strip()]
+            edit_ask = (
+                "The previous reply named files and did not include edits. "
+                'Reply with {"rationale": str, "edits": [{"path": str, "find": str, "replace": str}]} '
+                "for only those files."
+            )
+            edit_prompt = _repair_prompt(
+                repo_id,
+                iteration,
+                prd,
+                last,
+                files,
+                history,
+                note,
+                [],
+                only=names,
+                ask=edit_ask,
+            )
+            edit_obj, _edit_errors = _complete_patch(client, edit_prompt, repo_id, f"{step}_edits", allow_plan=False)
+            if isinstance(edit_obj, dict) and not _patch_errors(edit_obj):
+                return edit_obj
+            return None
         errors = captured or ["model returned no usable patch"]
     return None
 
@@ -1013,6 +1142,40 @@ def is_infra_failure(exc: BaseException) -> bool:
     return "HTTP 502" in text or "status code 502" in text
 
 
+class CallMeter:
+    """Record prompt size and elapsed time for every model call, including a failed one.
+
+    The prompt text stays out of the trace. Only the step name, the byte size, and the seconds are kept.
+    """
+
+    def __init__(self, inner: Any, trace: Any):
+        self.inner = inner
+        self.trace = trace
+
+    def complete_json(self, *args: Any, **kwargs: Any):
+        prompt = args[0] if args else kwargs.get("prompt", "")
+        size = len(str(prompt).encode("utf-8"))
+        started = time.monotonic()
+        status = "failed"
+        try:
+            result = self.inner.complete_json(*args, **kwargs)
+            status = "ok"
+            return result
+        finally:
+            if self.trace is not None:
+                self.trace.event(
+                    agent_name="architect",
+                    action="REVIVE_MODEL_CALL",
+                    input_summary=str(kwargs.get("step") or ""),
+                    output_summary={
+                        "step": str(kwargs.get("step") or ""),
+                        "prompt_bytes": size,
+                        "elapsed_s": round(time.monotonic() - started, 3),
+                    },
+                    status=status,
+                )
+
+
 class InfraRetry:
     """Retry one model call on HTTP 502, then record an infrastructure failure."""
 
@@ -1134,6 +1297,7 @@ def revive(
     infra_backoff: tuple[float, ...] = INFRA_BACKOFF,
     step_timeout_s: int | None = None,
     commit_each_item: bool = False,
+    run_dir: Path | None = None,
 ) -> ReviveResult:
     approval = normalize_human_approval(human_approval, verdict=gate_verdict, reason=gate_reason)
     if not revival_allowed(gate_verdict, approval):
@@ -1174,7 +1338,7 @@ def revive(
     watch = HeartbeatWatch(trace, heartbeat_s)
     watch.start()
     infra: list[dict[str, Any]] = []
-    client = InfraRetry(client, trace, infra, backoff=infra_backoff)
+    client = InfraRetry(CallMeter(client, trace), trace, infra, backoff=infra_backoff)
     started = time.monotonic()
     deadline_at = started + float(deadline_s)
     stopped = {"phase": ""}
@@ -1370,11 +1534,24 @@ def revive(
             return result
         if time.monotonic() >= deadline_at:
             stopped["phase"] = stopped["phase"] or "baseline"
-        prd = draft_prd(client, repo, repo_id, description, baseline) if not stopped["phase"] else minimal_prd(repo, repo_id, baseline, "deadline reached before the model was called")
+        prd = (
+            draft_prd(
+                client,
+                repo,
+                repo_id,
+                description,
+                baseline,
+                runner=_run,
+                run_dir=run_dir,
+                timeout=min(20, int(test_timeout or 20)),
+            )
+            if not stopped["phase"]
+            else minimal_prd(repo, repo_id, baseline, "deadline reached before the model was called")
+        )
     trace.event(
         agent_name="architect",
         action="REVIVE_PRD",
-        input_summary={"repo": repo_id, "degraded": bool(prd.get("degraded"))},
+        input_summary={"repo": repo_id, "degraded": bool(prd.get("degraded")), "drafted_by": prd.get("drafted_by") or "model"},
         output_summary=prd,
         status="degraded" if prd.get("degraded") else "ok",
         summary_limit=20000,
@@ -1850,20 +2027,23 @@ def _quality_table(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _review(client: Any, repo_id: str, prd: dict[str, Any], diff: str, before_checks: list[dict[str, Any]], after_checks: list[dict[str, Any]]) -> dict[str, Any]:
-    prompt = (
-        f"Repository: {repo_id}. Review iteration 1.\n"
-        "You may only add issues. Approving cannot override a failed deterministic check.\n"
-        "Environment-caused test failures are not code defects. A missing platform package "
-        "(@rollup/*, @swc/*, @esbuild/*, @parcel/watcher), ENOENT of a tool, or a network error "
-        "is an environment failure, not a defect in the patch.\n"
-        f"PRD: {json.dumps(prd, ensure_ascii=False)}\n\n"
-        f"Diff:\n{diff}\n\n"
-        f"Quality before: {json.dumps(_quality_table(before_checks), ensure_ascii=False)}\n"
-        f"Quality after: {json.dumps(_quality_table(after_checks), ensure_ascii=False)}\n\n"
-        "Each issue must name a concrete file or one of these check ids: "
-        + ", ".join(qg.CHECK_IDS)
-        + ". Issues that do not are dropped.\n"
-        'Reply with {"approve": bool, "issues": [{"id": str, "detail": str}]}.'
+    prompt = _fit_bytes(
+        (
+            f"Repository: {repo_id}. Review iteration 1.\n"
+            "You may only add issues. Approving cannot override a failed deterministic check.\n"
+            "Environment-caused test failures are not code defects. A missing platform package "
+            "(@rollup/*, @swc/*, @esbuild/*, @parcel/watcher), ENOENT of a tool, or a network error "
+            "is an environment failure, not a defect in the patch.\n"
+            f"PRD brief: {_prd_brief(prd)}\n\n"
+            f"Diff:\n{_excerpt_text(diff or '', REVIEW_DIFF_CHARS)}\n\n"
+            f"Quality before: {json.dumps(_quality_table(before_checks), ensure_ascii=False)}\n"
+            f"Quality after: {json.dumps(_quality_table(after_checks), ensure_ascii=False)}\n\n"
+            "Each issue must name a concrete file or one of these check ids: "
+            + ", ".join(qg.CHECK_IDS)
+            + ". Issues that do not are dropped.\n"
+            'Reply with {"approve": bool, "issues": [{"id": str, "detail": str}]}.'
+        ),
+        REPAIR_PROMPT_BYTES,
     )
 
     def valid(obj: dict[str, Any]) -> bool:

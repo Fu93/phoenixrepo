@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app.quality_gate import detect_build_commands, detect_smoke
-from app.revive_prd import readme_text
+from app.revive_prd import README_EXCERPT_BYTES, clip_text, readme_text
 
 SYNTH_DIR = "phoenix_synthesized"
 SYNTH_FILE = "phoenix_synthesized/intent_checks.py"
@@ -437,6 +437,10 @@ def verify_intent_tests(
     }
 
 
+def _intent_plan(obj: Any) -> bool:
+    return isinstance(obj, dict) and bool(str(obj.get("entry_module") or "").strip()) and bool(str(obj.get("entry_point") or "").strip()) and not obj.get("tests")
+
+
 def _ask_proposal(client: Any, repo: Path, repo_id: str, readme: str, errors: list[str], attempt: int) -> tuple[dict[str, Any] | None, list[str]]:
     modules = python_modules(repo)
     catalog = []
@@ -445,9 +449,10 @@ def _ask_proposal(client: Any, repo: Path, repo_id: str, readme: str, errors: li
     quoted = ""
     if errors:
         quoted = "Validation errors from the previous attempt:\n" + "\n".join(f"- {error}" for error in errors) + "\n\n"
+    excerpt = clip_text(readme, README_EXCERPT_BYTES)
     prompt = (
         f"Repository: {repo_id}\n\n"
-        f"README:\n{readme[:6000]}\n\n"
+        f"README:\n{excerpt}\n\n"
         f"Public modules:\n" + "\n".join(catalog) + "\n\n"
         f"{quoted}"
         "Write intent tests for the README's stated purpose. "
@@ -455,12 +460,16 @@ def _ask_proposal(client: Any, repo: Path, repo_id: str, readme: str, errors: li
         '"tests": [{"name": str, "readme_sentence": str, "source": str}]}. '
         "readme_sentence must be copied from the README and must appear in the test source. "
         "The test must import the module and assert the result of calling the real entry point. "
-        "Leave pass_reason empty unless the behavior already matches the README."
+        "Leave pass_reason empty unless the behavior already matches the README. "
+        "Do not include module source. "
+        'Or reply with {"entry_module": str, "entry_point": str} and the tests will be requested next.'
     )
     captured: list[str] = []
 
     def validate(obj: dict[str, Any]) -> bool:
         captured.clear()
+        if _intent_plan(obj):
+            return True
         captured.extend(proposal_errors(obj, repo, readme))
         return not captured
 
@@ -469,12 +478,42 @@ def _ask_proposal(client: Any, repo: Path, repo_id: str, readme: str, errors: li
         obj, *_ = client.complete_json(prompt, INTENT_SYSTEM, repo_id=repo_id, step=f"revive_intent_{attempt}", attempts=1, validate=validate)
     except Exception as exc:  # noqa: BLE001 — a failed call must not become a pass
         return None, [f"llm call failed: {type(exc).__name__}"]
-    if isinstance(obj, dict):
-        proposal_problems = proposal_errors(obj, repo, readme)
-        if not proposal_problems:
-            return obj, []
-        return None, proposal_problems
-    return None, captured or ["model returned no JSON object"]
+    if isinstance(obj, dict) and not proposal_errors(obj, repo, readme):
+        return obj, []
+    if not _intent_plan(obj):
+        return None, captured or ["model returned no JSON object"]
+    module = str(obj.get("entry_module") or "")
+    entry = str(obj.get("entry_point") or "")
+    follow = (
+        f"Repository: {repo_id}\n\n"
+        f"README:\n{excerpt}\n\n"
+        f"Entry module: {module}\nEntry point: {entry}\n\n"
+        "Write the intent tests for that entry point. "
+        'Reply with {"entry_module": str, "entry_point": str, "pass_reason": str, '
+        '"tests": [{"name": str, "readme_sentence": str, "source": str}]}. '
+        "Do not include the module source."
+    )
+    follow_captured: list[str] = []
+
+    def validate_tests(payload: dict[str, Any]) -> bool:
+        follow_captured.clear()
+        follow_captured.extend(proposal_errors(payload, repo, readme))
+        return not follow_captured
+
+    try:
+        follow_obj, *_ = client.complete_json(
+            follow,
+            INTENT_SYSTEM,
+            repo_id=repo_id,
+            step=f"revive_intent_{attempt}_tests",
+            attempts=1,
+            validate=validate_tests,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return None, [f"llm call failed: {type(exc).__name__}"]
+    if isinstance(follow_obj, dict) and not proposal_errors(follow_obj, repo, readme):
+        return follow_obj, []
+    return None, follow_captured or ["model returned no JSON object"]
 
 
 def _write_suite(repo: Path, tests: list[dict[str, Any]]) -> str:

@@ -1,11 +1,15 @@
 """Structured revival PRD.
 
-The model drafts from the repository's own README, manifest, file tree, and baseline output.
-Validation is deterministic. A failed draft is retried once, then replaced with a minimal PRD.
-The fallback is recorded on the PRD itself so the degradation is never silent.
+The model sees a short prompt: a README excerpt, the file tree, the baseline tail, and the
+outdated-dependency list. It does not receive file contents. Diagnosis, work items, and
+acceptance commands are separate calls. Each accepted piece is stored in the run directory
+and reused. When the model is down, a deterministic PRD is built from the baseline and the
+outdated list.
 """
 from __future__ import annotations
 
+import copy
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -14,6 +18,10 @@ from app.quality_gate import CHECK_IDS, render_evidence_html
 
 MAX_FILE_BYTES = 12_000
 TREE_LIMIT = 80
+README_EXCERPT_BYTES = 6_000
+BASELINE_TAIL_CHARS = 1_500
+TREE_PROMPT_LIMIT = 60
+PROMPT_BUDGET_BYTES = 12_000
 PRD_SYSTEM = (
     "You are the architect of a repository revival. Use only the files, file tree, and command output you are given. "
     "Do not invent packages, versions, or paths. Reply with one strict JSON object and nothing else."
@@ -341,82 +349,544 @@ def minimal_prd(repo: Path, repo_id: str, baseline: Any, reason: str) -> dict[st
     return prd
 
 
-def _prompt(repo_id: str, description: str, baseline: Any, files: dict[str, str], tree: list[str], attempt: int, errors: list[str]) -> str:
+def clip_text(text: str, limit: int = README_EXCERPT_BYTES) -> str:
+    """Keep at most `limit` bytes. A cut never splits a prompt instruction that follows it."""
+    raw = (text or "").encode("utf-8")
+    if len(raw) <= limit:
+        return text or ""
+    return raw[:limit].decode("utf-8", errors="ignore")
+
+
+def readme_excerpt(repo: Path, description: str = "", limit: int = README_EXCERPT_BYTES) -> str:
+    """At most `limit` bytes of the README or description. No other file body is included."""
+    text = readme_text(repo).strip() or (description or "").strip()
+    if not text:
+        return "(none)"
+    return clip_text(text, limit)
+
+
+def _baseline_tail(baseline: Any) -> str:
     from app.revive_loop import tail
 
-    file_block = "\n\n".join(f"=== {name} ===\n{body}" for name, body in files.items())
-    error_block = "\n".join(f"- {error}" for error in errors) if errors else "(none)"
-    output = tail(str(getattr(baseline, "output", "") or ""))
+    return tail(str(getattr(baseline, "output", "") or ""), BASELINE_TAIL_CHARS)
+
+
+def _outdated_block(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return "(none)"
+    lines = []
+    for item in items[:8]:
+        lines.append(f"{item.get('package')} {item.get('from_version') or '?'} -> {item.get('version')}")
+    return "\n".join(lines)
+
+
+def load_outdated(repo: Path, runner: Any, timeout: int = 20) -> list[dict[str, Any]]:
+    """Minor and patch upgrades the ecosystem already reported. No model, no invented versions."""
+    if runner is None:
+        return []
+    try:
+        from app.revive_loop import deterministic_upgrade_items
+
+        return list(deterministic_upgrade_items(repo, runner, max(5, min(20, int(timeout or 20)))))
+    except Exception:  # noqa: BLE001 — a missing outdated list is not a verdict
+        return []
+
+
+def _shared_context(repo: Path, repo_id: str, description: str, baseline: Any, outdated: list[dict[str, Any]]) -> str:
+    tree = file_tree(repo, limit=TREE_PROMPT_LIMIT)
     return (
-        f"Repository: {repo_id}\nDescription: {description or '(none)'}\n"
-        f"PRD attempt {attempt} of 2.\n\n"
+        f"Repository: {repo_id}\n"
+        f"README excerpt:\n{readme_excerpt(repo, description)}\n\n"
         f"File tree:\n" + "\n".join(tree) + "\n\n"
         f"Baseline command: {getattr(baseline, 'cmd', '')}\nExit code: {getattr(baseline, 'code', '')}\n"
-        f"Output (tail):\n{output}\n\n"
-        f"Files:\n{file_block or '(none)'}\n\n"
-        f"Validation errors from the previous attempt:\n{error_block}\n\n"
-        "Write a revival PRD. Schema: "
-        '{"original_intent": str, "diagnosis": str, "problem": str, "target_user": str, "scope": [str], "non_goals": [str], '
-        '"work_items": [{"id": str, "kind": str, "title": str, "acceptance_command": str, "expected": str, "files": [str], "package": str, "api": str}], '
-        '"upgrade_items": [{"id": str, "package": str, "version": str, "reason": str, "acceptance_command": str, "expected": str}], '
-        '"refactor_items": [{"id": str, "title": str, "files": [str], "reason": str, "acceptance_command": str, "expected": str}], '
-        '"docs_items": [{"id": str, "title": str, "files": [str], "acceptance_command": str, "expected": str}], '
-        '"acceptance_criteria": [{"id": str, "statement": str, "check_id": str}], "risks": [str]}. '
-        "original_intent must quote the README or description. "
-        "diagnosis must cite the baseline output, a broken script, an outdated or vulnerable dependency, or a deprecated API. Do not restate the README. "
-        "Every work item, upgrade, refactor, and docs item needs acceptance_command and a measurable expected result. "
-        "Cite only packages, APIs, and paths that appear in the files above. "
-        "scope and refactor files must be real paths from the tree. "
-        "Each upgrade item needs a concrete package and a target version. "
-        "A major upgrade also needs a reason. "
-        "At most 4 upgrade_items and 4 refactor_items. "
-        "acceptance_criteria needs at least 3 items. Each statement must be measurable "
-        "(include a number, an exit code, or an explicit pass/fail bound) and check_id must be one of "
-        + ", ".join(CHECK_IDS)
-        + ". Do not invent features."
+        f"Output (tail):\n{_baseline_tail(baseline)}\n\n"
+        f"Outdated dependencies:\n{_outdated_block(outdated)}\n"
     )
 
 
-def draft_prd(client: Any, repo: Path, repo_id: str, description: str, baseline: Any) -> dict[str, Any]:
-    """Draft a PRD. Always returns a dict. Sets degraded when the model draft could not be used."""
-    files = supporting_files(repo)
-    tree = file_tree(repo)
+def _fit(body: str, tail: str) -> str:
+    """Cap the shared context and always keep the piece instructions that follow it."""
+    reserve = len(tail.encode("utf-8"))
+    return clip_text(body, max(0, PROMPT_BUDGET_BYTES - reserve)) + tail
+
+
+def _error_block(errors: list[str]) -> str:
+    return "\n".join(f"- {error}" for error in errors) if errors else "(none)"
+
+
+def _is_infra(exc: BaseException) -> bool:
+    if getattr(exc, "status_code", None) == 502:
+        return True
+    text = str(exc)
+    return "HTTP 502" in text or "status code 502" in text
+
+
+def _piece_path(run_dir: Path | None, name: str) -> Path | None:
+    if run_dir is None:
+        return None
+    return Path(run_dir) / f"{name}.json"
+
+
+def load_piece(run_dir: Path | None, name: str) -> dict[str, Any] | None:
+    path = _piece_path(run_dir, name)
+    if path is None or not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def save_piece(run_dir: Path | None, name: str, payload: dict[str, Any]) -> None:
+    path = _piece_path(run_dir, name)
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _call_piece(client: Any, prompt: str, repo_id: str, step: str, accept) -> tuple[Any, list[str], bool]:
+    """One model call. A 502 is already retried by the client wrapper; do not treat it as a bad draft."""
+    captured: list[str] = []
+
+    def validate(obj: dict[str, Any]) -> bool:
+        captured.clear()
+        captured.extend(accept(obj))
+        return not captured
+
+    try:
+        obj, *_ = client.complete_json(prompt, PRD_SYSTEM, repo_id=repo_id, step=step, attempts=1, validate=validate)
+    except Exception as exc:  # noqa: BLE001 — a failed call must not become a pass
+        return None, [f"llm call failed: {type(exc).__name__}"], _is_infra(exc)
+    if isinstance(obj, dict) and not captured:
+        return obj, [], False
+    return None, captured or ["model returned no JSON object"], False
+
+
+def _diagnosis_prompt(context: str, attempt: int, errors: list[str]) -> str:
+    tail = (
+        f"\nPRD attempt {attempt} of 2. Piece: diagnosis.\n"
+        f"Validation errors from the previous attempt:\n{_error_block(errors)}\n\n"
+        "Reply with only this JSON object: "
+        '{"original_intent": str, "diagnosis": str, "problem": str, "target_user": str}. '
+        "original_intent must quote the README excerpt. "
+        "diagnosis must cite the baseline output or the outdated list and must not restate the README. "
+        "Do not include file contents."
+    )
+    return _fit(context, tail)
+
+
+def _work_prompt(context: str, diagnosis: dict[str, Any], attempt: int, errors: list[str]) -> str:
+    brief = json.dumps({key: diagnosis.get(key) for key in ("problem", "diagnosis")}, ensure_ascii=False)[:800]
+    tail = (
+        f"\nAccepted diagnosis: {brief}\n"
+        f"PRD work attempt {attempt} of 2.\n"
+        f"Validation errors from the previous attempt:\n{_error_block(errors)}\n\n"
+        "Reply with only this JSON object: "
+        '{"scope": [str], "non_goals": [str], "risks": [str], '
+        '"work_items": [{"id": str, "kind": str, "title": str, "files": [str], "package": str}], '
+        '"upgrade_items": [{"id": str, "package": str, "version": str, "reason": str}], '
+        '"refactor_items": [], "docs_items": []}. '
+        "Use only packages and paths from the tree and the outdated list. "
+        "At most 4 upgrade items. Do not include file contents."
+    )
+    return _fit(context, tail)
+
+
+def _acceptance_prompt(context: str, work: dict[str, Any], baseline: Any, attempt: int, errors: list[str]) -> str:
+    ids = []
+    for key in ("work_items", "upgrade_items", "refactor_items", "docs_items"):
+        for item in work.get(key) or []:
+            if isinstance(item, dict) and item.get("id"):
+                ids.append(str(item.get("id")))
+    tail = (
+        f"\nItem ids: {', '.join(ids[:12]) or '(none)'}\n"
+        f"Suggested acceptance command: {getattr(baseline, 'cmd', '')}\n"
+        f"PRD acceptance attempt {attempt} of 2.\n"
+        f"Validation errors from the previous attempt:\n{_error_block(errors)}\n\n"
+        "Reply with only this JSON object: "
+        '{"acceptance_criteria": [{"id": str, "statement": str, "check_id": str}], '
+        '"items": [{"id": str, "acceptance_command": str, "expected": str}]}. '
+        "At least 3 acceptance_criteria. check_id must be one of "
+        + ", ".join(CHECK_IDS)
+        + ". expected must be measurable (a number, an exit code, or a pass/fail bound)."
+    )
+    return _fit(context, tail)
+
+
+def _accept_diagnosis(obj: Any, repo: Path, description: str) -> list[str]:
+    if not isinstance(obj, dict):
+        return ["diagnosis is not an object"]
+    if not validate_prd(obj, repo, description):
+        return []
     errors: list[str] = []
-    for attempt in (1, 2):
-        prompt = _prompt(repo_id, description, baseline, files, tree, attempt, errors)
-        captured: list[str] = []
+    for key in ("original_intent", "diagnosis", "problem", "target_user"):
+        if key not in obj:
+            errors.append(f"missing {key}")
+    intent_error = _intent_error(obj, repo, description) if "original_intent" in obj else None
+    if intent_error:
+        errors.append(intent_error)
+    diagnosis_error = _diagnosis_error(obj, repo) if "diagnosis" in obj else None
+    if diagnosis_error:
+        errors.append(diagnosis_error)
+    if "problem" in obj and not _nonempty_str(obj.get("problem")):
+        errors.append("problem must be a non-empty string")
+    if "target_user" in obj and not _nonempty_str(obj.get("target_user")):
+        errors.append("target_user must be a non-empty string")
+    return errors
 
-        def validate(obj: dict[str, Any]) -> bool:
-            captured.clear()
-            captured.extend(validate_prd(obj, repo, description=description))
-            return not captured
 
-        obj: Any = None
-        try:
-            obj, *_ = client.complete_json(prompt, PRD_SYSTEM, repo_id=repo_id, step=f"revive_prd_{attempt}", attempts=1, validate=validate)
-        except Exception as exc:  # noqa: BLE001 — a failed call must not become a pass
-            captured = [f"llm call failed: {type(exc).__name__}"]
-            obj = None
-        if obj is not None and not captured:
-            if "degraded" in obj:
-                obj = dict(obj)
-                obj.pop("degraded", None)
-                obj.pop("degraded_reason", None)
-            return obj
-        if captured:
-            errors = captured
-        elif not errors:
-            errors = ["model returned no JSON object"]
+def _shell_from(repo: Path, description: str, baseline: Any, outdated: list[dict[str, Any]], overlay: dict[str, Any]) -> dict[str, Any]:
+    shell = deterministic_prd(repo, "repo", baseline, outdated, description=description)
+    for key in ("scope", "non_goals", "risks", "work_items", "upgrade_items", "refactor_items", "docs_items", "acceptance_criteria"):
+        if key in overlay:
+            shell[key] = copy.deepcopy(overlay[key])
+    for extra in ("degraded", "degraded_reason", "drafted_by", "fallback_reason", "label", "deterministic_pieces"):
+        shell.pop(extra, None)
+    return shell
+
+
+def _accept_work(obj: Any, repo: Path, description: str, baseline: Any, outdated: list[dict[str, Any]]) -> list[str]:
+    if not isinstance(obj, dict):
+        return ["work items are not an object"]
+    if not validate_prd(obj, repo, description):
+        return []
+    for key in ("scope", "non_goals", "risks", "work_items", "upgrade_items"):
+        if key not in obj:
+            return [f"missing {key}"]
+    shell = _shell_from(repo, description, baseline, outdated, obj)
+    # Commands arrive in the next piece. Fill them only on this validation copy.
+    _fill_acceptance(shell, baseline)
+    return validate_prd(shell, repo, description)
+
+
+def _accept_acceptance(obj: Any, repo: Path, description: str, baseline: Any, outdated: list[dict[str, Any]], work: dict[str, Any]) -> list[str]:
+    if not isinstance(obj, dict):
+        return ["acceptance is not an object"]
+    if not validate_prd(obj, repo, description):
+        return []
+    if not isinstance(obj.get("acceptance_criteria"), list):
+        return ["missing acceptance_criteria"]
+    commands = obj.get("items") if isinstance(obj.get("items"), list) else []
+    by_id = {str(item["id"]): item for item in commands if isinstance(item, dict) and item.get("id")}
+    errors: list[str] = []
+    for key in ("work_items", "upgrade_items", "refactor_items", "docs_items"):
+        for item in (work or {}).get(key) or []:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            item_id = str(item["id"])
+            incoming = by_id.get(item_id)
+            command = str(incoming.get("acceptance_command") or "").strip() if isinstance(incoming, dict) else ""
+            expected = str(incoming.get("expected") or "").strip() if isinstance(incoming, dict) else ""
+            if not command:
+                errors.append(f"{item_id} has no acceptance command")
+            elif not expected or not MEASURABLE_RE.search(expected):
+                errors.append(f"{item_id} acceptance result is not measurable")
+    shell = _shell_from(repo, description, baseline, outdated, work or {})
+    shell["acceptance_criteria"] = obj["acceptance_criteria"]
+    _stamp_commands(shell, commands)
+    _fill_acceptance(shell, baseline)
+    errors.extend(validate_prd(shell, repo, description))
+    return errors
+
+
+def _stamp_commands(prd: dict[str, Any], commands: list[Any]) -> None:
+    by_id = {}
+    for item in commands:
+        if isinstance(item, dict) and item.get("id"):
+            by_id[str(item["id"])] = item
+    for key in ("work_items", "upgrade_items", "refactor_items", "docs_items"):
+        stamped = []
+        for item in prd.get(key) or []:
+            if not isinstance(item, dict):
+                continue
+            incoming = by_id.get(str(item.get("id") or ""))
+            if isinstance(incoming, dict):
+                if incoming.get("acceptance_command"):
+                    item["acceptance_command"] = incoming["acceptance_command"]
+                if incoming.get("expected"):
+                    item["expected"] = incoming["expected"]
+            stamped.append(item)
+        prd[key] = stamped
+
+
+def _fill_acceptance(prd: dict[str, Any], baseline: Any) -> None:
+    command = str(getattr(baseline, "cmd", "") or "the test command")
+    for key in ("work_items", "upgrade_items", "refactor_items", "docs_items"):
+        for item in prd.get(key) or []:
+            if isinstance(item, dict):
+                item.setdefault("acceptance_command", command)
+                item.setdefault("expected", "exit code 0")
+
+
+def deterministic_prd(
+    repo: Path,
+    repo_id: str,
+    baseline: Any,
+    outdated: list[dict[str, Any]] | None = None,
+    reason: str = "",
+    description: str = "",
+) -> dict[str, Any]:
+    """A PRD with no model call. Upgrade items copy verified versions from the outdated list."""
+    outdated = list(outdated or [])
+    cmd = str(getattr(baseline, "cmd", "") or "the test command")
+    code = getattr(baseline, "code", None)
+    evidence = _baseline_tail(baseline).strip() or "no command output was captured"
+    evidence = evidence[:240]
+    outdated_text = _outdated_block(outdated)
+    diagnosis = f"Baseline `{cmd}` exited {code}. Evidence: {evidence}"
+    if outdated_text != "(none)":
+        diagnosis += f" Outdated dependencies: {outdated_text.replace(chr(10), ', ')}."
+    scope = _source_scope(repo)
+    manifest = next((name for name in ("package.json", "requirements.txt", "pyproject.toml") if (repo / name).is_file()), "")
+    upgrades = []
+    work = []
+    for item in outdated[:4]:
+        package = str(item.get("package") or "")
+        version = str(item.get("version") or "")
+        if not package or not version:
+            continue
+        upgrades.append(
+            {
+                "id": str(item.get("id") or f"upgrade-{package}"),
+                "package": package,
+                "version": version,
+                "from_version": str(item.get("from_version") or ""),
+                "reason": str(item.get("reason") or "minor or patch upgrade reported by the outdated list"),
+                "source": "deterministic",
+                "acceptance_command": cmd,
+                "expected": "exit code 0",
+            }
+        )
+        work.append(
+            {
+                "id": str(item.get("id") or f"upgrade-{package}"),
+                "kind": "upgrade",
+                "title": f"Upgrade {package} to {version}",
+                "acceptance_command": cmd,
+                "expected": "exit code 0",
+                "package": package,
+                "files": [manifest] if manifest else [],
+            }
+        )
+    if code not in (0, None):
+        files = [rel for rel in scope if (repo / rel).is_file()][:1]
+        work.insert(
+            0,
+            {
+                "id": "fix-baseline",
+                "kind": "repair",
+                "title": "Make the baseline command exit 0",
+                "acceptance_command": cmd,
+                "expected": "exit code 0",
+                "files": files,
+            },
+        )
+    if not work:
+        files = [rel for rel in scope if (repo / rel).is_file()][:1]
+        work.append(
+            {
+                "id": "confirm-baseline",
+                "kind": "repair",
+                "title": "Confirm the baseline command still exits 0",
+                "acceptance_command": cmd,
+                "expected": "exit code 0",
+                "files": files,
+            },
+        )
+    return {
+        "problem": f"{repo_id} baseline `{cmd}` exited {code}.",
+        "original_intent": intent_quote(repo, description),
+        "diagnosis": diagnosis,
+        "target_user": "Maintainers of this repository.",
+        "scope": scope,
+        "non_goals": ["Do not edit tests or lockfiles.", "Do not add features the failing checks do not require."],
+        "work_items": work,
+        "upgrade_items": upgrades,
+        "refactor_items": [],
+        "docs_items": [],
+        "acceptance_criteria": [
+            {"id": "ac-tests", "statement": "The repository test command exits 0.", "check_id": "tests"},
+            {"id": "ac-diff", "statement": "The diff touches at most 8 files and does not edit tests.", "check_id": "diff_scope"},
+            {"id": "ac-audit", "statement": "High and critical audit findings stay at or below the baseline count of 0 new findings.", "check_id": "audit"},
+        ],
+        "risks": ["Versions come from the ecosystem outdated list and may still fail the test command."],
+        "drafted_by": "deterministic",
+        "label": "deterministic PRD",
+        "fallback_reason": reason,
+    }
+
+
+def _ask_until_accepted(client: Any, repo: Path, repo_id: str, steps: tuple[str, str], prompts, accept) -> tuple[dict[str, Any] | None, list[str]]:
+    errors: list[str] = []
+    for attempt, step in enumerate(steps, start=1):
+        prompt = prompts(attempt, errors)
+        obj, captured, infra = _call_piece(client, prompt, repo_id, step, accept)
+        if isinstance(obj, dict) and not validate_prd(obj, repo, ""):
+            return obj, []
+        if isinstance(obj, dict) and not accept(obj):
+            return obj, []
+        errors = captured
+        if infra:
+            break
+    return None, errors
+
+
+def draft_prd(
+    client: Any,
+    repo: Path,
+    repo_id: str,
+    description: str,
+    baseline: Any,
+    *,
+    runner: Any = None,
+    run_dir: Path | None = None,
+    timeout: int = 20,
+) -> dict[str, Any]:
+    """Draft a PRD in three small calls. A complete valid object still short-circuits. Disk pieces are reused."""
+    outdated = load_outdated(repo, runner, timeout)
+    context = _shared_context(repo, repo_id, description, baseline, outdated)
+    failures: list[str] = []
+
+    diagnosis = load_piece(run_dir, "prd-diagnosis")
+    if diagnosis is not None and _accept_diagnosis(diagnosis, repo, description):
+        diagnosis = None
+    if diagnosis is None:
+        found, errors = _ask_until_accepted(
+            client,
+            repo,
+            repo_id,
+            ("revive_prd_1", "revive_prd_2"),
+            lambda attempt, errs: _diagnosis_prompt(context, attempt, errs),
+            lambda obj: _accept_diagnosis(obj, repo, description),
+        )
+        if isinstance(found, dict) and not validate_prd(found, repo, description):
+            return _model_prd(found)
+        if isinstance(found, dict):
+            diagnosis = {key: found.get(key) for key in ("original_intent", "diagnosis", "problem", "target_user")}
+            save_piece(run_dir, "prd-diagnosis", diagnosis)
         else:
-            errors = errors + ["model returned no JSON object"]
-    reason = "; ".join(dict.fromkeys(errors)) or "model draft failed validation"
-    return minimal_prd(repo, repo_id, baseline, reason)
+            failures.extend(errors)
+            diagnosis = None
+
+    work = load_piece(run_dir, "prd-work")
+    if work is not None and _accept_work(work, repo, description, baseline, outdated):
+        work = None
+    if work is None and diagnosis is not None:
+        found, errors = _ask_until_accepted(
+            client,
+            repo,
+            repo_id,
+            ("revive_prd_work_1", "revive_prd_work_2"),
+            lambda attempt, errs: _work_prompt(context, diagnosis, attempt, errs),
+            lambda obj: _accept_work(obj, repo, description, baseline, outdated),
+        )
+        if isinstance(found, dict) and not validate_prd(found, repo, description):
+            return _model_prd(found)
+        if isinstance(found, dict):
+            work = {key: found.get(key) for key in ("scope", "non_goals", "risks", "work_items", "upgrade_items", "refactor_items", "docs_items") if key in found}
+            save_piece(run_dir, "prd-work", work)
+        else:
+            failures.extend(errors)
+            work = None
+
+    acceptance = load_piece(run_dir, "prd-acceptance")
+    work_for_acceptance = work or {}
+    if acceptance is not None and _accept_acceptance(acceptance, repo, description, baseline, outdated, work_for_acceptance):
+        acceptance = None
+    if acceptance is None and work is not None:
+        found, errors = _ask_until_accepted(
+            client,
+            repo,
+            repo_id,
+            ("revive_prd_acceptance_1", "revive_prd_acceptance_2"),
+            lambda attempt, errs: _acceptance_prompt(context, work, baseline, attempt, errs),
+            lambda obj: _accept_acceptance(obj, repo, description, baseline, outdated, work),
+        )
+        if isinstance(found, dict) and not validate_prd(found, repo, description):
+            return _model_prd(found)
+        if isinstance(found, dict):
+            acceptance = {"acceptance_criteria": found.get("acceptance_criteria"), "items": found.get("items") or []}
+            save_piece(run_dir, "prd-acceptance", acceptance)
+        else:
+            failures.extend(errors)
+            acceptance = None
+
+    return _assemble(repo, repo_id, description, baseline, outdated, diagnosis, work, acceptance, failures)
+
+
+def _model_prd(obj: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(obj)
+    cleaned.pop("degraded", None)
+    cleaned.pop("degraded_reason", None)
+    return cleaned
+
+
+def _assemble(
+    repo: Path,
+    repo_id: str,
+    description: str,
+    baseline: Any,
+    outdated: list[dict[str, Any]],
+    diagnosis: dict[str, Any] | None,
+    work: dict[str, Any] | None,
+    acceptance: dict[str, Any] | None,
+    failures: list[str],
+) -> dict[str, Any]:
+    prd = deterministic_prd(repo, repo_id, baseline, outdated, reason="; ".join(dict.fromkeys(failures)), description=description)
+    sources = {"diagnosis": "deterministic", "work": "deterministic", "acceptance": "deterministic"}
+    if diagnosis:
+        for key in ("original_intent", "diagnosis", "problem", "target_user"):
+            if key in diagnosis and diagnosis.get(key):
+                prd[key] = diagnosis[key]
+        sources["diagnosis"] = "model"
+    if work:
+        for key in ("scope", "non_goals", "risks", "work_items", "upgrade_items", "refactor_items", "docs_items"):
+            if key in work:
+                prd[key] = work[key]
+        sources["work"] = "model"
+    if acceptance and isinstance(acceptance.get("acceptance_criteria"), list):
+        prd["acceptance_criteria"] = acceptance["acceptance_criteria"]
+        _stamp_commands(prd, acceptance.get("items") if isinstance(acceptance.get("items"), list) else [])
+        sources["acceptance"] = "model"
+    _fill_acceptance(prd, baseline)
+    for extra in ("degraded", "degraded_reason"):
+        prd.pop(extra, None)
+    if validate_prd(prd, repo, description):
+        prd = deterministic_prd(repo, repo_id, baseline, outdated, reason="; ".join(dict.fromkeys(failures)) or "assembled pieces failed validation", description=description)
+        sources = {"diagnosis": "deterministic", "work": "deterministic", "acceptance": "deterministic"}
+    used = set(sources.values())
+    if used == {"model"}:
+        prd.pop("drafted_by", None)
+        prd.pop("label", None)
+        prd.pop("fallback_reason", None)
+        return prd
+    if used == {"deterministic"}:
+        prd["drafted_by"] = "deterministic"
+        prd["label"] = "deterministic PRD"
+    else:
+        prd["drafted_by"] = "mixed"
+        prd["label"] = "deterministic PRD"
+        prd["deterministic_pieces"] = [name for name, source in sources.items() if source == "deterministic"]
+    if not validate_prd(prd, repo, description):
+        return prd
+    return minimal_prd(repo, repo_id, baseline, "; ".join(dict.fromkeys(failures)) or "model draft failed validation")
 
 
 def render_prd_markdown(prd: dict[str, Any] | None, state: str = "", reason: str = "") -> str:
     if not prd:
         return f"# Revival PRD\n\nNo PRD was drafted.\n\nState: {state or 'unknown'}\n\n{reason}\n"
     lines = ["# Revival PRD", ""]
+    if prd.get("drafted_by") == "deterministic":
+        lines.append("> **deterministic PRD.** Built from the baseline output and the outdated-dependency list, without a model call.")
+        if prd.get("fallback_reason"):
+            lines.append(f"> {prd.get('fallback_reason')}")
+        lines.append("")
+    elif prd.get("drafted_by") == "mixed":
+        missing = ", ".join(prd.get("deterministic_pieces") or [])
+        lines.append(f"> **deterministic PRD** pieces ({missing}) filled in after the model call failed. Kept model pieces were not rewritten.")
+        lines.append("")
     if prd.get("degraded"):
         lines.append(f"> **DEGRADED PRD.** {prd.get('degraded_reason') or 'The model draft failed validation.'}")
         lines.append("")
