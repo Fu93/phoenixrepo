@@ -582,7 +582,7 @@ def render_evidence_html(payload: dict[str, Any]) -> str:
         rows.append("<tr><td colspan=\"6\">No quality checks were run.</td></tr>")
     done = [item for item in (payload.get("prd_items_done") or []) if isinstance(item, dict)]
     not_done = [item for item in (payload.get("prd_items_not_done") or []) if isinstance(item, dict) or item]
-    reverted = [item for item in not_done if isinstance(item, dict) and (item.get("failed_check") or item.get("status") == "reverted")]
+    reverted = [item for item in not_done if isinstance(item, dict) and (item.get("failed_check") or item.get("status") in {"reverted", "ROLLED_BACK"})]
     reverted_ids = {id(item) for item in reverted}
     other = [item for item in not_done if id(item) not in reverted_ids]
     done_html = "".join(_applied_row(item) for item in done) or "<tr><td colspan=\"4\">None.</td></tr>"
@@ -619,7 +619,8 @@ td[data-status="info"] {{ background: #eff6ff; }}
 {_approval_block(payload)}
 <h1>{_cell(payload.get("repo") or "repository")} — {_cell(payload.get("state") or "")}</h1>
 <p>{_cell(payload.get("reason") or "")}</p>
-<p class="note">Run {_cell(payload.get("run_id") or "")}. Skipped and unavailable checks are not passes. Files changed: {_cell(files)}. Lines changed: {_cell(lines)}.</p>
+<p class="note">Run {_cell(payload.get("run_id") or "")}. Skipped and unavailable checks are not passes. Files changed: {_cell(files)}. Lines changed: {_cell(lines)}. <a href="prd.md">prd.md</a></p>
+{_verification_section(payload)}
 <h2>Quality before and after</h2>
 <table>
 <thead><tr><th>Check</th><th>Before</th><th>After</th><th>Audit before</th><th>Audit after</th><th>Detail</th></tr></thead>
@@ -681,6 +682,33 @@ def _outcome_banner(payload: dict[str, Any]) -> str:
         f"<p>Tests: {_cell(left)} -&gt; {_cell(right)}.</p>"
         f"<p>Not verified: {_cell(missing)}</p>"
         "</section>"
+    )
+
+
+def _verification_section(payload: dict[str, Any]) -> str:
+    verification = payload.get("verification") or {}
+    checks = verification.get("checks") if isinstance(verification, dict) else None
+    if not isinstance(checks, list) or not checks:
+        return "<h2>Verification</h2><p>UNVERIFIED: verification was not run.</p>"
+    rows = []
+    for row in checks:
+        if not isinstance(row, dict):
+            continue
+        status = str(row.get("status") or "UNVERIFIED")
+        rows.append(
+            "<tr>"
+            f"<td>{_cell(row.get('id') or '')}</td>"
+            f"<td data-status=\"{_cell(status.lower())}\">{_cell(status)}</td>"
+            f"<td>{_cell(row.get('detail') or '')}</td>"
+            "</tr>"
+        )
+    allowed = verification.get("resurrection_allowed")
+    return (
+        "<h2>Verification</h2>"
+        f"<p>Independent of the builder. resurrection_allowed={_cell(allowed)}. {_cell(verification.get('blocked_reason') or '')}</p>"
+        "<table><thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
     )
 
 

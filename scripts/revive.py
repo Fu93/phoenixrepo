@@ -199,10 +199,15 @@ def run_job(args: argparse.Namespace, job: dict, index: int) -> int:
         time_budget_s=args.time_budget,
         deadline_s=args.deadline,
         step_timeout_s=args.step_timeout,
+        commit_each_item=True,
     )
     if result.files_changed:
-        _git(["add", "-A"], target)
-        _git(["-c", "user.name=PhoenixRepo", "-c", "user.email=phoenix@example.invalid", "commit", "-q", "-m", f"PhoenixRepo revival {rid}: {result.state}"], target)
+        try:
+            _git(["add", "-A"], target)
+            _git(["-c", "user.name=PhoenixRepo", "-c", "user.email=phoenix@example.invalid", "commit", "-q", "-m", f"PhoenixRepo revival {rid}: {result.state}"], target)
+        except RuntimeError as exc:
+            if "nothing to commit" not in str(exc).lower() and "nothing added to commit" not in str(exc).lower():
+                raise
     trace.event(
         agent_name="orchestrator",
         action="REVIVE_RESULT",

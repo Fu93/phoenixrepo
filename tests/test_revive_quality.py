@@ -47,17 +47,38 @@ def _prd(scope, *, upgrades=None, refactors=None, checks=("tests", "diff_scope",
         "smoke": "The smoke command exits 0.",
     }
     criteria = [{"id": f"ac-{check}", "statement": statements[check], "check_id": check} for check in checks]
-    return {
+    prd = {
         "problem": "The repository test command fails on the current source.",
         "target_user": "Maintainers of this repository.",
         "scope": list(scope),
         "non_goals": ["Do not edit tests."],
         "upgrade_items": list(upgrades or []),
         "refactor_items": list(refactors or []),
-        "docs_items": [{"id": "d1", "title": "Note the test command"}],
+        "docs_items": [{"id": "d1", "title": "Note the test command", "acceptance_command": "npm test --silent", "expected": "exit code 0"}],
         "acceptance_criteria": criteria,
         "risks": ["A patch could touch the wrong file."],
+        "original_intent": "(no README or description)",
+        "diagnosis": "The baseline test command exits 1 with an AssertionError.",
+        "work_items": [
+            {
+                "id": "fix-baseline",
+                "kind": "repair",
+                "title": "Make the repository test command exit 0",
+                "acceptance_command": "npm test --silent",
+                "expected": "exit code 0",
+                "files": [scope[0]] if scope else [],
+            }
+        ],
     }
+    for bucket in ("upgrade_items", "refactor_items"):
+        stamped = []
+        for item in prd[bucket]:
+            item = dict(item)
+            item.setdefault("acceptance_command", "npm test --silent")
+            item.setdefault("expected", "exit code 0")
+            stamped.append(item)
+        prd[bucket] = stamped
+    return prd
 
 
 def _node_repo(tmp_path: Path, source: str = "module.exports = () => 1;\n", *, lint: bool = False) -> Path:
@@ -104,6 +125,7 @@ def test_prd_validation_rejects_thin_drafts_and_missing_files(tmp_path):
     draft = _prd(["src.js"], upgrades=[{"id": "u1", "package": "left-pad"}])
     assert any("target version" in error for error in prd.validate_prd(draft, tmp_path))
 
+    (tmp_path / "package.json").write_text(json.dumps({"dependencies": {"left-pad": "1.2.0"}}), encoding="utf-8")
     good = _prd(
         ["src.js"],
         upgrades=[{"id": "u1", "package": "left-pad", "version": "1.3.0", "reason": "pin a maintained release"}],
@@ -134,6 +156,7 @@ def test_prd_fallback_is_recorded_and_a_second_attempt_can_succeed(tmp_path):
     assert "DEGRADED PRD" in markdown
 
     recovered = _prd(["src.js"])
+    recovered["original_intent"] = 'The README says "Adds numbers."'
     client = _Client([{"problem": "nope"}, recovered])
     drafted = prd.draft_prd(client, tmp_path, "o/r", "", baseline)
     assert drafted.get("degraded") is not True
@@ -354,7 +377,7 @@ def test_applied_upgrade_on_a_green_baseline_can_resurrect(tmp_path):
     res = rl.revive(repo, client, _Trace(), "o/r", runner=_passing_after_fix(repo))
     assert res.state == "RESURRECTED"
     assert res.prd_items_done[0]["id"] == "u1"
-    assert res.prd_items_done[0]["status"] == "applied"
+    assert res.prd_items_done[0]["status"] == "KEPT"
     assert res.prd_items_done[0]["lines"] >= 1
     assert "1.3.0" in (repo / "package.json").read_text(encoding="utf-8")
     assert "tests" not in res.quality["regressed"]
@@ -570,14 +593,18 @@ def test_end_to_end_real_runner_fixes_a_python_module(tmp_path):
     (repo / "pytest.ini").write_text("[pytest]\ntestpaths = .\n", encoding="utf-8")
     (repo / "calc.py").write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
     (repo / "test_calc.py").write_text("from calc import add\n\ndef test_add():\n    assert add(1, 1) == 2\n", encoding="utf-8")
-    command = f"{shlex_quote(sys.executable)} -m pytest -q -p no:cacheprovider --noconftest --rootdir {shlex_quote(str(repo))} -c {shlex_quote(str(repo / 'pytest.ini'))}"
+    command = f"{shlex_quote(sys.executable)} -m pytest -q -p no:cacheprovider --noconftest --rootdir . -c pytest.ini"
 
     def detect(_repo):
         return None, command
 
+    drafted = _prd(["calc.py"])
+    drafted["original_intent"] = 'The README says "Adds numbers."'
+    drafted["work_items"][0]["acceptance_command"] = command
+    drafted["work_items"][0]["files"] = ["calc.py"]
     client = _Client(
         [
-            _prd(["calc.py"]),
+            drafted,
             {"rationale": "addition, not subtraction", "edits": [{"path": "calc.py", "find": "return a - b", "replace": "return a + b"}]},
             {"approve": True, "issues": []},
         ]
@@ -732,7 +759,7 @@ def test_minor_upgrades_run_before_a_justified_major(tmp_path):
     res = rl.revive(repo, client, _Trace(), "o/r", runner=_passing_after_fix(repo))
     body = (repo / "package.json").read_text(encoding="utf-8")
     assert [item["id"] for item in res.prd_items_done] == ["u-minor", "u-major"]
-    assert all(item["status"] == "applied" for item in res.prd_items_done)
+    assert all(item["status"] == "KEPT" for item in res.prd_items_done)
     assert '"debug": "4.4.0"' in body and '"left-pad": "2.0.0"' in body
     assert res.state == "RESURRECTED"
     assert not any("Item attempt" in prompt for _, prompt in client.prompts)
@@ -740,6 +767,9 @@ def test_minor_upgrades_run_before_a_justified_major(tmp_path):
 
 def test_time_budget_stops_new_items_and_still_checks(tmp_path):
     repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
+    pkg = json.loads((repo / "package.json").read_text(encoding="utf-8"))
+    pkg["dependencies"] = {"left-pad": "1.2.0", "debug": "4.3.4"}
+    (repo / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
     upgrades = [
         {"id": "u1", "package": "left-pad", "version": "1.3.0", "reason": "pin a maintained release"},
         {"id": "u2", "package": "debug", "version": "4.3.5", "reason": "pin the logger"},
@@ -771,8 +801,11 @@ def test_environment_failure_after_a_green_baseline_is_not_resurrection_failed(t
             return _result(cmd, 1, "npm ERR! network request failed ECONNRESET")
         return _result(cmd, 0, "ok")
 
+    pkg = json.loads((repo / "package.json").read_text(encoding="utf-8"))
+    pkg["dependencies"] = {"left-pad": "1.2.0"}
+    (repo / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
     upgrade = {"id": "u-missing", "package": "left-pad", "version": "9.9.9", "reason": "pin a release"}
-    client = _Client([_prd(["src.js"], upgrades=[upgrade]), {"approve": True, "issues": []}])
+    client = _Client([_prd(["src.js", "package.json"], upgrades=[upgrade]), {"approve": True, "issues": []}])
     res = rl.revive(repo, client, _Trace(), "o/r", runner=runner)
     assert res.state == "NOTHING_TO_FIX"
     assert "target version not found" in res.reason
@@ -825,7 +858,7 @@ def test_platform_replay_reverts_a_breaking_upgrade_without_calling_it_failed(tm
     assert res.prd_items_done == []
     assert res.prd_items_not_done[0]["id"] == "upgrade-debug"
     assert res.prd_items_not_done[0]["failed_check"] == "tests"
-    assert res.prd_items_not_done[0]["status"] == "reverted"
+    assert res.prd_items_not_done[0]["status"] == "ROLLED_BACK"
     assert "4.3.4" in (repo / "package.json").read_text(encoding="utf-8")
     assert "4.4.0" not in (repo / "package.json").read_text(encoding="utf-8")
     assert state["platform"] is True
@@ -1002,11 +1035,23 @@ def test_docs_item_is_written_by_the_model(tmp_path):
     repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
     (repo / "CONTRIBUTING.md").write_text("# contributing\n", encoding="utf-8")
     draft = _prd(["src.js", "CONTRIBUTING.md"])
-    draft["docs_items"] = [{"id": "d1", "title": "Note the test command", "files": ["CONTRIBUTING.md"]}]
+    draft["docs_items"] = [
+        {
+            "id": "d1",
+            "title": "Note the test command",
+            "files": ["CONTRIBUTING.md"],
+            "acceptance_command": "npm test --silent",
+            "expected": "exit code 0",
+        }
+    ]
     edit = {"edits": [{"path": "CONTRIBUTING.md", "content": "# contributing\n\nRun npm test.\n"}]}
     client = _Client([draft, edit, {"approve": True, "issues": []}])
     res = rl.revive(repo, client, _Trace(), "o/r", runner=_passing_after_fix(repo))
-    assert res.state == "RESURRECTED"
+    # A docs edit on an already-green baseline is kept, but it is not a resurrection:
+    # nothing was broken or outdated.
+    assert res.state == "NEEDS_REVIEW"
+    assert res.verification["resurrection_allowed"] is False
+    assert "baseline was not broken or outdated" in res.reason
     assert res.prd_items_done[0]["id"] == "d1"
     assert (repo / "CONTRIBUTING.md").read_text(encoding="utf-8").endswith("Run npm test.\n")
     assert any("docs" in prompt and "Item attempt 1" in prompt for _, prompt in client.prompts)

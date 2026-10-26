@@ -53,17 +53,34 @@ def _valid_prd(scope=("src.js",), upgrades=None, refactors=None, checks=("tests"
         criteria.append({"id": f"ac-{check_id}", "statement": statements[check_id], "check_id": check_id})
     while len(criteria) < 3:
         criteria.append({"id": f"ac-extra-{len(criteria)}", "statement": "The diff touches at most 8 files and does not edit tests.", "check_id": "diff_scope"})
-    return {
+    prd = {
         "problem": "src.js returns the wrong value for the repository test command.",
         "target_user": "Maintainers running the repository test command.",
         "scope": list(scope),
         "non_goals": ["Do not edit tests."],
-        "upgrade_items": list(upgrades or []),
-        "refactor_items": list(refactors or []),
+        "upgrade_items": [dict(item) for item in (upgrades or [])],
+        "refactor_items": [dict(item) for item in (refactors or [])],
         "docs_items": [],
         "acceptance_criteria": criteria,
         "risks": ["The assertion may point at the wrong file."],
+        "original_intent": "(no README or description)",
+        "diagnosis": "The baseline test command exits 1 with an AssertionError.",
+        "work_items": [
+            {
+                "id": "fix-baseline",
+                "kind": "repair",
+                "title": "Make the repository test command exit 0",
+                "acceptance_command": "npm test --silent",
+                "expected": "exit code 0",
+                "files": [list(scope)[0]] if scope else [],
+            }
+        ],
     }
+    for bucket in ("upgrade_items", "refactor_items"):
+        for item in prd[bucket]:
+            item.setdefault("acceptance_command", "npm test --silent")
+            item.setdefault("expected", "exit code 0")
+    return prd
 
 
 def _runner_factory(repo: Path):

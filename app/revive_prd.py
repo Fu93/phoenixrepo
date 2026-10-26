@@ -78,19 +78,104 @@ def _string_list(value: Any) -> bool:
     return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
-def validate_prd(obj: Any, repo: Path) -> list[str]:
+EVIDENCE_RE = re.compile(
+    r"\d|exit|error|fail|outdated|deprecated|vulnerab|assert|baseline|missing|broken|\bCI\b|ENOENT|ModuleNotFound",
+    re.IGNORECASE,
+)
+
+
+def readme_text(repo: Path) -> str:
+    for name in ("README.md", "README.rst", "README.txt"):
+        path = repo / name
+        if path.is_file():
+            return path.read_text(encoding="utf-8", errors="replace")[:MAX_FILE_BYTES]
+    return ""
+
+
+def quote_snippet(text: str) -> str:
+    """A short contiguous slice of the README or description that a PRD can quote."""
+    for line in (text or "").splitlines():
+        cleaned = line.strip().lstrip("#").strip()
+        if len(cleaned) >= 8:
+            return cleaned[:180]
+    compact = " ".join((text or "").split())
+    return compact[:180]
+
+
+def _repo_corpus(repo: Path) -> str:
+    parts: list[str] = []
+    for rel in file_tree(repo, limit=200):
+        path = repo / rel
+        try:
+            if path.is_file() and path.stat().st_size <= 200_000:
+                parts.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    return "\n".join(parts)
+
+
+def _acceptance_error(item: dict[str, Any], label: str) -> str | None:
+    command = str(item.get("acceptance_command") or "").strip()
+    expected = str(item.get("expected") or "").strip()
+    if not command:
+        return f"{label} has no acceptance command"
+    if not expected or not MEASURABLE_RE.search(expected):
+        return f"{label} acceptance result is not measurable"
+    return None
+
+
+def _intent_error(obj: dict[str, Any], repo: Path, description: str) -> str | None:
+    if "original_intent" not in obj:
+        return "missing original_intent"
+    intent = str(obj.get("original_intent") or "").strip()
+    if not intent:
+        return "original_intent must quote the README or description"
+    source = (readme_text(repo) + "\n" + (description or "")).strip()
+    if not source:
+        if intent == "(no README or description)":
+            return None
+        return "original_intent must quote the README or description"
+    snippet = quote_snippet(source)
+    bare = intent.strip().strip('"')
+    if snippet and snippet in intent:
+        return None
+    if bare and bare in source:
+        return None
+    return "original_intent is not a quote from the README or description"
+
+
+def _diagnosis_error(obj: dict[str, Any], repo: Path) -> str | None:
+    if "diagnosis" not in obj:
+        return "missing diagnosis"
+    diagnosis = str(obj.get("diagnosis") or "").strip()
+    if not diagnosis:
+        return "diagnosis must cite the engineering failure"
+    readme = " ".join(readme_text(repo).split())
+    compact = " ".join(diagnosis.split())
+    problem = " ".join(str(obj.get("problem") or "").split())
+    evidence = EVIDENCE_RE.search(diagnosis)
+    if readme and (compact == readme or f"{problem} {compact}".strip() == readme) and not evidence:
+        return "PRD restates the README only"
+    if readme and compact in readme and not evidence:
+        return "PRD restates the README only"
+    if not evidence:
+        return "diagnosis does not cite real evidence"
+    return None
+
+
+def validate_prd(obj: Any, repo: Path, description: str = "") -> list[str]:
     """Return human-readable errors. An empty list means the PRD is usable."""
     errors: list[str] = []
     if not isinstance(obj, dict):
         return ["PRD is not a JSON object"]
-    for key in REQUIRED_KEYS:
+    for key in ("original_intent", "diagnosis", "work_items", *REQUIRED_KEYS):
         if key not in obj:
             errors.append(f"missing {key}")
     if "problem" in obj and not _nonempty_str(obj.get("problem")):
         errors.append("problem must be a non-empty string")
     if "target_user" in obj and not _nonempty_str(obj.get("target_user")):
         errors.append("target_user must be a non-empty string")
-    for key in ("scope", "non_goals", "risks", "upgrade_items", "refactor_items", "docs_items", "acceptance_criteria"):
+    for key in ("scope", "non_goals", "risks", "upgrade_items", "refactor_items", "docs_items", "acceptance_criteria", "work_items"):
         if key in obj and not isinstance(obj.get(key), list):
             errors.append(f"{key} must be a list")
     scope = obj.get("scope") if isinstance(obj.get("scope"), list) else []
@@ -103,8 +188,17 @@ def validate_prd(obj: Any, repo: Path) -> list[str]:
         if _looks_like_path(entry) and not (repo / entry.replace("\\", "/")).exists():
             errors.append(f"scope path does not exist: {entry}")
     for label, items in (("non_goals", obj.get("non_goals")), ("risks", obj.get("risks"))):
-        if isinstance(items, list) and not all(isinstance(item, str) and item.strip() for item in items):
+        if isinstance(items, list) and not any(isinstance(item, str) and item.strip() for item in items):
+            errors.append(f"{label} must name at least one explicit entry")
+        elif isinstance(items, list) and not all(isinstance(item, str) and item.strip() for item in items):
             errors.append(f"{label} entries must be non-empty strings")
+    intent_error = _intent_error(obj, repo, description) if isinstance(obj, dict) else None
+    if intent_error and "original_intent" in obj:
+        errors.append(intent_error)
+    diagnosis_error = _diagnosis_error(obj, repo) if isinstance(obj, dict) else None
+    if diagnosis_error and "diagnosis" in obj:
+        errors.append(diagnosis_error)
+    corpus = _repo_corpus(repo)
     upgrades = obj.get("upgrade_items") if isinstance(obj.get("upgrade_items"), list) else []
     for index, item in enumerate(upgrades):
         if not isinstance(item, dict):
@@ -116,6 +210,11 @@ def validate_prd(obj: Any, repo: Path) -> list[str]:
         version = str(item.get("version") or item.get("to_version") or "").strip()
         if not package or not version:
             errors.append(f"upgrade_items[{index}] needs a package and a target version")
+        elif package not in corpus:
+            errors.append(f"upgrade_items[{index}] cites package {package} which is not in the repo")
+        acceptance = _acceptance_error(item, f"upgrade_items[{index}]")
+        if acceptance:
+            errors.append(acceptance)
     refactors = obj.get("refactor_items") if isinstance(obj.get("refactor_items"), list) else []
     for index, item in enumerate(refactors):
         if not isinstance(item, dict):
@@ -133,10 +232,41 @@ def validate_prd(obj: Any, repo: Path) -> list[str]:
                 continue
             if not (repo / rel.replace("\\", "/")).is_file():
                 errors.append(f"refactor file does not exist: {rel}")
+        acceptance = _acceptance_error(item, f"refactor_items[{index}]")
+        if acceptance:
+            errors.append(acceptance)
+        api = str(item.get("api") or "").strip()
+        if api and api not in corpus:
+            errors.append(f"refactor_items[{index}] cites API {api} which is not in the repo")
     docs = obj.get("docs_items") if isinstance(obj.get("docs_items"), list) else []
     for index, item in enumerate(docs):
         if not isinstance(item, dict) or not _nonempty_str(item.get("id")) or not _nonempty_str(item.get("title")):
             errors.append(f"docs_items[{index}] needs an id and a title")
+            continue
+        acceptance = _acceptance_error(item, f"docs_items[{index}]")
+        if acceptance:
+            errors.append(acceptance)
+    work = obj.get("work_items") if isinstance(obj.get("work_items"), list) else []
+    if "work_items" in obj and isinstance(obj.get("work_items"), list) and not work:
+        errors.append("work_items must list at least one prioritised item")
+    for index, item in enumerate(work):
+        if not isinstance(item, dict):
+            errors.append(f"work_items[{index}] is not an object")
+            continue
+        if not _nonempty_str(item.get("id")):
+            errors.append(f"work_items[{index}] missing id")
+        acceptance = _acceptance_error(item, f"work_items[{index}]")
+        if acceptance:
+            errors.append(acceptance)
+        package = str(item.get("package") or "").strip()
+        if package and package not in corpus:
+            errors.append(f"work_items[{index}] cites package {package} which is not in the repo")
+        api = str(item.get("api") or "").strip()
+        if api and api not in corpus:
+            errors.append(f"work_items[{index}] cites API {api} which is not in the repo")
+        for rel in item.get("files") or []:
+            if isinstance(rel, str) and _looks_like_path(rel) and not (repo / rel.replace("\\", "/")).exists():
+                errors.append(f"work_items[{index}] cites path {rel} which is not in the repo")
     criteria = obj.get("acceptance_criteria") if isinstance(obj.get("acceptance_criteria"), list) else []
     if "acceptance_criteria" in obj and isinstance(obj.get("acceptance_criteria"), list) and len(criteria) < 3:
         errors.append("acceptance_criteria needs at least 3 measurable checks")
@@ -157,6 +287,13 @@ def validate_prd(obj: Any, repo: Path) -> list[str]:
     return errors
 
 
+def intent_quote(repo: Path, description: str = "") -> str:
+    source = readme_text(repo).strip() or (description or "").strip()
+    if not source:
+        return "(no README or description)"
+    return f'The README says "{quote_snippet(source)}".'
+
+
 def _source_scope(repo: Path) -> list[str]:
     from app.revive_loop import is_protected
 
@@ -168,11 +305,27 @@ def minimal_prd(repo: Path, repo_id: str, baseline: Any, reason: str) -> dict[st
     """Last-resort PRD. It has no upgrade or refactor work, so a green baseline stays NOTHING_TO_FIX."""
     cmd = getattr(baseline, "cmd", "") or "the test command"
     code = getattr(baseline, "code", None)
+    output = str(getattr(baseline, "output", "") or "").strip()
+    evidence = output[:240] if output else "no command output was captured"
+    scope = _source_scope(repo)
+    files = [rel for rel in scope if (repo / rel).is_file()][:1]
     prd = {
         "problem": f"{repo_id} baseline `{cmd}` exited {code}.",
+        "original_intent": intent_quote(repo),
+        "diagnosis": f"Baseline `{cmd}` exited {code}. Evidence: {evidence}",
         "target_user": "Maintainers of this repository.",
-        "scope": _source_scope(repo),
+        "scope": scope,
         "non_goals": ["Do not edit tests or lockfiles.", "Do not add features the failing checks do not require."],
+        "work_items": [
+            {
+                "id": "fix-baseline",
+                "kind": "repair",
+                "title": "Make the baseline command exit 0",
+                "acceptance_command": cmd,
+                "expected": "exit code 0",
+                "files": files,
+            }
+        ],
         "upgrade_items": [],
         "refactor_items": [],
         "docs_items": [],
@@ -203,11 +356,16 @@ def _prompt(repo_id: str, description: str, baseline: Any, files: dict[str, str]
         f"Files:\n{file_block or '(none)'}\n\n"
         f"Validation errors from the previous attempt:\n{error_block}\n\n"
         "Write a revival PRD. Schema: "
-        '{"problem": str, "target_user": str, "scope": [str], "non_goals": [str], '
-        '"upgrade_items": [{"id": str, "package": str, "version": str, "reason": str}], '
-        '"refactor_items": [{"id": str, "title": str, "files": [str], "reason": str}], '
-        '"docs_items": [{"id": str, "title": str, "files": [str]}], '
+        '{"original_intent": str, "diagnosis": str, "problem": str, "target_user": str, "scope": [str], "non_goals": [str], '
+        '"work_items": [{"id": str, "kind": str, "title": str, "acceptance_command": str, "expected": str, "files": [str], "package": str, "api": str}], '
+        '"upgrade_items": [{"id": str, "package": str, "version": str, "reason": str, "acceptance_command": str, "expected": str}], '
+        '"refactor_items": [{"id": str, "title": str, "files": [str], "reason": str, "acceptance_command": str, "expected": str}], '
+        '"docs_items": [{"id": str, "title": str, "files": [str], "acceptance_command": str, "expected": str}], '
         '"acceptance_criteria": [{"id": str, "statement": str, "check_id": str}], "risks": [str]}. '
+        "original_intent must quote the README or description. "
+        "diagnosis must cite the baseline output, a broken script, an outdated or vulnerable dependency, or a deprecated API. Do not restate the README. "
+        "Every work item, upgrade, refactor, and docs item needs acceptance_command and a measurable expected result. "
+        "Cite only packages, APIs, and paths that appear in the files above. "
         "scope and refactor files must be real paths from the tree. "
         "Each upgrade item needs a concrete package and a target version. "
         "A major upgrade also needs a reason. "
@@ -230,7 +388,7 @@ def draft_prd(client: Any, repo: Path, repo_id: str, description: str, baseline:
 
         def validate(obj: dict[str, Any]) -> bool:
             captured.clear()
-            captured.extend(validate_prd(obj, repo))
+            captured.extend(validate_prd(obj, repo, description=description))
             return not captured
 
         obj: Any = None
@@ -262,8 +420,25 @@ def render_prd_markdown(prd: dict[str, Any] | None, state: str = "", reason: str
     if prd.get("degraded"):
         lines.append(f"> **DEGRADED PRD.** {prd.get('degraded_reason') or 'The model draft failed validation.'}")
         lines.append("")
+    lines.append("## Original intent")
+    lines.append(str(prd.get("original_intent") or ""))
+    lines.append("")
+    lines.append("## Diagnosis")
+    lines.append(str(prd.get("diagnosis") or ""))
+    lines.append("")
     lines.append("## Problem")
     lines.append(str(prd.get("problem") or ""))
+    lines.append("")
+    lines.append("## Work list")
+    lines.append("| id | kind | acceptance command | expected |")
+    lines.append("| --- | --- | --- | --- |")
+    for item in prd.get("work_items") or []:
+        if isinstance(item, dict):
+            lines.append(
+                f"| {item.get('id')} | {item.get('kind') or ''} | `{item.get('acceptance_command') or ''}` | {item.get('expected') or ''} |"
+            )
+    if not prd.get("work_items"):
+        lines.append("| | | | |")
     lines.append("")
     lines.append("## Target user")
     lines.append(str(prd.get("target_user") or ""))
@@ -325,10 +500,16 @@ def write_reports(directory: Path, result: Any, repo: str, run_id: str) -> None:
     prd = getattr(result, "prd", None)
     state = getattr(result, "state", "")
     reason = getattr(result, "reason", "")
-    (directory / "PRD.md").write_text(render_prd_markdown(prd, state=state, reason=reason), encoding="utf-8")
+    markdown = render_prd_markdown(prd, state=state, reason=reason)
+    (directory / "PRD.md").write_text(markdown, encoding="utf-8")
+    (directory / "prd.md").write_text(markdown, encoding="utf-8")
     payload = result.as_dict() if hasattr(result, "as_dict") else dict(result)
     payload = dict(payload)
-    payload.update({"repo": repo, "run_id": run_id, "state": state, "reason": reason})
+    payload.update({"repo": repo, "run_id": run_id, "state": state, "reason": reason, "prd_href": "prd.md"})
     quality = payload.get("quality") or {}
     (directory / "quality.json").write_text(json.dumps(quality, indent=2, ensure_ascii=False), encoding="utf-8")
+    (directory / "verification.json").write_text(
+        json.dumps(payload.get("verification") or {"checks": [], "resurrection_allowed": False, "blocked_reason": "verification was not run"}, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
     (directory / "evidence.html").write_text(render_evidence_html(payload), encoding="utf-8")

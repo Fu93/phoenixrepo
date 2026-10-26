@@ -86,6 +86,18 @@ def _prd():
         "upgrade_items": [],
         "refactor_items": [],
         "docs_items": [],
+        "original_intent": "(no README or description)",
+        "diagnosis": "The baseline test command exits 1 with an AssertionError.",
+        "work_items": [
+            {
+                "id": "fix-baseline",
+                "kind": "repair",
+                "title": "Make the repository test command exit 0",
+                "acceptance_command": "npm test --silent",
+                "expected": "exit code 0",
+                "files": ["src.js"],
+            }
+        ],
         "acceptance_criteria": [
             {"id": "ac-tests", "statement": "The test command exits 0.", "check_id": "tests"},
             {"id": "ac-diff", "statement": "The diff touches at most 8 files and does not edit tests.", "check_id": "diff_scope"},

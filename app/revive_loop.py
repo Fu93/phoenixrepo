@@ -107,6 +107,7 @@ class ReviveResult:
     terminal: str = ""
     infrastructure_failures: list[dict[str, Any]] = field(default_factory=list)
     unverified: list[str] = field(default_factory=list)
+    verification: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -127,6 +128,7 @@ class ReviveResult:
             "terminal": self.terminal or self.state,
             "infrastructure_failures": self.infrastructure_failures,
             "unverified": self.unverified,
+            "verification": self.verification,
         }
 
 
@@ -714,6 +716,50 @@ def file_py_paths(repo: Path) -> list[str]:
     return found
 
 
+_TREE_SKIP = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".pytest_cache"}
+
+
+def snapshot_worktree(repo: Path) -> dict[str, bytes]:
+    """Every file in the working tree except dependency installs and VCS metadata."""
+    snap: dict[str, bytes] = {}
+    if not repo.exists():
+        return snap
+    for path in repo.rglob("*"):
+        rel = path.relative_to(repo)
+        if any(part in _TREE_SKIP for part in rel.parts):
+            continue
+        if path.is_file():
+            try:
+                snap[rel.as_posix()] = path.read_bytes()
+            except OSError:
+                continue
+    return snap
+
+
+def restore_worktree(repo: Path, snap: dict[str, bytes]) -> None:
+    """Put the working tree back, including files the patch created. Does not touch node_modules or .git."""
+    if not repo.exists():
+        return
+    current: list[Path] = []
+    for path in repo.rglob("*"):
+        rel = path.relative_to(repo)
+        if any(part in _TREE_SKIP for part in rel.parts):
+            continue
+        if path.is_file():
+            current.append(path)
+    for path in current:
+        rel = path.relative_to(repo).as_posix()
+        if rel not in snap:
+            path.unlink()
+    for rel, data in snap.items():
+        target = _safe_path(repo, rel)
+        if target is None:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.is_file() or target.read_bytes() != data:
+            target.write_bytes(data)
+
+
 def restore_snapshot(repo: Path, snap: dict[str, bytes | None]) -> None:
     """Put files back. Git checkout runs first when the clone has a history; the snapshot is authoritative."""
     if (repo / ".git").exists():
@@ -786,6 +832,8 @@ def adopt_deterministic_upgrades(prd: dict[str, Any], auto_upgrades: list[dict[s
                 "version": item.get("version"),
                 "reason": item.get("reason"),
                 "source": "deterministic",
+                "acceptance_command": item.get("acceptance_command") or "",
+                "expected": item.get("expected") or "exit code 0",
             }
         )
         seen.add(package)
@@ -812,7 +860,7 @@ def format_run_summary(payload: dict[str, Any]) -> str:
         lines.append(f"  {check}: {left} -> {right}")
     done = [item for item in (payload.get("prd_items_done") or []) if isinstance(item, dict)]
     not_done = [item for item in (payload.get("prd_items_not_done") or []) if isinstance(item, dict)]
-    reverted = [item for item in not_done if item.get("failed_check") or item.get("status") == "reverted"]
+    reverted = [item for item in not_done if item.get("failed_check") or item.get("status") in {"reverted", "ROLLED_BACK"}]
     reverted_ids = {id(item) for item in reverted}
     remaining = [item for item in not_done if id(item) not in reverted_ids]
     if done:
@@ -885,15 +933,28 @@ def _concrete_issues(raw: Any) -> list[dict[str, str]]:
 def _work_items(prd: dict[str, Any]) -> tuple[list[tuple[str, dict[str, Any]]], list[dict[str, Any]]]:
     selected: list[tuple[str, dict[str, Any]]] = []
     skipped: list[dict[str, Any]] = []
-    for kind, key in (("upgrade", "upgrade_items"), ("refactor", "refactor_items"), ("docs", "docs_items")):
+    for kind, key in (("upgrade", "upgrade_items"), ("docs", "docs_items"), ("refactor", "refactor_items")):
         items = [item for item in (prd.get(key) or []) if isinstance(item, dict)]
         if kind == "docs":
             items = [item for item in items if isinstance(item.get("files"), list) and any(str(path).strip() for path in item["files"])]
         for item in items[:MAX_ITEMS_PER_KIND]:
             selected.append((kind, item))
         for item in items[MAX_ITEMS_PER_KIND:]:
-            skipped.append({"id": str(item.get("id") or ""), "kind": kind, "reason": f"not attempted: capped at {MAX_ITEMS_PER_KIND} {kind} items"})
+            skipped.append({"id": str(item.get("id") or ""), "kind": kind, "reason": f"not attempted: capped at {MAX_ITEMS_PER_KIND} {kind} items", "status": "SKIPPED"})
+    selected.sort(key=lambda pair: _item_rank(pair[0], pair[1]))
     return selected, skipped
+
+
+def _item_rank(kind: str, item: dict[str, Any]) -> int:
+    """Baseline repairs, then dependency and security upgrades, then docs, then optional refactors."""
+    text = f"{kind} {item.get('title') or ''} {item.get('reason') or ''}".lower()
+    if kind in {"repair", "fix"} or "baseline" in text:
+        return 0
+    if kind in {"upgrade", "security"} or "vulnerab" in text:
+        return 1
+    if kind == "docs":
+        return 2
+    return 3
 
 
 def normalize_human_approval(raw: dict[str, Any] | None, *, verdict: str, reason: str) -> dict[str, str] | None:
@@ -1048,6 +1109,7 @@ def revive(
     heartbeat_s: float = 60,
     infra_backoff: tuple[float, ...] = INFRA_BACKOFF,
     step_timeout_s: int | None = None,
+    commit_each_item: bool = False,
 ) -> ReviveResult:
     approval = normalize_human_approval(human_approval, verdict=gate_verdict, reason=gate_reason)
     if not revival_allowed(gate_verdict, approval):
@@ -1138,11 +1200,16 @@ def revive(
         )
         return inst
 
+    pending_tree: list[dict[str, bytes]] = []
+
     def _restore(snap: dict[str, bytes | None]) -> None:
-        """Roll files back. Reinstall only when package.json or a lockfile actually changes."""
+        """Roll the working tree back. Reinstall only when package.json or a lockfile actually changes."""
         changed_manifest = manifest_content_changed(repo, snap)
         had_manifest = _manifest_touched(snap)
-        restore_snapshot(repo, snap)
+        if pending_tree:
+            restore_worktree(repo, pending_tree.pop())
+        else:
+            restore_snapshot(repo, snap)
         if install and changed_manifest:
             _install(reinstall_command(install))
         elif had_manifest:
@@ -1157,7 +1224,18 @@ def revive(
 
     originals: dict[str, bytes | None] = {}
 
+    def _commit_item(item_id: str, files: list[str]) -> None:
+        if not commit_each_item or not files or not (repo / ".git").is_dir():
+            return
+        subprocess.run(["git", "add", "--", *files], cwd=str(repo), capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.name=PhoenixRepo", "-c", "user.email=phoenix@example.invalid", "commit", "-q", "-m", f"revive: {item_id}"],
+            cwd=str(repo),
+            capture_output=True,
+        )
+
     def _apply_tracked(edits: list[dict[str, Any]]) -> tuple[list[str], list[str], dict[str, bytes | None]]:
+        pending_tree[:] = [snapshot_worktree(repo)]
         edit_list = [edit for edit in edits if isinstance(edit, dict)]
         paths = [str(edit.get("path") or "") for edit in edit_list if edit.get("path")]
         if len(set(paths)) > MAX_FILES_PER_ITEM:
@@ -1283,6 +1361,7 @@ def revive(
     last = baseline
     accepted_checks = before
     stage_a_ok = baseline.ok
+    original_tree = snapshot_worktree(repo)
     if not baseline.ok and not stopped["phase"]:
         for n in range(1, max_iterations + 1):
             if time.monotonic() >= deadline_at:
@@ -1320,6 +1399,26 @@ def revive(
             if accepted:
                 accepted_checks = gate
                 stage_a_ok = True
+                pending_tree.clear()
+                kept_lines = 0
+                for rel in changed:
+                    target = _safe_path(repo, rel)
+                    after = target.read_bytes() if target and target.is_file() else None
+                    kept_lines += _line_delta(snap.get(rel), after)
+                result.prd_items_done.append(
+                    {
+                        "id": "fix-baseline",
+                        "kind": "repair",
+                        "files": list(changed),
+                        "lines": kept_lines,
+                        "status": "KEPT",
+                        "diff_size": {"files": len(changed), "lines": kept_lines},
+                        "acceptance_command": test,
+                        "expected": "exit code 0",
+                        "acceptance": {"command": test, "expected": "exit code 0", "exit": run.code, "ok": True},
+                    }
+                )
+                _commit_item("fix-baseline", list(changed))
                 break
             history.append(f"iteration {n}: changed {changed}, test exit {run.code}; output tail: {tail(run.output, 600)}")
 
@@ -1346,15 +1445,37 @@ def revive(
         return snap
 
     def _record_not_done(item_id: str, kind: str, reason: str, failed_check: str = "") -> None:
-        record: dict[str, Any] = {"id": item_id, "kind": kind, "reason": reason, "status": "reverted" if failed_check else "not_done"}
+        record: dict[str, Any] = {
+            "id": item_id,
+            "kind": kind,
+            "reason": reason,
+            "status": "ROLLED_BACK" if failed_check else "SKIPPED",
+            "diff_size": {"files": 0, "lines": 0},
+            "acceptance": {"command": "", "expected": "", "ok": False, "ran": bool(failed_check)},
+        }
         if failed_check:
             record["failed_check"] = failed_check
         result.prd_items_not_done.append(record)
         trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind}, output_summary={"status": "not_done", "reason": reason, "failed_check": failed_check}, status="not_done")
 
-    def _record_applied(item_id: str, kind: str, files: list[str], lines: int) -> None:
-        result.prd_items_done.append({"id": item_id, "kind": kind, "files": files, "lines": lines, "status": "applied"})
-        trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind}, output_summary={"status": "applied", "changed": files, "lines": lines}, status="applied")
+    def _record_applied(item_id: str, kind: str, files: list[str], lines: int, acceptance: dict[str, Any] | None = None, package: str = "", version: str = "") -> None:
+        pending_tree.clear()
+        record = {
+            "id": item_id,
+            "kind": kind,
+            "files": files,
+            "lines": lines,
+            "status": "KEPT",
+            "diff_size": {"files": len(files), "lines": lines},
+            "package": package,
+            "version": version,
+            "acceptance": acceptance or {"command": test, "expected": "exit code 0", "exit": 0, "ok": True},
+            "acceptance_command": (acceptance or {}).get("command") or test,
+            "expected": (acceptance or {}).get("expected") or "exit code 0",
+        }
+        result.prd_items_done.append(record)
+        trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind}, output_summary={"status": "applied", "disposition": "KEPT", "changed": files, "lines": lines, "acceptance": record["acceptance"]}, status="applied")
+        _commit_item(item_id, files)
 
     def _apply_deterministic_upgrade(item: dict[str, Any]) -> None:
         nonlocal accepted_checks, last
@@ -1366,11 +1487,13 @@ def revive(
             if skip:
                 _record_not_done(item_id, "upgrade", skip)
                 return
+        pending_tree[:] = [snapshot_worktree(repo)]
         old = str(item.get("from_version") or _locked_version(repo, package) or "")
         manifests = [name for name in ("package.json", "requirements.txt", "pyproject.toml") if (repo / name).is_file()]
         snap = _remember(manifests)
         changed, rejected = bump_declared_version(repo, package, old, version)
         if not changed:
+            pending_tree.clear()
             _record_not_done(item_id, "upgrade", "; ".join(rejected) or "could not edit the manifest")
             return
         if install and _manifest_touched(changed):
@@ -1381,7 +1504,7 @@ def revive(
         if run.ok and not regs:
             accepted_checks = gate
             last = run
-            _record_applied(item_id, "upgrade", changed, _lines_for(snap, changed))
+            _record_applied(item_id, "upgrade", changed, _lines_for(snap, changed), package=package, version=version)
             return
         failed = regs[0] if regs else "tests"
         repair_note = (
@@ -1422,12 +1545,15 @@ def revive(
             history.append(f"item {item_id} repair {attempt}: reverted. {last_reason}")
             trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": "upgrade", "attempt": attempt}, output_summary={"status": "reverted", "reason": last_reason, "failed_check": failed, "changed": rchanged}, retry_count=attempt, status="reverted")
         if repaired:
-            _record_applied(item_id, "upgrade", changed + [path for path in repair_files if path not in changed], _lines_for(snap, changed) + _lines_for(rsnap, repair_files))
+            _record_applied(item_id, "upgrade", changed + [path for path in repair_files if path not in changed], _lines_for(snap, changed) + _lines_for(rsnap, repair_files), package=package, version=version)
             return
         _restore(snap)
         _record_not_done(item_id, "upgrade", last_reason, failed)
 
     if stage_a_ok and (work_items or auto_upgrades) and not stopped["phase"]:
+        for auto in auto_upgrades:
+            auto.setdefault("acceptance_command", test)
+            auto.setdefault("expected", "exit code 0")
         adopt_deterministic_upgrades(prd, auto_upgrades)
         prd_upgrades = [item for kind, item in work_items if kind == "upgrade"]
         others = [(kind, item) for kind, item in work_items if kind != "upgrade"]
@@ -1488,11 +1614,14 @@ def revive(
                 if install and _manifest_touched(changed):
                     _install(reinstall_command(install))
                 run = _ensure()
+                acceptance_cmd = str(item.get("acceptance_command") or test)
+                expected = str(item.get("expected") or "exit code 0")
+                acc = run if acceptance_cmd == test else _run(acceptance_cmd, repo, test_timeout)
                 gate = _gate(run, prd)
                 regs = regression_ids(accepted_checks, gate)
                 # ensure_env has already run. An environment failure that survives it can be reverted;
                 # one that ensure_env fixed is a pass and is kept.
-                if regs or not run.ok:
+                if regs or not run.ok or not acc.ok:
                     failed_check = regs[0] if regs else "tests"
                     _restore(snap)
                     detail = _failure_text(regs, gate) if regs else run.output
@@ -1506,19 +1635,54 @@ def revive(
                 done = True
                 kept_files = changed
                 kept_lines = _lines_for(snap, changed)
-                trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind, "attempt": attempt}, output_summary={"status": "applied", "changed": changed, "lines": kept_lines}, retry_count=attempt, status="applied")
+                pending_tree.clear()
+                trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind, "attempt": attempt}, output_summary={"status": "applied", "disposition": "KEPT", "changed": changed, "lines": kept_lines, "acceptance_exit": acc.code}, retry_count=attempt, status="applied")
                 break
             if done:
-                result.prd_items_done.append({"id": item_id, "kind": kind, "files": kept_files, "lines": kept_lines, "status": "applied"})
+                result.prd_items_done.append(
+                    {
+                        "id": item_id,
+                        "kind": kind,
+                        "files": kept_files,
+                        "lines": kept_lines,
+                        "status": "KEPT",
+                        "diff_size": {"files": len(kept_files), "lines": kept_lines},
+                        "acceptance_command": str(item.get("acceptance_command") or test),
+                        "expected": str(item.get("expected") or "exit code 0"),
+                        "package": str(item.get("package") or ""),
+                        "version": str(item.get("version") or ""),
+                        "acceptance": {"command": str(item.get("acceptance_command") or test), "expected": str(item.get("expected") or "exit code 0"), "exit": 0, "ok": True},
+                    }
+                )
+                _commit_item(item_id, kept_files)
             else:
-                record = {"id": item_id, "kind": kind, "reason": last_reason, "status": "reverted" if failed_check else "not_done"}
+                record = {
+                    "id": item_id,
+                    "kind": kind,
+                    "reason": last_reason,
+                    "status": "ROLLED_BACK" if failed_check else "SKIPPED",
+                    "diff_size": {"files": 0, "lines": 0},
+                    "acceptance": {
+                        "command": str(item.get("acceptance_command") or test),
+                        "expected": str(item.get("expected") or "exit code 0"),
+                        "ok": False,
+                        "ran": bool(failed_check),
+                    },
+                }
                 if failed_check:
                     record["failed_check"] = failed_check
                 result.prd_items_not_done.append(record)
                 trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": item_id, "kind": kind}, output_summary={"status": "not_done", "reason": last_reason, "failed_check": failed_check}, status="not_done")
     elif work_items and not stage_a_ok:
         for kind, item in work_items:
-            record = {"id": str(item.get("id") or kind), "kind": kind, "reason": "baseline tests still fail, so the item was not attempted"}
+            record = {
+                "id": str(item.get("id") or kind),
+                "kind": kind,
+                "reason": "baseline tests still fail, so the item was not attempted",
+                "status": "SKIPPED",
+                "diff_size": {"files": 0, "lines": 0},
+                "acceptance": {"command": str(item.get("acceptance_command") or ""), "expected": str(item.get("expected") or ""), "ok": False, "ran": False},
+            }
             result.prd_items_not_done.append(record)
             trace.event(agent_name="builder", action="REVIVE_ITEM", input_summary={"id": record["id"], "kind": kind}, output_summary={"status": "not_done", "reason": record["reason"]}, status="not_done")
 
@@ -1547,6 +1711,7 @@ def revive(
                 else:
                     accepted_checks = gate
                     last = run
+                    pending_tree.clear()
 
     final_run = _ensure()
     final_checks = _gate(final_run, prd)
@@ -1563,6 +1728,41 @@ def revive(
         items_applied=len(result.prd_items_done),
         not_done_reason=not_done_reason[:400],
     )
+    if stopped["phase"]:
+        result.verification = {
+            "resurrection_allowed": False,
+            "blocked_reason": "deadline reached before verification",
+            "baseline_broken_or_outdated": False,
+            "kept_acceptance_passed": False,
+            "checks": [{"id": "verification", "status": "UNVERIFIED", "detail": "deadline reached before verification"}],
+        }
+    else:
+        from app.revive_verify import verify_revival
+
+        patched_tree = snapshot_worktree(repo)
+        build_cmd = ""
+        pkg = repo / "package.json"
+        if pkg.is_file():
+            try:
+                scripts = json.loads(pkg.read_text(encoding="utf-8")).get("scripts") or {}
+            except (OSError, ValueError):
+                scripts = {}
+            if scripts.get("build"):
+                build_cmd = "npm run build --silent"
+        result.verification = verify_revival(
+            original_tree,
+            patched_tree,
+            _run,
+            test_cmd=test,
+            build_cmd=build_cmd,
+            prd=prd,
+            items=result.prd_items_done,
+            baseline_code=baseline.code,
+            timeout=min(test_timeout, 120),
+        )
+        if result.state == "RESURRECTED" and not result.verification.get("resurrection_allowed"):
+            result.state = "NEEDS_REVIEW"
+            result.reason = result.verification.get("blocked_reason") or "verification did not confirm the revival"
     _finish(result)
     _emit_result()
     return result
