@@ -628,6 +628,7 @@ td[data-status="info"] {{ background: #eff6ff; }}
 {''.join(rows)}
 </tbody>
 </table>
+{_synthesized_section(payload)}
 <h2>PRD items applied</h2>
 <table>
 <thead><tr><th>Item</th><th>Kind</th><th>Files</th><th>Diff stat</th></tr></thead>
@@ -674,16 +675,70 @@ def _outcome_banner(payload: dict[str, Any]) -> str:
     label = str(payload.get("label") or "")
     label_html = f"<p>Label: {_cell(label)}</p>" if label else ""
     empty = "<p>Nothing could be verified automatically.</p>" if status == "NO_TESTS_TO_VERIFY" else ""
+    synth = payload.get("synthesized") if isinstance(payload.get("synthesized"), dict) else {}
+    synth_note = ""
+    if synth:
+        synth_note = "<p>Repository tests: none collected. Checks marked synthesized were created by the pipeline and are not the repository's own coverage.</p>"
     return (
         "<section class=\"outcome\">"
         "<h2>Outcome</h2>"
         f"<p><strong>{_cell(status)}</strong></p>"
         f"{label_html}"
         f"{empty}"
+        f"{synth_note}"
         f"<p>Changed: {_cell(changed)} ({_cell(lines)} lines).</p>"
         f"<p>Tests: {_cell(left)} -&gt; {_cell(right)}.</p>"
         f"<p>Not verified: {_cell(missing)}</p>"
         "</section>"
+    )
+
+
+def _synthesized_section(payload: dict[str, Any]) -> str:
+    """Pipeline-written checks. Empty when the run did not synthesize tests, so the quality table stays first."""
+    synth = payload.get("synthesized")
+    if not isinstance(synth, dict) or not synth:
+        return ""
+    note = "These checks were synthesized by the pipeline. They are not the repository's own tests or coverage."
+    rejected = [item for item in (synth.get("rejected") or []) if item]
+    rejected_html = "<ul>" + "".join(f"<li>{_cell(item)}</li>" for item in rejected) + "</ul>" if rejected else ""
+    cited = []
+    for item in synth.get("tests") or []:
+        if isinstance(item, dict) and item.get("readme_sentence"):
+            cited.append(f"{item.get('name') or 'test'}: {item.get('readme_sentence')}")
+    cited_html = "<ul>" + "".join(f"<li>{_cell(item)}</li>" for item in cited) + "</ul>" if cited else ""
+    before = {str(row.get("id")): row for row in (synth.get("before") or []) if isinstance(row, dict) and row.get("id")}
+    after_rows = [row for row in (synth.get("after") or []) if isinstance(row, dict) and row.get("id")]
+    after = {str(row.get("id")): row for row in after_rows}
+    ids: list[str] = []
+    for row in list(before.values()) + after_rows:
+        check_id = str(row.get("id") or "")
+        if check_id and check_id not in ids:
+            ids.append(check_id)
+    body = []
+    for check_id in ids:
+        left = before.get(check_id) or {}
+        right = after.get(check_id) or {}
+        body.append(
+            "<tr>"
+            f"<td>{_cell(check_id)}</td>"
+            "<td>synthesized</td>"
+            f"<td data-status=\"{_cell(left.get('status') or 'n/a')}\">{_cell(left.get('status') or 'n/a')}</td>"
+            f"<td data-status=\"{_cell(right.get('status') or 'n/a')}\">{_cell(right.get('status') or 'n/a')}</td>"
+            f"<td>{_cell(right.get('detail') or left.get('detail') or '')}</td>"
+            "</tr>"
+        )
+    table = ""
+    if body:
+        table = (
+            "<table><thead><tr><th>Check</th><th>Origin</th><th>Before</th><th>After</th><th>Detail</th></tr></thead><tbody>"
+            + "".join(body)
+            + "</tbody></table>"
+        )
+    return (
+        "<h2>Synthesized checks</h2>"
+        f"<p>{_cell(note)}</p>"
+        f"<p>Path: {_cell(synth.get('path') or '')}. {_cell(synth.get('note') or '')}</p>"
+        f"{cited_html}{rejected_html}{table}"
     )
 
 

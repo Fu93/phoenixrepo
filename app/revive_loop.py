@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app import quality_gate as qg
+from app.intent_tests import SYNTH_DIR
 from app.revive_prd import draft_prd, minimal_prd
 
 MAX_FILE_BYTES = 12_000
@@ -108,6 +109,7 @@ class ReviveResult:
     infrastructure_failures: list[dict[str, Any]] = field(default_factory=list)
     unverified: list[str] = field(default_factory=list)
     verification: dict[str, Any] | None = None
+    synthesized: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -129,6 +131,7 @@ class ReviveResult:
             "infrastructure_failures": self.infrastructure_failures,
             "unverified": self.unverified,
             "verification": self.verification,
+            "synthesized": self.synthesized,
         }
 
 
@@ -546,6 +549,8 @@ def detect_commands(repo: Path) -> tuple[str | None, str | None]:
 def is_protected(path: str) -> bool:
     norm = path.replace("\\", "/").lstrip("./")
     name = norm.rsplit("/", 1)[-1]
+    if norm == SYNTH_DIR or norm.startswith(SYNTH_DIR + "/"):
+        return True
     return bool(TEST_PATH_RE.search(norm)) or name in PROTECTED_NAMES or norm.startswith(".git/")
 
 
@@ -1098,7 +1103,9 @@ def apply_terminal(result: ReviveResult) -> None:
 
 def unverified_lines(result: ReviveResult) -> list[str]:
     lines = ["fork CI was not run"]
-    if result.state == "NO_TESTS_TO_VERIFY" or result.terminal == "NO_TESTS_TO_VERIFY":
+    if result.synthesized:
+        lines.append("the repository collected no tests; synthesized checks are not its coverage")
+    elif result.state == "NO_TESTS_TO_VERIFY" or result.terminal == "NO_TESTS_TO_VERIFY":
         lines.insert(0, "nothing could be verified automatically")
     if result.infrastructure_failures:
         lines.append("a model step hit an infrastructure error and was not treated as a verdict")
@@ -1318,18 +1325,46 @@ def revive(
         baseline = _ensure()
         trace.event(agent_name="validator", action="REVIVE_BASELINE", input_summary=test, output_summary={"exit": baseline.code, "tail": tail(baseline.output, 400)}, status="ok" if baseline.ok else "failed")
         if is_no_tests(baseline.cmd, baseline.output, baseline.code):
-            result = ReviveResult(
-                "NO_TESTS_TO_VERIFY",
-                "no tests were collected, so nothing could be verified automatically",
-                baseline=baseline,
-                final=baseline,
-            )
+            from app.intent_tests import can_synthesize, synthesize_for_no_tests
+
+            if can_synthesize(repo):
+                report = synthesize_for_no_tests(
+                    repo,
+                    client,
+                    _run,
+                    repo_id=repo_id,
+                    baseline=baseline,
+                    timeout=test_timeout,
+                    trace=trace,
+                    install_cmd=install,
+                    commit_each_item=commit_each_item,
+                )
+                result = ReviveResult(
+                    str(report["state"]),
+                    str(report["reason"]),
+                    baseline=baseline,
+                    final=report.get("final") or baseline,
+                    iterations=list(report.get("iterations") or []),
+                    files_changed=list(report.get("files_changed") or []),
+                    quality=dict(report.get("quality") or {}),
+                    prd_items_done=list(report.get("prd_items_done") or []),
+                    prd_items_not_done=list(report.get("prd_items_not_done") or []),
+                    synthesized=report.get("synthesized"),
+                    verification=report.get("verification"),
+                )
+            else:
+                result = ReviveResult(
+                    "NO_TESTS_TO_VERIFY",
+                    "no tests were collected, so nothing could be verified automatically",
+                    baseline=baseline,
+                    final=baseline,
+                )
             trace.event(
                 agent_name="orchestrator",
                 action="REVIVE_RESULT",
                 input_summary=repo_id,
                 output_summary={"state": result.state, "reason": result.reason, "terminal": result.state},
-                status="failed",
+                status="ok" if result.state == "RESURRECTED" else "failed",
             )
             _finish(result)
             return result
