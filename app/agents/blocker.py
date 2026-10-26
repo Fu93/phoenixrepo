@@ -7,8 +7,10 @@ not refuse the repository, and it never produces RESURRECTED.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 # OSI-style licences a free, self-hostable candidate can be matched against.
 PERMISSIVE = {
@@ -37,6 +39,54 @@ NOT_AN_ALTERNATIVE = {
 }
 
 MAINTENANCE_DAYS = 365
+
+# A docs page on one of these hosts is someone else's platform, not the vendor's own site.
+_PLATFORM_SUFFIXES = (
+    "medium.com",
+    "dev.to",
+    "hashnode.com",
+    "hashnode.dev",
+    "substack.com",
+    "wordpress.com",
+    "blogspot.com",
+    "github.io",
+    "gitlab.io",
+    "readthedocs.io",
+    "readthedocs.org",
+    "gitbook.io",
+    "notion.site",
+    "wikipedia.org",
+    "reddit.com",
+    "stackoverflow.com",
+    "stackexchange.com",
+)
+_FORGE_SUFFIXES = ("github.com", "gitlab.com", "codeberg.org", "bitbucket.org")
+_DOCS_HOST_LABELS = {"docs", "support", "help", "developer", "developers", "documentation", "www"}
+_DOCS_PATH_LABELS = {
+    "docs",
+    "documentation",
+    "support",
+    "guides",
+    "guide",
+    "integrations",
+    "integration",
+    "products",
+    "product",
+    "features",
+    "feature",
+    "help",
+}
+_BLOG_PATH_LABELS = {"blog", "posts", "articles", "news"}
+_COMPOUND_TLDS = {("co", "uk"), ("com", "au"), ("co", "jp"), ("com", "br"), ("co", "nz")}
+_PAID_ONLY = re.compile(
+    r"paid[- ]only|paid plans? only|requires a paid|only available on (?:a |the )?paid|"
+    r"subscription required|enterprise only|not available on the free",
+    re.IGNORECASE,
+)
+_FREE_CORE = re.compile(
+    r"free alternative|open[- ]source alternative|core value is being free|core value is free",
+    re.IGNORECASE,
+)
 
 
 def _as_int(value: Any) -> int | None:
@@ -96,6 +146,133 @@ def classify_page(alternative: dict[str, Any]) -> str:
     if "best " in blob and ("extension" in blob or "tools" in blob or "listicle" in blob):
         return "listicle"
     return "product"
+
+
+def _hostname(url: str) -> tuple[str, str]:
+    raw = str(url or "").strip()
+    if not raw:
+        return "", ""
+    if "://" not in raw:
+        raw = "https://" + raw
+    parsed = urlparse(raw)
+    return (parsed.hostname or "").lower().rstrip("."), parsed.path or ""
+
+
+def _host_is(host: str, suffix: str) -> bool:
+    return host == suffix or host.endswith("." + suffix)
+
+
+def _page_url(alternative: dict[str, Any]) -> str:
+    url = str(alternative.get("url") or "").strip()
+    if url:
+        return url
+    alt = str(alternative.get("alternative_id") or "").strip()
+    if alt.startswith("web:"):
+        return alt[4:]
+    if alt.startswith("http://") or alt.startswith("https://"):
+        return alt
+    return ""
+
+
+def _brand_tokens(host: str) -> list[str]:
+    labels = [part for part in host.split(".") if part and part != "www"]
+    while labels and labels[0] in _DOCS_HOST_LABELS:
+        labels = labels[1:]
+    if len(labels) >= 3 and tuple(labels[-2:]) in _COMPOUND_TLDS:
+        brand = labels[-3]
+    elif len(labels) >= 2:
+        brand = labels[-2]
+    else:
+        brand = labels[0] if labels else ""
+    tokens: list[str] = []
+    if brand:
+        tokens.append(brand)
+        for suffix in ("hq", "project"):
+            if brand.endswith(suffix) and len(brand) - len(suffix) >= 4:
+                tokens.append(brand[: -len(suffix)])
+    return [token for token in tokens if len(token) >= 4]
+
+
+def _product_text(alternative: dict[str, Any]) -> str:
+    parts = [str(alternative.get(key) or "") for key in ("title", "name", "product", "description", "excerpt")]
+    parts.extend(str(quote) for quote in (alternative.get("quotes") or []))
+    return " ".join(parts)
+
+
+def _brand_in_text(tokens: list[str], text: str) -> bool:
+    folded = text.casefold()
+    for token in tokens:
+        if re.search(rf"(?<![a-z0-9]){re.escape(token)}", folded):
+            return True
+    return False
+
+
+def _docs_shaped(host: str, path: str) -> bool:
+    labels = [part for part in host.split(".") if part]
+    if labels and labels[0] in _DOCS_HOST_LABELS and labels[0] != "www":
+        return True
+    parts = [part for part in path.lower().split("/") if part]
+    return any(part in _DOCS_PATH_LABELS for part in parts)
+
+
+def _page_text(alternative: dict[str, Any]) -> str:
+    return " ".join(
+        str(alternative.get(key) or "")
+        for key in ("title", "name", "product", "description", "excerpt", "readme", "text")
+    )
+
+
+def _verified_quote(alternative: dict[str, Any]) -> bool:
+    """The official-docs shortcut requires a quote already checked against the page text."""
+    if alternative.get("quote_verified") is not True:
+        return False
+    quotes = [str(quote).strip() for quote in (alternative.get("quotes") or []) if str(quote).strip()]
+    if not quotes:
+        return False
+    folded = " ".join(_page_text(alternative).split()).casefold()
+    if not folded:
+        return False
+    return all(" ".join(quote.split()).casefold() in folded for quote in quotes)
+
+
+def first_party_vendor_docs(alternative: dict[str, Any]) -> tuple[bool, str]:
+    """Whether this page is the vendor's own docs or feature page for the product it describes.
+
+    The host has to be that vendor's domain (``pagerduty.com/docs``, ``docs.datadoghq.com``,
+    ``support.atlassian.com``). A code host, a publisher, a docs platform, and a blog do not
+    qualify, and neither does a docs URL whose text names a different product. Stars and
+    push dates are not part of this check.
+    """
+    host, path = _hostname(_page_url(alternative))
+    if not host:
+        return False, "not a docs or feature page"
+    if any(_host_is(host, suffix) for suffix in _FORGE_SUFFIXES):
+        return False, "a code host is not a vendor docs page"
+    if any(_host_is(host, suffix) for suffix in _PLATFORM_SUFFIXES):
+        return False, "a publisher or docs platform is not the vendor's own domain"
+    parts = [part for part in path.lower().split("/") if part]
+    if any(part in _BLOG_PATH_LABELS for part in parts):
+        return False, "a blog path is not a vendor feature page"
+    if not _docs_shaped(host, path):
+        return False, "not a docs or feature page"
+    tokens = _brand_tokens(host)
+    if not tokens or not _brand_in_text(tokens, _product_text(alternative)):
+        return False, f"domain {host} is not the vendor of the product the page describes"
+    return True, f"first-party vendor docs on {host}"
+
+
+def _paid_only(alternative: dict[str, Any]) -> bool:
+    blob = _product_text(alternative)
+    blob = f"{blob} {alternative.get('reason') or ''}"
+    return _PAID_ONLY.search(blob) is not None
+
+
+def _core_value_is_free(candidate: dict[str, Any]) -> bool:
+    blob = " ".join(
+        str(candidate.get(key) or "")
+        for key in ("description", "readme_excerpt", "problem_excerpt", "tagline", "pitch")
+    )
+    return _FREE_CORE.search(blob) is not None
 
 
 def _licence_ok(alternative: dict[str, Any]) -> bool:
@@ -169,23 +346,72 @@ def evaluate_blocker(candidate: dict[str, Any], alternative: dict[str, Any], *, 
         elif overlap and overlap != "full":
             reasons.append(f"overlap is {overlap}")
 
-    maintained, maintain_why = _maintained(alternative, as_of)
+    domain_ok, domain_why = first_party_vendor_docs(alternative)
+    # A verified quote stays in front of the shortcut. Stars and push dates do not.
+    # A domain miss explains why the shortcut did not apply. It does not veto a row
+    # that already passes on stars, a release date, or an explicit official flag.
+    first_party = domain_ok and _verified_quote(alternative)
+    domain_note = domain_why if (not domain_ok and domain_why.startswith("domain ")) else ""
+
+    if alternative.get("archived") is True:
+        maintained, maintain_why = False, "archived"
+    elif first_party:
+        maintained, maintain_why = True, "maintained: " + domain_why
+    else:
+        maintained, maintain_why = _maintained(alternative, as_of)
     if not maintained:
         reasons.append(maintain_why)
-    mature, mature_why = _mature(candidate, alternative)
+    if first_party:
+        mature, mature_why = True, "official: " + domain_why
+    else:
+        mature, mature_why = _mature(candidate, alternative)
     if not mature:
         reasons.append("not mature or official: " + mature_why)
     cand_free = candidate.get("free", True) is not False and candidate.get("self_hostable", True) is not False
-    if cand_free and not _licence_ok(alternative):
-        reasons.append("candidate is free and self-hostable; the alternative has no free tier or permissive licence")
+    access_ok = True
+    access_why = ""
+    if first_party:
+        # Paid-only is a mismatch only when the quote says so and the candidate's core
+        # value is being free. A vendor feature that the quote does not price is kept.
+        if _paid_only(alternative) and _core_value_is_free(candidate) and cand_free:
+            access_ok = False
+            access_why = (
+                "access mismatch: the quote shows the alternative is paid-only "
+                "and the candidate's core value is being free"
+            )
+        elif _paid_only(alternative):
+            access_why = (
+                "access kept: the quote shows a paid-only feature, "
+                "and the candidate's core value is not being free"
+            )
+        else:
+            access_why = "access kept: the quote does not show the alternative is paid-only"
+    elif cand_free and not _licence_ok(alternative):
+        access_ok = False
+        access_why = "candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+    if not access_ok and access_why:
+        reasons.append(access_why)
 
     if fetch_status == "source_error" and stars is None:
         reasons.append("host API returned no facts, so this alternative cannot block")
+        if domain_note:
+            reasons.append(domain_note)
         return _result(False, "source_error", reasons, kind)
 
     hard_fail = [r for r in reasons if r]
-    if not hard_fail and same_job and overlap == "full" and kind not in NOT_AN_ALTERNATIVE and maintained and mature and (not cand_free or _licence_ok(alternative)):
-        return _result(True, "block", [maintain_why, mature_why], kind)
+    if (
+        not hard_fail
+        and same_job
+        and overlap == "full"
+        and kind not in NOT_AN_ALTERNATIVE
+        and maintained
+        and mature
+        and access_ok
+    ):
+        notes = [maintain_why, mature_why]
+        if access_why:
+            notes.append(access_why)
+        return _result(True, "block", notes, kind)
 
     # A mature partial overlap still needs a person. An immature one does not refuse.
     if (
@@ -194,12 +420,19 @@ def evaluate_blocker(candidate: dict[str, Any], alternative: dict[str, Any], *, 
         and kind not in NOT_AN_ALTERNATIVE
         and maintained
         and mature
-        and (not cand_free or _licence_ok(alternative))
+        and access_ok
         and fetch_status != "source_error"
     ):
-        return _result(False, "mature_partial", reasons or ["partial overlap of a maintained product"], kind)
+        partial_reasons = list(reasons or ["partial overlap of a maintained product"])
+        if access_why:
+            partial_reasons.append(access_why)
+        if domain_note:
+            partial_reasons.append(domain_note)
+        return _result(False, "mature_partial", partial_reasons, kind)
 
     role = "not_alternative" if kind in NOT_AN_ALTERNATIVE else "must_beat"
+    if domain_note:
+        reasons.append(domain_note)
     return _result(False, role, reasons or ["did not pass A-E"], kind)
 
 
