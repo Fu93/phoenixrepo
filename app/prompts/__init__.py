@@ -23,6 +23,7 @@ ROLES = (
     "relevance_capabilities",
     "relevance_demand",
     "relevance_coverage",
+    "rescue_plan",
 )
 
 _DIR = Path(__file__).resolve().parent

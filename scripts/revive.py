@@ -53,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--human-approved", action="store_true", help="Proceed after NEEDS_REVIEW or NEEDS_PRIOR_ART. Refused for ALREADY_EXISTS, NO_GO, and UNJUDGED.")
     ap.add_argument("--reviewer", default="", help="Name of the person who approved a NEEDS_REVIEW or NEEDS_PRIOR_ART revival.")
     ap.add_argument("--review-note", default="", dest="review_note", help="Why the reviewer approved this revival.")
+    ap.add_argument("--no-plan", action="store_true", dest="no_plan", help="Do not write the rescue plan for a CANDIDATE.")
     ap.add_argument("--batch", type=Path, default=None, help="JSON list of repos. Each item may set url, human_approved, reviewer, review_note, gate_verdict, and gate_reason.")
     return ap
 
@@ -178,6 +179,9 @@ def run_job(args: argparse.Namespace, job: dict, index: int) -> int:
             output_summary={"verdict": verdict, "reason": gate_reason[:300], "gate_run": gate["run_id"], "gate_hash": gate.get("run_hash")},
         )
 
+    if verdict == "CANDIDATE" and not supplied and not getattr(args, "no_plan", False):
+        _write_rescue_plan(trace, full_name, ROOT / "reports" / f"{rid}-gate1" / "scores.json", out)
+
     approval = approval_from_flags(verdict, gate_reason, approved, reviewer, note)
     if not revive_loop.revival_allowed(verdict, approval):
         # Do not clone. An approval of ALREADY_EXISTS, NO_GO, or UNJUDGED is recorded and refused.
@@ -236,6 +240,23 @@ def run_job(args: argparse.Namespace, job: dict, index: int) -> int:
         output_summary={"state": result.state, "reason": result.reason, "gate1": verdict, "models": sorted(client.served_models), "regressed": (result.quality or {}).get("regressed") or [], "terminal": result.terminal, "label": result.label},
     )
     return _finish_job(trace, result, full_name, verdict, rid, clone=str(target), extra={"served_models": sorted(client.served_models)})
+
+
+def _write_rescue_plan(trace, full_name: str, scores_path: Path, out: Path) -> None:
+    """Gate 2 part 1: the rescue plan for a CANDIDATE, in this run's trace. Never stops the revival."""
+    from app.rescue_plan import build_plan, render_markdown, repo_tree, to_json
+
+    try:
+        data = json.loads(scores_path.read_text(encoding="utf-8"))
+        row = next(r for r in data.get("candidates") or [] if str(r.get("repo_id") or "").casefold() == full_name.casefold())
+        plan = build_plan(row, client=build_relevance_client(trace=trace), trace=trace, tree=repo_tree(full_name))
+        plan["gate1"].update({"run_id": data.get("run_id"), "run_hash": data.get("run_hash")})
+        slug = full_name.replace("/", "__")
+        (out / f"{slug}.rescue.md").write_text(render_markdown(plan, run_id=trace.run_id), encoding="utf-8")
+        (out / f"{slug}.rescue.json").write_text(to_json(plan), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        trace.event(agent_name="rescue_planner", action="RESCUE_PLAN", input_summary=full_name,
+                    output_summary={"error": f"{type(exc).__name__}: {str(exc)[:200]}"}, status="error")
 
 
 def _finish_job(trace, result, full_name: str, verdict: str, rid: str, clone: str, extra: dict | None = None) -> int:

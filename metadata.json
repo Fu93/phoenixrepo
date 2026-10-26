@@ -13,7 +13,7 @@
         "Problem extraction and search-query writing (fast tier, MODEL_NAME)",
         "Every alternative-overlap judgement (fast tier, MODEL_NAME; PHOENIX_LLM_EXTRA_BODY can switch Nemotron's thinking off)",
         "The final gate-1 verdict (deep tier, MODEL_NAME_DEEP, thinking not switched off; PHOENIX_LLM_DEEP_EXTRA_BODY was empty on the scored run). Reasoning the model returns is stored on the trace line and shown in /ui next to the verbatim quote; the README counts how many verdict answers carried it.",
-        "Gate 2 (revive loop) requests the same Nightshift route by design; it has not run on a real CANDIDATE in this submission."
+        "Gate 2 part 1, the rescue plan for every CANDIDATE, is built to be drafted by Nemotron (step rescue_plan, deep tier when configured; items checked against gate-1 evidence). It has been tested with mocked model answers and the deterministic plan only; it has not yet been run with Nemotron on a real CANDIDATE. Gate 2 part 2, verified execution, requests the same route by design and has not run on a real CANDIDATE in this submission."
       ],
       "policy": "PHOENIX_NEMOTRON_POLICY: label (flag a non-Nemotron answer), require (discard it and ask again), fallback-nvidia (Nightshift first; after a Nightshift timeout, HTTP 5xx or non-Nemotron answer the same request goes to NVIDIA's API and the line is traced provider nvidia-direct). The scored run used fallback-nvidia.",
       "proof": "python scripts/verify_trace.py logs/trace-<run_id>.jsonl --require-nemotron fails unless every answer the run used was served by nvidia/nemotron-*, and prints the count and the Nightshift / nvidia-direct split.",
