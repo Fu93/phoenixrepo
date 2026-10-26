@@ -5,6 +5,9 @@
 --   SELECT repo_id, signal, detail, supports_revival FROM phoenix.revival_signals WHERE repo_id = '<owner/name>'
 --   SELECT <columns> FROM phoenix.revival_attempts WHERE repo_id = '<owner/name>'
 --   SELECT <columns> FROM phoenix.revival_sources WHERE repo_id = '<owner/name>'
+--   SELECT <columns> FROM phoenix.discovery_candidates WHERE repo_id = '<owner/name>'
+--   SELECT <columns> FROM phoenix.prior_art WHERE repo_id = '<owner/name>'
+--   SELECT <columns> FROM phoenix.demand_signals WHERE repo_id = '<owner/name>'
 -- Removing these views breaks the investigation. There is no GitHub fallback in the app.
 -- revival_attempts and revival_sources are file-backed. An empty result is a real
 -- "not yet attempted" / "no cited source" answer, not a missing view.
@@ -73,3 +76,64 @@ FROM phoenix_files.revival_attempts_file;
 CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS
 SELECT repo_id, source_id, kind, title, url, excerpt, data_origin
 FROM phoenix_files.revival_sources_file;
+
+-- Next statement. Stalled idea repositories. Empty is a real answer.
+CREATE SCHEMASTORE VIEW discovery_candidates WITH CONTAINER phoenix AS
+SELECT
+  repo_id,
+  html_url,
+  description,
+  readme_excerpt,
+  problem_excerpt,
+  user_excerpt,
+  scope_excerpt,
+  code_paths,
+  created_at,
+  pushed_at,
+  days_since_push,
+  stargazers_count,
+  forks_count,
+  open_issues,
+  licence_spdx,
+  core_terms,
+  cohort,
+  data_origin,
+  collected_at
+FROM phoenix_files.discovery_candidates_file;
+
+-- Next statement. Recorded alternatives. A row does not by itself decide ALREADY_EXISTS.
+CREATE SCHEMASTORE VIEW prior_art WITH CONTAINER phoenix AS
+SELECT
+  repo_id,
+  alternative_id,
+  url,
+  licence_spdx,
+  stars,
+  pushed_at,
+  days_since_push,
+  excerpt,
+  candidate_excerpt,
+  required_terms,
+  data_origin,
+  collected_at
+FROM phoenix_files.prior_art_file;
+
+-- Next statement. External demand for the problem, not the candidate's own stars.
+CREATE SCHEMASTORE VIEW demand_signals WITH CONTAINER phoenix AS
+SELECT
+  repo_id,
+  signal_id,
+  kind,
+  url,
+  excerpt,
+  metric_name,
+  metric_value,
+  comments,
+  reactions,
+  stars,
+  pushed_at,
+  days_since_push,
+  query,
+  data_origin,
+  collected_at
+FROM phoenix_files.demand_signals_file;

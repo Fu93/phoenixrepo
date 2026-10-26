@@ -5,8 +5,11 @@ from app.agents.policy import apply_revival_attempts, decide, normalize_attempt,
 from app.sql_catalog import ATTEMPT_COLUMNS, PROFILE_COLUMNS, SIGNAL_COLUMNS
 
 
-def _rows(name: str, columns: tuple[str, ...]) -> list[dict[str, str]]:
-    with (Path("data/real") / name).open(newline="", encoding="utf-8") as handle:
+PRE_REVIVAL = Path("tests/fixtures/hygen_pre_revival")
+
+
+def _rows(name: str, columns: tuple[str, ...], base: Path = Path("data/real")) -> list[dict[str, str]]:
+    with (base / name).open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         assert tuple(reader.fieldnames or ()) == columns
         return [dict(row) for row in reader]
@@ -24,10 +27,10 @@ def _signals(repo_id: str) -> list[dict]:
     ]
 
 
-def _attempts(repo_id: str) -> list[dict]:
+def _attempts(repo_id: str, base: Path = Path("data/real")) -> list[dict]:
     return [
         normalize_attempt(row)
-        for row in _rows("revival_attempts.csv", ATTEMPT_COLUMNS)
+        for row in _rows("revival_attempts.csv", ATTEMPT_COLUMNS, base)
         if row["repo_id"] == repo_id
     ]
 
@@ -78,7 +81,7 @@ def test_matterbridge_with_no_attempt_is_candidate():
 
 def test_hygen_snapshot_attempt_is_not_yet_attempted():
     row = _profile("jondot/hygen")
-    attempts = _attempts("jondot/hygen")
+    attempts = _attempts("jondot/hygen", PRE_REVIVAL)  # frozen: the state before the fork revival was merged
     assert [item["stage"] for item in attempts] == ["revive", "refactor", "upgrade"]
     assert {item["status"] for item in attempts} == {"not_attempted"}
     assert all(item["commit_sha"] == "" and item["ci_run_url"] == "" for item in attempts)
@@ -191,3 +194,12 @@ def test_a_later_failure_beats_an_earlier_success():
     assert decision == "RESURRECTION_FAILED"
     assert "actions/runs/2" in reason
     assert "Stage revive succeeded" not in reason
+
+
+def test_merged_hygen_revival_is_recorded_as_a_stage_revive_success():
+    attempts = _attempts("jondot/hygen")
+    revive = next(item for item in attempts if item["stage"] == "revive")
+    assert revive["status"] == "success"
+    assert revive["ci_run_url"] == "https://github.com/Fu93/hygen/actions/runs/40131923946"
+    decision, _reason, _upgrade = apply_revival_attempts(_profile("jondot/hygen"), _signals("jondot/hygen"), attempts)
+    assert decision == "RESURRECTED"  # technically revived; the first gate decides whether that is recommended

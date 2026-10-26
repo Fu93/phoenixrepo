@@ -52,6 +52,12 @@ $evidence = ($ContainerPath.TrimEnd("/") + "/repo_evidence.csv").Replace("\", "/
 $signals = ($ContainerPath.TrimEnd("/") + "/revival_signals.csv").Replace("\", "/")
 $attempts = ($ContainerPath.TrimEnd("/") + "/revival_attempts.csv").Replace("\", "/")
 $sources = ($ContainerPath.TrimEnd("/") + "/revival_sources.csv").Replace("\", "/")
+$discovery = ($ContainerPath.TrimEnd("/") + "/discovery_candidates.csv").Replace("\", "/")
+$prior = ($ContainerPath.TrimEnd("/") + "/prior_art.csv").Replace("\", "/")
+$demand = ($ContainerPath.TrimEnd("/") + "/demand_signals.csv").Replace("\", "/")
+$discoveryColumns = "repo_id, html_url, description, readme_excerpt, problem_excerpt, user_excerpt, scope_excerpt, code_paths, created_at, pushed_at, days_since_push, stargazers_count, forks_count, open_issues, licence_spdx, core_terms, cohort, data_origin, collected_at"
+$priorColumns = "repo_id, alternative_id, url, licence_spdx, stars, pushed_at, days_since_push, excerpt, candidate_excerpt, required_terms, data_origin, collected_at"
+$demandColumns = "repo_id, signal_id, kind, url, excerpt, metric_name, metric_value, comments, reactions, stars, pushed_at, days_since_push, query, data_origin, collected_at"
 
 function New-Statement([string]$Kind, [string]$Sql) {
     return [pscustomobject]@{ Kind = $Kind; Sql = $Sql }
@@ -92,7 +98,31 @@ CREATE LIGHTNING FILESTORE TABLE revival_sources_file FROM PHOENIX_REAL FORMAT C
         (New-Statement "view" "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real.repo_evidence_file"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real.revival_signals_file"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix_real.revival_attempts_file"),
-        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix_real.revival_sources_file")
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix_real.revival_sources_file"),
+        (New-Statement "table" @"
+CREATE LIGHTNING FILESTORE TABLE discovery_candidates_file FROM PHOENIX_REAL FORMAT CSV OPTIONS (
+  path "$discovery",
+  header "true",
+  delimiter ","
+)
+"@),
+        (New-Statement "table" @"
+CREATE LIGHTNING FILESTORE TABLE prior_art_file FROM PHOENIX_REAL FORMAT CSV OPTIONS (
+  path "$prior",
+  header "true",
+  delimiter ","
+)
+"@),
+        (New-Statement "table" @"
+CREATE LIGHTNING FILESTORE TABLE demand_signals_file FROM PHOENIX_REAL FORMAT CSV OPTIONS (
+  path "$demand",
+  header "true",
+  delimiter ","
+)
+"@),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW discovery_candidates WITH CONTAINER phoenix AS SELECT $discoveryColumns FROM phoenix_real.discovery_candidates_file"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW prior_art WITH CONTAINER phoenix AS SELECT $priorColumns FROM phoenix_real.prior_art_file"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW demand_signals WITH CONTAINER phoenix AS SELECT $demandColumns FROM phoenix_real.demand_signals_file")
     )
 }
 else {
@@ -129,7 +159,31 @@ CREATE TABLE phoenix_real_revival_sources USING com.databricks.spark.csv OPTIONS
         (New-Statement "view" "CREATE SCHEMASTORE VIEW repo_evidence WITH CONTAINER phoenix AS SELECT $profileColumns FROM phoenix_real_repo_evidence"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_signals WITH CONTAINER phoenix AS SELECT repo_id, signal, detail, supports_revival FROM phoenix_real_revival_signals"),
         (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_attempts WITH CONTAINER phoenix AS SELECT repo_id, fork_full_name, upstream_full_name, stage, status, ci_status, ci_run_url, ci_run_name, ci_run_event, commit_sha, compare_url, default_branch, head_sha, upstream_base_sha, ci_head_repo, workflow_path, workflow_steps, workflow_runs_build, compare_shas, data_origin FROM phoenix_real_revival_attempts"),
-        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix_real_revival_sources")
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW revival_sources WITH CONTAINER phoenix AS SELECT repo_id, source_id, kind, title, url, excerpt, data_origin FROM phoenix_real_revival_sources"),
+        (New-Statement "table" @"
+CREATE TABLE phoenix_real_discovery_candidates USING com.databricks.spark.csv OPTIONS (
+  path "$discovery",
+  header "true",
+  inferSchema "false"
+)
+"@),
+        (New-Statement "table" @"
+CREATE TABLE phoenix_real_prior_art USING com.databricks.spark.csv OPTIONS (
+  path "$prior",
+  header "true",
+  inferSchema "false"
+)
+"@),
+        (New-Statement "table" @"
+CREATE TABLE phoenix_real_demand_signals USING com.databricks.spark.csv OPTIONS (
+  path "$demand",
+  header "true",
+  inferSchema "false"
+)
+"@),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW discovery_candidates WITH CONTAINER phoenix AS SELECT $discoveryColumns FROM phoenix_real_discovery_candidates"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW prior_art WITH CONTAINER phoenix AS SELECT $priorColumns FROM phoenix_real_prior_art"),
+        (New-Statement "view" "CREATE SCHEMASTORE VIEW demand_signals WITH CONTAINER phoenix AS SELECT $demandColumns FROM phoenix_real_demand_signals")
     )
 }
 

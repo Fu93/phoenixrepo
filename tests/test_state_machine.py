@@ -25,3 +25,9 @@ def test_value_decision_with_evidence():
     machine = StateMachine(PhoenixState.MARKET_ANALYZED)
     machine.transition(PhoenixState.VALUE_DECISION, evidence_ids=["EV-001", "EV-002"])
     assert machine.current_state == PhoenixState.VALUE_DECISION
+
+
+def test_value_decision_can_stop_at_already_exists():
+    machine = StateMachine(PhoenixState.VALUE_DECISION)
+    machine.transition(PhoenixState.ALREADY_EXISTS, evidence_ids=["EV-001"])
+    assert machine.current_state == PhoenixState.ALREADY_EXISTS

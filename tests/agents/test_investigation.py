@@ -121,6 +121,8 @@ def test_sample_trace_records_requested_and_served_model(tmp_path):
     model_lines = [record for record in records if record["action"] == "MODEL_OUTPUT"]
     assert model_lines[0]["requested_model"] == "deterministic-rule-standin"
     assert model_lines[0]["served_model"] == "deterministic-rule-standin"
+    assert model_lines[0]["prompt_version"]
+    assert result["metadata"]["llm"]["prompt_versions"]["archaeologist"] == model_lines[0]["prompt_version"]
     assert "Served model deterministic-rule-standin." in result["metadata"]["verdict_text"]
     assert result["metadata"]["llm"]["provenance"]["served_model"] == "deterministic-rule-standin"
 
