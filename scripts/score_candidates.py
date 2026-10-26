@@ -48,6 +48,7 @@ from app.agents.relevance import (  # noqa: E402
     judge_alternative_coverage,
     judge_demand,
     judge_discovery,
+    judge_partial_alternatives,
     search_prior_art,
 )
 from app.agents.reinvestigate import reinvestigate  # noqa: E402
@@ -731,6 +732,36 @@ def build_default_toolbox(
     return ToolBox(tools=tools, budget=Budget(max_calls=max_calls, max_seconds=max_seconds), trace=trace)
 
 
+def verdict_for_infra_stop(candidate: dict[str, Any], exc: InfraFallbackStop, facts_client: Any | None = None):
+    """Judge the rows already verified when the alternatives phase stops early.
+
+    Runs the same maturity rule as ``judge_discovery`` / ``evaluate_blocker``. A verified
+    full overlap that passes it is ALREADY_EXISTS. Anything else, including unjudged chunks,
+    is NEEDS_REVIEW and never CANDIDATE.
+    """
+    partial = [dict(row) for row in (getattr(exc, "verified", None) or [])]
+    if facts_client is not None and partial:
+        partial = [facts_client.fetch_alternative(row) for row in partial]
+    judged = judge_partial_alternatives(
+        candidate,
+        partial,
+        unjudged_chunks=int(getattr(exc, "unjudged_chunks", 0) or 0),
+        infra_reason=str(exc),
+    )
+    if judged[0] != "CANDIDATE":
+        return judged
+    from app.agents.relevance import DiscoveryDecision
+
+    shown = ", ".join(str(row.get("alternative_id") or row.get("url") or "") for row in partial) or "none"
+    chunks = int(getattr(exc, "unjudged_chunks", 0) or 0)
+    return DiscoveryDecision(
+        "NEEDS_REVIEW",
+        f"{exc}; {chunks} chunk(s) unjudged; verified: {shown}",
+        [],
+        list(getattr(judged, "must_beat", []) or []),
+    )
+
+
 def score_all(
     data_dir: Path | None = None,
     output_json: Path | None = None,
@@ -1132,20 +1163,12 @@ def _do_score_candidates(
                     judgement_evidence = list(getattr(judged, "evidence", []) or [])
                     must_beat = list(getattr(judged, "must_beat", []) or [])
                 except InfraFallbackStop as exc:
-                    verdict = "NEEDS_REVIEW"
-                    reason = str(exc)
-                    trace.event(
-                        agent_name="orchestrator",
-                        action="DISCOVERY_FILTER",
-                        input_summary={"repo_id": repo_id},
-                        output_summary={"verdict": verdict, "reason": reason},
-                        status="ok",
-                    )
-                    candidate.pop("_manifest_texts", None)
-                    ineligible_repos.append(
-                        {"repo_id": repo_id, "verdict": verdict, "reason": reason, "eligibility": False}
-                    )
-                    continue
+                    judged = verdict_for_infra_stop(candidate, exc, facts_client)
+                    verdict, reason = judged
+                    judgement_evidence = list(getattr(judged, "evidence", []) or [])
+                    must_beat = list(getattr(judged, "must_beat", []) or [])
+                    combined_priors = list(getattr(exc, "verified", None) or [])
+                    problem_alternatives = combined_priors
                 except RelevanceLLMError as exc:
                     if "refusing to score with a small local model" in str(exc):
                         raise
