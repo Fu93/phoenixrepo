@@ -306,12 +306,16 @@ def test_rate_limited_handled_cleanly(tmp_path):
         relevance_client=_create_mock_relevance_client(tmp_path),
     )
 
-    # Candidate was processed and flagged RATE_LIMITED
-    cand = results["candidates"][0]
-    assert "RATE_LIMITED" in cand["flags"]
-
-    # System stopped cleanly without crash and still selected protagonist based on stored evidence
-    assert results["protagonist"]["repo_id"] == "SergioMendolia/ytkb"
+    # A rate-limited GitHub search is a source error (README: "A search that errors is a source
+    # error: the verdict is NEEDS_REVIEW with INSUFFICIENT_PRIOR_ART_COVERAGE"). This test used to
+    # expect CANDIDATE here: every GitHub query failed, one npm row was checked, and ytkb was
+    # still picked as the protagonist. The run must stop cleanly and leave the call to a human.
+    assert results["candidates"] == []
+    ytkb = next(r for r in results["ineligible"] if r["repo_id"] == "SergioMendolia/ytkb")
+    assert ytkb["verdict"] == "NEEDS_REVIEW"
+    assert "INSUFFICIENT_PRIOR_ART_COVERAGE" in ytkb["reason"]
+    assert "github" in ytkb["reason"]
+    assert not (results.get("protagonist") or {}).get("repo_id")
 
     # Trace verifies
     trace_path = log_dir / f"trace-{run_id}.jsonl"
