@@ -49,6 +49,16 @@
   .layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr); gap: 16px; }
   .panel { background: var(--card); border: 1px solid var(--line); padding: 14px; min-width: 0; }
   .banner { background: var(--sample-bg); color: var(--sample); padding: 8px 10px; margin-bottom: 10px; }
+  .sample-hero { font-size: 18px; line-height: 1.35; padding: 14px 16px; border: 2px solid var(--sample); margin: 16px 0; }
+  textarea.command {
+    width: 100%;
+    border: 1px solid var(--ink);
+    background: #f3efe6;
+    color: var(--ink);
+    font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    padding: 8px;
+    resize: none;
+  }
   .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
   .step {
     display: grid;
@@ -93,7 +103,13 @@
 <body>
 <header>
   <h1>PhoenixRepo gate 1, replayed</h1>
-  <p class="lede">A full recorded refusal, with no Nightshift token, no network, and no Docker. The timeline walks a committed file. The verdict card reads the same files. A SAMPLE banner means the hash chain was sealed in this repository over those copies. It is not a Nightshift log.</p>
+  <p class="lede">A full recorded refusal, with no Nightshift token, no network, and no Docker. The timeline walks a committed file. The verdict card reads the same files.</p>
+  <div class="banner sample-hero" id="sample-explainer">
+    <strong>SAMPLE.</strong> Every replay shipped in this repository is a SAMPLE hash chain sealed here over copies of committed files. It is not a Nightshift log. The label stays on the timeline and on the verdict card. A trace you import with the command below is labelled RECORDED: the JSONL is copied unchanged.
+  </div>
+  <h2>Swap in a real trace</h2>
+  <p>No JSON editing. The script checks the hash chain, copies <span>logs/trace-*.jsonl</span> byte for byte, writes the verdict row, and adds the replay to <span>data/replays/manifest.json</span>. When the verdict file lists more than one repository, pass <span>--repo owner/name</span>. Running it again for the same id replaces that replay.</p>
+  <textarea class="command" id="import-command" readonly rows="2">python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scores.json</textarea>
   <div class="missing" id="missing">
     <strong>Not in the repository.</strong>
     <ul><li>Loading the catalog.</li></ul>
@@ -110,7 +126,9 @@
         <button type="button" id="step">Step</button>
         <span class="muted" id="play-status"></span>
       </div>
-      <p class="muted">Each row is one trace line: agent, requested model, served model, seconds, status. MODEL_MISMATCH appears when those models differ or the line says so. SOURCE_ERROR appears when a line records that status. Seconds stay blank when the line has no elapsed_s, seconds, or latency_ms.</p>
+      <p class="muted">Each row is one trace line: agent, requested model, served model, seconds, status. MODEL_MISMATCH is the flag on an LLM line whose served model is missing or outside nvidia/nemotron-*. A different Nemotron size is the same family and is not a mismatch. SOURCE_ERROR appears when a line records that status. Seconds stay blank when the line has no elapsed_s, seconds, or latency_ms.</p>
+      <h2>Served models</h2>
+      <div id="served-models"><p class="muted">Choose a replay.</p></div>
       <div id="steps"></div>
       <h2>Selected step</h2>
       <pre id="step-detail">Choose a replay.</pre>
@@ -270,7 +288,7 @@
       : "";
     node.innerHTML =
       "<p class=\"verdict-name" + (refuse ? " refuse" : "") + "\">" + esc(name) + "</p>" +
-      "<p><span class=\"flag quiet\">" + esc(replay.data_class) + "</span> <span class=\"flag quiet\">" + esc(replay.trace_class) + "</span></p>" +
+      "<p><span class=\"flag quiet\">" + esc(replay.data_class) + "</span> <span class=\"" + (replay.trace_class === "SAMPLE" ? "flag" : "flag quiet") + "\">" + esc(replay.trace_class) + "</span></p>" +
       "<p>" + (replay.repo_url ? "<a href=\"" + esc(replay.repo_url) + "\">" + esc(replay.repo_id) + "</a>" : esc(replay.repo_id)) + "</p>" +
       acceptable +
       "<p>" + esc(card.reason || "") + "</p>" +
@@ -305,10 +323,30 @@
     document.getElementById("chain-result").textContent = "";
   }
 
+  function renderModels() {
+    var node = document.getElementById("served-models");
+    var replay = state.current;
+    if (!replay) return;
+    var models = replay.models || {};
+    var calls = models.model_calls || {};
+    var names = Object.keys(calls);
+    if (!names.length) {
+      node.innerHTML = "<p class=\"muted\">No LLM lines in this trace, so the served-model table is empty. MODEL_MISMATCH still appears on a step when that line records the flag.</p>";
+      return;
+    }
+    var rows = names.map(function (name) {
+      return "<tr><td>" + esc(name) + "</td><td>" + esc(calls[name]) + "</td></tr>";
+    }).join("");
+    node.innerHTML =
+      "<p><strong>MODEL_MISMATCH</strong> lines: " + esc(models.model_mismatch_count) + "</p>" +
+      "<table><thead><tr><th>Served model</th><th>Calls</th></tr></thead><tbody>" + rows + "</tbody></table>";
+  }
+
   function render() {
     renderList();
     renderSteps();
     renderDetail();
+    renderModels();
     renderVerdict();
     renderChain();
   }

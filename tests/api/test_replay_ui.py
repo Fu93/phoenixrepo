@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from api.run import app
@@ -161,6 +163,122 @@ def test_live_judge_enables_without_echoing_the_token(monkeypatch):
     body = CLIENT.get("/api/live").json()
     assert body["enabled"] is True
     assert secret not in json.dumps(body)
+
+
+def test_ui_documents_the_real_trace_import_and_keeps_sample_visible():
+    page = CLIENT.get("/ui").text
+    assert "SAMPLE" in page
+    assert "python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scores.json" in page
+    assert 'id="served-models"' in page
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scores.json" in readme
+
+
+def test_same_family_serve_is_not_a_mismatch_and_the_line_flag_is_kept():
+    same_family = step_from_event(
+        {
+            "agent_name": "orchestrator",
+            "action": "LLM_CALL",
+            "status": "ok",
+            "requested_model": "nvidia/nemotron-3-super-120b-a12b",
+            "served_model": "nvidia/nemotron-3-ultra-550b-a55b",
+            "input_summary": "{}",
+            "output_summary": "{}",
+        },
+        1,
+    )
+    assert same_family["flags"] == []
+    assert same_family["llm_line"] is True
+    flagged = step_from_event(
+        {
+            "agent_name": "orchestrator",
+            "action": "LLM_CALL",
+            "status": "ok",
+            "requested_model": "nvidia/nemotron-3-super-120b-a12b",
+            "served_model": "",
+            "flags": ["MODEL_MISMATCH"],
+            "input_summary": "{}",
+            "output_summary": "{}",
+        },
+        2,
+    )
+    assert flagged["flags"] == ["MODEL_MISMATCH"]
+    assert flagged["served_model"] is None
+    assert flagged["llm_line"] is True
+
+
+def test_import_replay_copies_the_trace_and_the_page_shows_the_model_table(tmp_path, monkeypatch):
+    from app.trace_log import HackathonTrace
+    from scripts.import_replay import ImportError as ReplayImportError
+    from scripts.import_replay import import_replay
+
+    trace = HackathonTrace("live-1", log_dir=tmp_path)
+    trace.event(
+        agent_name="orchestrator",
+        action="LLM_CALL",
+        input_summary={"repo_id": "acme/widget", "step": "coverage"},
+        output_summary={"requested_model": "nvidia/nemotron-3-super-120b-a12b", "served_model": "gemini-3.1-flash-lite"},
+        llm={"requested_model": "nvidia/nemotron-3-super-120b-a12b", "served_model": "gemini-3.1-flash-lite"},
+        status="ok",
+    )
+    trace.event(
+        agent_name="orchestrator",
+        action="LLM_CALL",
+        input_summary={"repo_id": "acme/widget", "step": "again"},
+        llm={"requested_model": "nvidia/nemotron-3-super-120b-a12b", "served_model": "nvidia/nemotron-3-super-120b-a12b"},
+        status="ok",
+    )
+    trace.seal()
+    scores = {
+        "run_id": "live-1",
+        "run_hash": trace.run_hash,
+        "llm_used": True,
+        "ineligible": [
+            {
+                "repo_id": "acme/widget",
+                "verdict": "NEEDS_REVIEW",
+                "reason": "partial overlap",
+                "decision_evidence": [
+                    {
+                        "alternative": "other/tool",
+                        "url": "https://github.com/other/tool",
+                        "overlap": "partial",
+                        "quote": "a maintained tool",
+                    }
+                ],
+            },
+            {"repo_id": "other/one", "verdict": "NO_GO", "reason": "toy"},
+        ],
+    }
+    verdict_path = tmp_path / "scores.json"
+    verdict_path.write_text(json.dumps(scores), encoding="utf-8")
+    replays = tmp_path / "replays"
+    replays.mkdir()
+    (replays / "manifest.json").write_text(json.dumps({"replays": [], "missing": []}), encoding="utf-8")
+    imported = import_replay(trace.path, verdict_path, replays_root=replays, repo="acme/widget")
+    assert imported["id"] == "acme-widget"
+    copied = (replays / "acme-widget" / "trace.jsonl").read_bytes()
+    assert copied == trace.path.read_bytes()
+    manifest = json.loads((replays / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["replays"][0]["id"] == "acme-widget"
+    assert manifest["replays"][0]["trace_class"] == "RECORDED"
+    monkeypatch.setattr("app.replay_ui.REPLAYS_ROOT", replays)
+    body = CLIENT.get("/api/replays/acme-widget").json()
+    assert body["trace_class"] == "RECORDED"
+    assert body["verdict"]["verdict"] == "NEEDS_REVIEW"
+    assert body["verdict"]["quote"] == "a maintained tool"
+    assert body["models"]["model_calls"] == {
+        "gemini-3.1-flash-lite": 1,
+        "nvidia/nemotron-3-super-120b-a12b": 1,
+    }
+    assert body["models"]["model_mismatch_count"] == 1
+    mismatched = next(step for step in body["steps"] if step["served_model"] == "gemini-3.1-flash-lite")
+    assert "MODEL_MISMATCH" in mismatched["flags"]
+    assert body["verification"]["ok"] is True
+    with pytest.raises(ReplayImportError):
+        import_replay(trace.path, verdict_path, replays_root=replays)
+    with pytest.raises(ReplayImportError):
+        import_replay(trace.path, verdict_path, replays_root=replays, repo="")
 
 
 def test_step_parser_surfaces_mismatch_source_error_and_seconds():

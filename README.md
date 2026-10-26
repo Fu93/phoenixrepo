@@ -72,6 +72,14 @@ Lane failure handling in `app/llm/provider.py`: HTTP 429, 502 and timeouts retry
 
 Each run writes `logs/trace-<run_id>.jsonl`: canonical JSON lines with `prev_hash` and `line_hash`, closed by `RUN_SEAL`. `python scripts/verify_trace.py <trace>` recomputes the chain and exits nonzero if a line was altered. `python scripts/render_trace.py <trace> --format md|html` renders the timeline for a human reviewer. The chain proves a record was not edited afterwards. It does not prove that the content is true; the verbatim-quote checks and the source links are what let someone verify the content.
 
+`GET /ui` replays the catalog under `data/replays/` with no token, no network, and no Docker. The replays shipped in this repository are labelled **SAMPLE**: each JSONL was sealed here over copies of committed files. It is not a file from `logs/`. The page shows `MODEL_MISMATCH` and a served-model table when a trace line carries `requested_model`, `served_model`, and that flag. To swap in a real trace, copy the JSONL unchanged and add the verdict to the manifest. No JSON is edited by hand:
+
+```bash
+python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scores.json
+```
+
+`--verdict` is a `score_candidates` JSON file (`candidates` and `ineligible`) or one `{repo_id, verdict}` object. When that file lists more than one repository, pass `--repo owner/name`. `--id` sets the catalog id; the default is the repository slug, so `acme/widget` becomes `acme-widget`. The script refuses a file whose hash chain does not verify. It writes `data/replays/<id>/trace.jsonl` as the original bytes, writes `record.json` from the verdict row, and replaces that id in `data/replays/manifest.json`. The imported replay is labelled **RECORDED**. Running the command again for the same id replaces that replay.
+
 ## Limits
 
 - **Nightshift is slow and 502-prone.** A call can take from a few seconds to several minutes and can return HTTP 502, so a repository can come back `UNJUDGED` and need a rerun. Nightshift may serve a different model than the one requested. Each trace records `requested_model` and `served_model`. This repository does not name a model that answered a live run, because that id is not stored here.

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agents.rescue import from_candidate_row
+from config.settings import model_mismatch
 from scripts.verify_trace import verify
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,7 +80,9 @@ def replay_payload(replay_id: str) -> dict[str, Any]:
     else:
         verification = {"ok": False, "detail": "no trace file is committed for this replay"}
     verdict = dict(record["verdict"])
-    verdict["rescue"] = _rescue(record.get("rescue_inputs"))
+    computed = _rescue(record.get("rescue_inputs"))
+    if computed is not None:
+        verdict["rescue"] = computed
     return {
         "id": record["id"],
         "title": record["title"],
@@ -92,6 +95,7 @@ def replay_payload(replay_id: str) -> dict[str, Any]:
         "sources": record.get("sources") or [],
         "recorded_run": record.get("recorded_run"),
         "steps": steps,
+        "models": model_summary(steps),
         "verdict": verdict,
         "verification": verification,
     }
@@ -141,9 +145,16 @@ def step_from_event(event: dict[str, Any], index: int) -> dict[str, Any]:
     status = str(event.get("status") or "")
     if status in _FLAG_NAMES:
         flags.add(status)
+    _take_flags(event.get("flags"), flags)
     for payload in payloads:
         _collect_flags(payload, flags)
-    if requested and served and requested != served:
+    # Same rule as the trace writer: missing or non-Nemotron served models mismatch.
+    # A different nvidia/nemotron-* size does not. requested != served is not enough.
+    llm_line = "requested_model" in event or "served_model" in event
+    if "served_model" in event:
+        if model_mismatch(event.get("served_model")):
+            flags.add("MODEL_MISMATCH")
+    elif served and model_mismatch(served):
         flags.add("MODEL_MISMATCH")
     return {
         "index": index,
@@ -154,10 +165,26 @@ def step_from_event(event: dict[str, Any], index: int) -> dict[str, Any]:
         "seconds": _seconds(payloads),
         "status": status,
         "flags": sorted(flags),
+        "llm_line": llm_line,
         "timestamp": event.get("timestamp") or None,
         "input_summary": _clip(_text(event.get("input_summary"))),
         "output_summary": _clip(_text(event.get("output_summary"))),
     }
+
+
+def model_summary(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Served-model counts from LLM lines. An empty served id is ``(missing)``."""
+
+    calls: dict[str, int] = {}
+    mismatches = 0
+    for step in steps:
+        if not step.get("llm_line"):
+            continue
+        label = step.get("served_model") or "(missing)"
+        calls[label] = calls.get(label, 0) + 1
+        if "MODEL_MISMATCH" in (step.get("flags") or []):
+            mismatches += 1
+    return {"model_mismatch_count": mismatches, "model_calls": calls}
 
 
 def _directory(replay_id: str) -> Path:
@@ -226,13 +253,17 @@ def _seconds(payloads: list[dict[str, Any]]) -> float | None:
     return None
 
 
+def _take_flags(listed: Any, found: set[str]) -> None:
+    if not isinstance(listed, list):
+        return
+    for item in listed:
+        if item in _FLAG_NAMES:
+            found.add(str(item))
+
+
 def _collect_flags(value: Any, found: set[str]) -> None:
     if isinstance(value, dict):
-        listed = value.get("flags")
-        if isinstance(listed, list):
-            for item in listed:
-                if item in _FLAG_NAMES:
-                    found.add(str(item))
+        _take_flags(value.get("flags"), found)
         source_status = value.get("source_status")
         if isinstance(source_status, dict):
             for status in source_status.values():
