@@ -30,9 +30,30 @@ Changing `MODEL_NAME` changes the relevance cache key, so earlier finished calls
 
 Shorter timeouts help only once a faster lane is found. With healthy calls of up to 345 s and 502s at about 330 s, a cap cannot tell them apart. Without a faster lane, keep the defaults and bound each repository instead: `$env:PHOENIX_ALTERNATIVES_BUDGET_S = "900"`.
 
+## 1a. Replace the GitHub token first (2 minutes)
+
+The current `GITHUB_TOKEN` gets HTTP 401. With it, every GitHub search failed and every repository became `NEEDS_REVIEW`; the code now drops a rejected token and continues, but unauthenticated GitHub allows only 60 requests per hour, which one or two judgements use up. Create a fine-grained token at github.com → Settings → Developer settings → Personal access tokens, with **public repositories, read-only** and no other permission, and put it in `.env` as `GITHUB_TOKEN=`. Check it:
+
+```powershell
+py -3 -c "import os,urllib.request as u; from app.console import load_env_file; load_env_file(); r=u.urlopen(u.Request('https://api.github.com/rate_limit', headers={'Authorization':'Bearer '+os.environ['GITHUB_TOKEN']})); print(r.status)"
+```
+
+`200` is good. The token is never printed or written to a trace.
+
 ## 1b. Make every verdict a Nemotron verdict (for the NVIDIA prize)
 
-The goal is a trace where every answer that informed a verdict says `served_model: nvidia/nemotron-*`.
+The goal is a trace where every answer that informed a verdict says `served_model: nvidia/nemotron-*`. The probe on 26 Oct showed 18 of 18 replies from Nemotron, but not always the requested size, so use `require`: it guarantees the family, and the served size is recorded per line.
+
+Recommended `.env` for the first real run (then tighten from the measured latencies):
+
+```
+PHOENIX_NEMOTRON_POLICY=require
+PHOENIX_LLM_ATTEMPT_TIMEOUT_S=180
+PHOENIX_LLM_TOTAL_TIMEOUT_S=420
+PHOENIX_ALTERNATIVES_BUDGET_S=900
+```
+
+180 s per attempt is three times the slowest probe reply (57 s) and below the ~330 s at which Nightshift's 502 used to arrive, so a hung call is cut sooner. After the pagerbeauty run, the report's served-model table shows the median and maximum seconds per model; set the attempt timeout to about twice that maximum.
 
 1. Copy the probe's lines into `.env`. When it found a second, larger Nemotron it also prints `MODEL_NAME_DEEP`: the fast model handles the many overlap checks, the deep one writes the final verdict with its reasoning on.
 2. Choose the policy in `.env`:

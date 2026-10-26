@@ -195,17 +195,33 @@ def served_model_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         served = event.get("served_model")
         label = served.strip() if isinstance(served, str) and served.strip() else "(missing)"
-        row = counts.setdefault(label, {"calls": 0, "mismatches": 0, "discarded": 0})
+        row = counts.setdefault(label, {"calls": 0, "mismatches": 0, "discarded": 0, "seconds": []})
         row["calls"] += 1
+        out = event.get("output_summary")
+        if isinstance(out, str):
+            try:
+                out = json.loads(out)
+            except ValueError:
+                out = None
+        if isinstance(out, dict) and isinstance(out.get("elapsed_s"), (int, float)) and not out.get("cache_hit"):
+            row["seconds"].append(float(out["elapsed_s"]))
         flags = event.get("flags") or []
         if "DISCARDED_BY_POLICY" in flags:
             row["discarded"] += 1
         elif "MODEL_MISMATCH" in flags:
             row["mismatches"] += 1
-    return [
-        {"served_model": name, "calls": info["calls"], "mismatches": info["mismatches"], "discarded": info["discarded"]}
-        for name, info in sorted(counts.items())
-    ]
+    rows = []
+    for name, info in sorted(counts.items()):
+        secs = sorted(info["seconds"])
+        rows.append({
+            "served_model": name,
+            "calls": info["calls"],
+            "mismatches": info["mismatches"],
+            "discarded": info["discarded"],
+            "median_s": secs[len(secs) // 2] if secs else None,
+            "max_s": secs[-1] if secs else None,
+        })
+    return rows
 
 
 def nemotron_share(rows: list[dict[str, Any]] | None) -> tuple[int, int]:
@@ -263,7 +279,7 @@ def render_served_model_table(rows: list[dict[str, Any]] | None) -> str:
     if not rows:
         parts.append('<p class="muted">No LLM calls were recorded for this run.</p>')
         return "\n".join(parts)
-    parts.append("<table><tr><th>Served model</th><th>Calls</th><th>MODEL_MISMATCH</th><th>Discarded by policy</th></tr>")
+    parts.append("<table><tr><th>Served model</th><th>Calls</th><th>MODEL_MISMATCH</th><th>Discarded by policy</th><th>Median s</th><th>Max s</th></tr>")
     for row in rows:
         parts.append(
             "<tr>"
@@ -271,6 +287,8 @@ def render_served_model_table(rows: list[dict[str, Any]] | None) -> str:
             f"<td>{_e(row.get('calls'))}</td>"
             f"<td>{_e(row.get('mismatches'))}</td>"
             f"<td>{_e(row.get('discarded', 0))}</td>"
+            f"<td>{_e('' if row.get('median_s') is None else row.get('median_s'))}</td>"
+            f"<td>{_e('' if row.get('max_s') is None else row.get('max_s'))}</td>"
             "</tr>"
         )
     parts.append("</table>")

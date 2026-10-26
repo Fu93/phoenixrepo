@@ -216,3 +216,32 @@ def test_evidence_report_shows_the_deep_tier_reasoning():
     assert "Model reasoning for the verdict" in page
     assert "The &lt;alt&gt; docs page matches the job." in page
     assert DEEP in page
+
+
+def test_llm_lines_carry_latency_and_the_report_shows_median_and_max(tmp_path: Path):
+    from scripts.evidence_report import served_model_rows
+
+    trace = _Trace()
+    client = _client(tmp_path, lambda r: _reply(FAST), trace=trace)
+    client.complete("p1", step="alternative")
+    client.complete("p1", step="alternative")  # cache hit
+    fresh, cached = trace.events
+    assert isinstance(fresh["output_summary"]["elapsed_s"], float)
+    assert cached["output_summary"]["cache_hit"] is True and "elapsed_s" not in cached["output_summary"]
+    events = [
+        {"requested_model": FAST, "served_model": FAST, "output_summary": {"elapsed_s": 12.0}},
+        {"requested_model": FAST, "served_model": FAST, "output_summary": json.dumps({"elapsed_s": 40.5})},
+        {"requested_model": FAST, "served_model": FAST, "output_summary": {"elapsed_s": 1.0, "cache_hit": True}},
+    ]
+    (row,) = served_model_rows(events)
+    assert row["calls"] == 3 and row["max_s"] == 40.5 and row["median_s"] == 40.5
+
+
+def test_probe_timeouts_stay_below_the_nightshift_502_wait():
+    from scripts import nightshift_probe as probe
+
+    slow = [probe.Attempt(FAST, "default", 200, 57.0, FAST, True, True)]
+    env = probe.recommend(slow)
+    assert env["PHOENIX_LLM_ATTEMPT_TIMEOUT_S"] == "228"
+    very_slow = [probe.Attempt(FAST, "default", 200, 90.0, FAST, True, True)]
+    assert probe.recommend(very_slow)["PHOENIX_LLM_ATTEMPT_TIMEOUT_S"] == "240"

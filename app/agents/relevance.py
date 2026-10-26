@@ -624,6 +624,8 @@ class RelevanceClient:
         provider: str = "nightshift",
         tier: str = "",
         reasoning: str = "",
+        seconds: float | None = None,
+        cache_hit: bool = False,
     ) -> None:
         """Count one model reply and, when a trace is attached, write one LLM_CALL line.
 
@@ -652,6 +654,10 @@ class RelevanceClient:
             summary["tier"] = tier
         if routing:
             summary["routing"] = routing
+        if seconds is not None:
+            summary["elapsed_s"] = round(float(seconds), 2)
+        if cache_hit:
+            summary["cache_hit"] = True
         if reasoning:
             summary["reasoning"] = reasoning
         self.trace.event(
@@ -772,7 +778,7 @@ class RelevanceClient:
                 self._observe(
                     req_m, served, repo_id, step, routing=cached_routing or None,
                     provider=str(cached.get("provider") or "nightshift"), tier=tier_label,
-                    reasoning=self.last_reasoning if tier == "deep" else "",
+                    reasoning=self.last_reasoning if tier == "deep" else "", cache_hit=True,
                 )
                 self.last_cache_hit = True
                 self.last_cache_file = cache_file
@@ -802,6 +808,7 @@ class RelevanceClient:
             self._observe(
                 model, served, repo_id, step, routing=routing or None, provider=provider,
                 tier=tier_label, reasoning=reasoning if tier == "deep" else "",
+                seconds=time.monotonic() - call_start,
             )
             self.last_cache_hit = False
             self.last_cache_file = cache_file
@@ -972,7 +979,10 @@ class RelevanceClient:
                 msg, text = _message_text(data)
                 if self.nemotron_policy != "label" and model_mismatch(served):
                     # The answer exists but was not written by Nemotron: it is traced and discarded.
-                    self._observe(model, served, repo_id, step, status="rejected", routing=routing or None, tier=tier_label)
+                    self._observe(
+                        model, served, repo_id, step, status="rejected", routing=routing or None,
+                        tier=tier_label, seconds=time.monotonic() - call_start,
+                    )
                     rescued = _direct(f"nightshift served {served or '(missing)'}")
                     if rescued is not None:
                         return rescued

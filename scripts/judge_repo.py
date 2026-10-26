@@ -48,14 +48,20 @@ def parse_repo_url(url: str) -> str:
 
 
 def _get(url: str, token: str, accept: str = "application/vnd.github+json") -> Any:
+    from app.github_auth import mark_unauthorized, token_usable
+
     headers = {"Accept": accept, "User-Agent": "phoenixrepo-judge"}
-    if token:
+    if token_usable(token):
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             body = resp.read()
     except urllib.error.HTTPError as exc:
+        if exc.code == 401 and "Authorization" in headers:
+            # An expired token: GitHub refuses even public data. Mark it and ask once without it.
+            mark_unauthorized(token)
+            return _get(url, token, accept)
         raise JudgeError(f"GitHub returned HTTP {exc.code} for {url.split('?')[0]}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
         raise JudgeError(f"could not reach GitHub: {exc}") from exc

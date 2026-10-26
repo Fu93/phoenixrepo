@@ -182,7 +182,8 @@ def test_probe_without_token_is_a_usage_error(monkeypatch: pytest.MonkeyPatch):
 
 def test_ensure_utf8_stdio_switches_a_legacy_code_page(monkeypatch: pytest.MonkeyPatch):
     raw = io.BytesIO()
-    legacy = io.TextIOWrapper(raw, encoding="cp950", errors="strict")
+    # newline="\n": on Windows the default writes "\r\n", which is not what this test is about.
+    legacy = io.TextIOWrapper(raw, encoding="cp950", errors="strict", newline="\n")
     monkeypatch.setattr(sys, "stdout", legacy)
     ensure_utf8_stdio()
     sys.stdout.write("引文 ✓ quote\n")

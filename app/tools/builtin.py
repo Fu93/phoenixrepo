@@ -657,11 +657,13 @@ class GitHubTool:
 
     def call(self, args: dict[str, Any]) -> ToolResult:
         now = _utc_now()
+        from app.github_auth import mark_unauthorized, token_usable
+
         headers = {
             "Accept": "application/vnd.github.v3+json",
             "User-Agent": "PhoenixRepo-Toolbox/1.0",
         }
-        if self.token:
+        if token_usable(self.token):
             headers["Authorization"] = f"Bearer {self.token}"
 
         action = str(args.get("action") or "").lower()
@@ -697,6 +699,11 @@ class GitHubTool:
         try:
             with httpx.Client(transport=self.transport, timeout=self.timeout_seconds) as client:
                 resp = client.get(url, headers=headers)
+                if resp.status_code == 401 and "Authorization" in headers:
+                    # Expired or revoked token: GitHub refuses even public data with it.
+                    mark_unauthorized(self.token)
+                    headers.pop("Authorization", None)
+                    resp = client.get(url, headers=headers)
                 if resp.status_code in {403, 429}:
                     return ToolResult(
                         ok=False,

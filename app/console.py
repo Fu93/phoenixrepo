@@ -38,8 +38,19 @@ def load_env_file(path: "str | None" = None) -> None:
         from dotenv import load_dotenv
     except ImportError:  # pragma: no cover - python-dotenv is a runtime dependency
         return
-    target = Path(path) if path else Path.cwd() / ".env"
-    if target.is_file():
+    if path:
+        targets = [Path(path)]
+    else:
+        # The current folder first (as pydantic Settings does), then the repository root, so a
+        # command started from another folder still reads the repository's .env.
+        repo_root = Path(__file__).resolve().parents[1]
+        targets = [Path.cwd() / ".env", repo_root / ".env"]
+    seen: set[Path] = set()
+    for target in targets:
+        resolved = target.resolve()
+        if resolved in seen or not target.is_file():
+            continue
+        seen.add(resolved)
         load_dotenv(target, override=False)
 
 

@@ -166,9 +166,10 @@ def recommend(attempts: list[Attempt]) -> dict[str, str] | None:
         deep = max(deep_pool, key=lambda a: (rank.get(a.requested_model, -1), -a.seconds))
         env["MODEL_NAME_DEEP"] = deep.requested_model
         slowest_good = max(slowest_good, max(a.seconds for a in deep_pool if a.requested_model == deep.requested_model))
-    # A real gate-1 prompt is far longer than the probe, so leave generous headroom: at least
-    # 60 s per attempt, 6x the slowest probe latency, and room for one retry in the total.
-    attempt_s = int(max(60, 6 * slowest_good))
+    # A real gate-1 prompt is longer than the probe: 4x the slowest probe latency, between 120 s
+    # and 240 s. The upper bound matters: Nightshift's 502 arrives after about 330 s, so a cap
+    # above that never cuts a hung call short. Room for one retry in the total.
+    attempt_s = int(min(240, max(120, 4 * slowest_good)))
     env["PHOENIX_LLM_ATTEMPT_TIMEOUT_S"] = str(attempt_s)
     env["PHOENIX_LLM_TOTAL_TIMEOUT_S"] = str(attempt_s * 2 + 30)
     return env
