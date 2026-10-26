@@ -226,7 +226,8 @@ def _reason_alternative(reason: str) -> dict[str, Any] | None:
 
 
 def _quotes_and_verified(output: dict[str, Any]) -> tuple[Any, Any]:
-    quotes: list[str] = []
+    primary: list[str] = []
+    rest: list[str] = []
     checks: list[bool] = []
     evidence = output.get("evidence")
     if isinstance(evidence, list):
@@ -235,10 +236,14 @@ def _quotes_and_verified(output: dict[str, Any]) -> tuple[Any, Any]:
                 continue
             quote = item.get("quote")
             if isinstance(quote, str) and quote.strip():
-                quotes.append(quote)
+                if item.get("role") == "alternative":
+                    primary.append(quote)
+                else:
+                    rest.append(quote)
                 text = item.get("text")
                 if isinstance(text, str):
                     checks.append(quote in text)
+    quotes = primary + rest
     if not quotes:
         for item in output.get("alternatives") or []:
             if not isinstance(item, dict):
