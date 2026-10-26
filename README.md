@@ -44,8 +44,8 @@ The two gates follow the VRIO test from strategic management (Barney), applied t
 | --- | --- | --- |
 | **Valuable**: does it do a real job for someone? | The problem, stated with a quote found verbatim in the repository's own text, and external demand signals. The repository's own stars are never used as demand. | `NO_GO` |
 | **Rare**: is that job not already done well? | Prior-art search on GitHub, npm and the web. An alternative that does the same job for the same user (the Jobs-to-be-Done test), is maintained, mature or official, and is backed by a verbatim quote makes the idea not rare. | `ALREADY_EXISTS` |
-| **Inimitable**: what gap would a revival own? | Alternatives that overlap only partly, or are too small to block, are kept as "must beat", with the reason each did not block (another setting, a paid-only feature, no self-hosting). That gap is the revival's position. | `CANDIDATE`, with the gap to beat stated |
-| **Organized**: can it actually be brought back? | Gate 2: the repository's own tests run, a model drafts patches, and a result counts only when those tests pass and an independent check finds no weakened test. | `RESURRECTION_FAILED` or `NEEDS_REVIEW` |
+| **Inimitable**: what gap would a revival own? | Alternatives that overlap only partly, or are too small to block, are kept as "must beat", with the reason each did not block (another setting, a paid-only feature, no self-hosting). That gap is the revival's position, and the rescue plan's UPGRADE stage is written against it. | `CANDIDATE`, with the gap to beat stated |
+| **Organized**: can it actually be brought back? | Gate 2: a rescue plan (REVIVE, OPTIMISE, UPGRADE) for every CANDIDATE, each item tied to recorded evidence; then, where a test command exists, patches that count only when the repository's own tests pass and no test was weakened. | plan says "add a test command first", or `RESURRECTION_FAILED` / `NEEDS_REVIEW` |
 
 Evidence that is missing or failed (a search error, a model outage, a search cut short) answers no question, so it gives `NEEDS_REVIEW`, the Stage-Gate "hold". Open-source code is cheap to copy, so "inimitable" here means the user, setting or access the alternatives leave open, not secrecy; the gate does not claim a lasting advantage.
 
@@ -213,6 +213,21 @@ Zetaris mode sends those statements through `ZetarisClient` (`POST {url}/sql-edi
 
 Code: `app/revive_loop.py`, command `python scripts/revive.py <github-url> [--iterations 4] [--gate-verdict ...]`.
 
+Gate 2 has two parts. **Part 1, the rescue plan, is written for every `CANDIDATE`, with or without tests.** **Part 2, verified execution, runs only when the repository has a test command.**
+
+#### Part 1: the rescue plan (`app/rescue_plan.py`, `scripts/rescue_plan.py`)
+
+```bash
+python scripts/rescue_plan.py reports/<gate1_run_id>/scores.json      # any CANDIDATE gate 1 wrote
+python scripts/verify_trace.py logs/trace-rescue-<...>.jsonl --require-nemotron
+```
+
+The plan is a PRD built only from the evidence gate 1 recorded: the candidate's own text, the alternatives it checked, the ones it must beat and why each did not block, demand signals and the scorer's assessments. It needs no clone. It has the VRIO shape: **positioning** (the user, the job, and the gap the must-beat alternatives leave open), **three stages** (REVIVE: make the stated job work again and verifiable; OPTIMISE: refactor, dependencies, tests, docs; UPGRADE: close the gap against must-beat), and **organised** (whether part 2 can verify the work: a test path visible in the repository root; if not, the code puts "add a runnable test command" first in REVIVE).
+
+Nemotron drafts the plan through Nightshift (step `rescue_plan`, on the deep tier when one is configured). The code checks it: every work item must cite evidence ids that exist, and its quote must be found verbatim in a cited text. Items that fail are listed under "Dropped by the check" and are not part of the plan. When the model is unavailable or nothing survives, a deterministic plan is built from the same evidence and labelled so. `scripts/revive.py` writes the plan into its own trace for a fresh `CANDIDATE`, before any clone, so a repository without tests still leaves with a plan.
+
+#### Part 2: verified execution
+
 **Gate 2 only runs if gate 1 said `CANDIDATE`.** This is a hard precondition (commit `aa48ca7`). For any other gate-1 verdict the state is `NOT_ATTEMPTED_GATE1`, the trace records `REVIVE_BLOCKED_BY_GATE1`, and nothing is cloned, installed or patched.
 
 When gate 1 passed:
@@ -273,6 +288,7 @@ python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scor
 - **A GitHub repository found through web search is not looked up as a repository.** A web result on `github.com` (for example `JetBrains/youtrack-cli/releases` on that run) stays a web row with no stars, so it cannot refuse, however mature the repository is. Looking such rows up through the GitHub API is the next fix; it was not made before submission because it changes verdicts.
 - **Zetaris was exercised on 2 repositories, not on the scored 16.** See [Zetaris scope](#zetaris-scope).
 - **An alternative blocks only when it is the same job, maintained, mature or official, and reachable on the same terms.** A verified quote is still required. A first-party vendor docs or feature page is official without stars or a push date. A stale, tiny, generic, or different-form-factor page is kept as "must beat" context and the verdict continues. The alternatives budget scales with the number of chunks and is spent only by failed calls. The rescue-potential score is stored on every row and does not turn a refusal into a candidate.
+- **A rescue plan is a plan, not a result.** Its items are tied to recorded evidence and checked against it, but nothing in it is executed or verified unless part 2 runs on a repository with a test command. A deterministic plan is labelled as one.
 - **The revive loop is verified locally only.** `RESURRECTED` from the loop means the repository's own test command exited 0 on one machine. It is not confirmed on CI, and tests that pass are not proof that the product works.
 - **No AI-written patch has yet fixed a real repository.** The local trials in `reports/` (not committed) were: two `NEEDS_REVIEW` (no test command), one `NOTHING_TO_FIX`, and one `RESURRECTION_FAILED` after 4 patch iterations (`package.json` edits only). These trials ran with a manually supplied gate-1 verdict of `NEEDS_REVIEW`, which the current code no longer lets proceed. They were environment cases or had no tests. The loop's behaviour is demonstrated; a successful AI-written revival is not.
 - **Gate 1 refusals are evidence-backed, not infallible.** The model extracts the problem and judges overlap; quotes are verified verbatim, but a wrong reading of a README can still produce a wrong verdict. `NEEDS_REVIEW` exists so a human decides those cases.
