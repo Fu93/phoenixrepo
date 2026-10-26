@@ -82,7 +82,14 @@ A live run on one machine, not a stored accuracy. "False pass" here means the ca
 Gate 1 can read its evidence from Zetaris (`EVIDENCE_SOURCE=zetaris`). In this submission Zetaris was exercised live, read-only, on the 2 repositories in `data/real`: `tharani-2006/Invoice-generator-application` and `SergioMendolia/ytkb`. `scripts/zetaris_check.py` loads their evidence rows and seals a trace; it calls no model and writes no verdict.
 
 <!-- BEGIN numbers: zetaris-gate1-run -->
-Gate-1 verdicts on those 2 repositories with evidence read from Zetaris: **TBD** (`python scripts/score_candidates.py --snapshot data/real --llm` with Zetaris running; paste the verdicts and the run hash, or delete this paragraph if that run was not made).
+Gate 1 was then run with its evidence read from Zetaris (`EVIDENCE_SOURCE=zetaris`, `python scripts/score_candidates.py --snapshot data/real --llm`) on those 2 repositories, on 26 Oct 2026. Run hash `4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad`, trace `logs/trace-zetaris-gate1.jsonl` on the author's machine. `scripts/verify_trace.py --require-nemotron` passed: 27 of 27 answers used were Nemotron's (Nightshift 21, `nvidia-direct` 6; served `nvidia/nemotron-3-ultra-550b-a55b` 24, `nvidia/nemotron-3.5-super-vl-120b-a12b` 3, the latter chosen by Nightshift).
+
+| Repository | Verdict with Zetaris evidence | Human label |
+| --- | --- | --- |
+| `tharani-2006/Invoice-generator-application` | `ALREADY_EXISTS` (maintained free alternatives such as Invoify) | `ALREADY_EXISTS` |
+| `SergioMendolia/ytkb` | `CANDIDATE`, flagged `LLM_FALLBACK` | `ALREADY_EXISTS` |
+
+ytkb is a false pass on this run. An earlier trial returned `NEEDS_REVIEW` on a partial overlap with JetBrains/youtrack-cli, and the human label names kd-cli. Zetaris supplied the evidence rows with their query ids and content hashes; it does not make a verdict more accurate. This run is not part of the scored table above.
 <!-- END numbers: zetaris-gate1-run -->
 
 The 16 evaluation repositories are the audit cases in `data/eval/gate1_labels.json`, the set `scripts/eval_gate1.py --audit-only` judges. Those 16 were fetched live from the GitHub API by `scripts/judge_repo.py`, and each verdict records `evidence_source=csv`. A single repository fetched live is not a row in the curated `phoenix.*` views, so that command does not ask Zetaris for it. This submission does not claim that all 16 went through Zetaris.
