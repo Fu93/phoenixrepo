@@ -21,8 +21,8 @@ import json
 import os
 import re
 import sys
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -412,22 +412,37 @@ class RelevanceClient:
 
             time_left = max(0.01, min(self.wall_clock_timeout, total_cap - (time.monotonic() - call_start)))
 
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_do_post)
+            # The worker only fills its own box. Cache, requested_model, and served_model are
+            # written on this thread after a successful join, so an abandoned HTTP 502 or a late
+            # 200 cannot overwrite provenance for the call that the fallback cap already gave up on.
+            box: dict[str, Any] = {}
+
+            def run(box: dict[str, Any] = box) -> None:
                 try:
-                    resp = future.result(timeout=time_left)
-                except FutureTimeoutError:
-                    raise RelevanceLLMError(
-                        f"Nightshift request timed out (wall-clock cap of {self.wall_clock_timeout}s exceeded)."
-                    )
-                except httpx.HTTPError as exc:
+                    box["resp"] = _do_post()
+                except Exception as exc:
+                    box["error"] = exc
+
+            worker = threading.Thread(target=run, name="nightshift-relevance", daemon=True)
+            worker.start()
+            worker.join(time_left)
+            if worker.is_alive():
+                raise RelevanceLLMError(
+                    f"Nightshift request timed out (wall-clock cap of {self.wall_clock_timeout}s exceeded)."
+                )
+            if "error" in box:
+                exc = box["error"]
+                if isinstance(exc, httpx.HTTPError):
                     last_exc = RelevanceLLMError(f"Nightshift request failed: {exc}")
                     continue
-                except Exception as exc:
-                    if isinstance(exc, RelevanceLLMError):
-                        raise
-                    last_exc = RelevanceLLMError(str(exc))
-                    continue
+                if isinstance(exc, RelevanceLLMError):
+                    raise
+                last_exc = RelevanceLLMError(str(exc))
+                continue
+            resp = box.get("resp")
+            if resp is None:
+                last_exc = RelevanceLLMError("Nightshift request returned no response.")
+                continue
 
             if resp.status_code == 200:
                 data = resp.json()

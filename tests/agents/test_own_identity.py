@@ -1,10 +1,12 @@
 """A repository's own package, docs, fork, and mirror are not alternatives."""
 import json
+import threading
+import time
 from pathlib import Path
 
 import httpx
 
-from app.agents.own_identity import build_identity, load_manifests, own_reason
+from app.agents.own_identity import build_identity, load_manifests, own_reason, split_own
 from app.agents.relevance import (
     InfraFallbackStop,
     RelevanceClient,
@@ -221,6 +223,121 @@ def test_manifest_file_fetch_reads_package_name(tmp_path: Path):
         "alternative_id": "web:https://pypi.org/project/widget-core-pro/",
         "url": "https://pypi.org/project/widget-core-pro/",
     }) is None
+
+
+def test_same_owner_different_product_stays_when_homepage_is_only_the_profile():
+    """A homepage of github.com/{owner} must not drop that person's other repositories."""
+    candidate = dict(CANDIDATE)
+    candidate["manifests"] = {
+        "pyproject.toml": (
+            '[project]\nname = "pydantic-to-typescript"\n'
+            'homepage = "https://github.com/phillipdupuis"\n'
+            "[project.urls]\n"
+            'Homepage = "https://phillipdupuis.github.io"\n'
+            'Documentation = "https://phillipdupuis.github.io/pydantic-to-typescript"\n'
+        ),
+    }
+    identity = build_identity(candidate)
+    other_repo = {
+        "alternative_id": "phillipdupuis/another-library",
+        "url": "https://github.com/phillipdupuis/another-library",
+        "description": "A documentation site for a different library with its own readme.",
+        "readme": "This project publishes release notes for a separate product.",
+        "fork": False,
+        "source": "github",
+    }
+    other_docs = {
+        "alternative_id": "web:https://phillipdupuis.github.io/another-library/",
+        "url": "https://phillipdupuis.github.io/another-library/",
+        "description": "Docs for a different product by the same person.",
+        "source": "web",
+    }
+    assert own_reason(identity, other_repo) is None
+    assert own_reason(identity, other_docs) is None
+    assert own_reason(identity, OWN_PYPI) == "own registry package pydantic-to-typescript"
+    assert own_reason(identity, {
+        "alternative_id": "phillipdupuis/pydantic-to-typescript",
+        "url": "https://github.com/phillipdupuis/pydantic-to-typescript",
+    })
+    assert own_reason(identity, {
+        "alternative_id": "web:https://phillipdupuis.github.io/pydantic-to-typescript/",
+        "url": "https://phillipdupuis.github.io/pydantic-to-typescript/",
+    })
+    kept, dropped = split_own(identity, [other_repo, other_docs, OWN_PYPI])
+    assert {row["alternative_id"] for row in kept} == {
+        "phillipdupuis/another-library",
+        "web:https://phillipdupuis.github.io/another-library/",
+    }
+    assert any("pydantic-to-typescript" in item["url"] for item in dropped)
+
+
+def test_fallback_cap_abandons_a_slow_call_without_recording_late_provenance(tmp_path: Path):
+    """The 502 cap returns before a hung call finishes, and the late model never lands."""
+    release = threading.Event()
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        release.wait(2.0)
+        body = {
+            "model": "late-served-model",
+            "choices": [{"message": {"content": json.dumps({"results": []})}}],
+        }
+        return httpx.Response(200, json=body)
+
+    client = RelevanceClient(
+        token="meterless-test-token",
+        transport=httpx.MockTransport(handler),
+        cache_dir=tmp_path / "cache",
+        wall_clock_timeout=0.2,
+        total_timeout=0.2,
+    )
+    rows = [
+        {
+            "alternative_id": f"other/tool-{i}",
+            "url": f"https://github.com/other/tool-{i}",
+            "description": f"Tool {i} does a different job number {i}.",
+            "source": "github",
+        }
+        for i in range(3)
+    ]
+    trace = _Trace()
+    started = time.monotonic()
+    try:
+        filter_relevant_alternatives(
+            PROBLEM,
+            "phillipdupuis/pydantic-to-typescript",
+            rows,
+            client=client,
+            trace=trace,
+            candidate=CANDIDATE,
+        )
+    except InfraFallbackStop as exc:
+        reason = str(exc)
+    else:
+        raise AssertionError("fallback kept waiting on a call the cap had already given up")
+    elapsed = time.monotonic() - started
+    assert elapsed < 1.5
+    assert reason.startswith("infra:")
+    assert "HTTP 502" in reason
+    assert is_infra_review({"verdict": "NEEDS_REVIEW", "reason": reason})
+    release.set()
+    time.sleep(0.4)
+    assert "late-served-model" not in client.served_models
+    assert "late-served-model" not in client.model_calls
+    for path in (tmp_path / "cache").glob("*.json"):
+        assert "late-served-model" not in path.read_text(encoding="utf-8")
+    seen_call = False
+    for event in trace.events:
+        if event.get("action") not in {"ALTERNATIVE_CALL", "ALTERNATIVE_BATCH_CALL"}:
+            continue
+        seen_call = True
+        llm = event.get("llm") or {}
+        summary = event.get("output_summary") or {}
+        assert llm.get("requested_model") == client.model
+        assert llm.get("served_model") in ("", None)
+        assert summary.get("served_model") in ("", None)
+        assert summary.get("requested_model") == client.model
+        assert "late-served-model" not in json.dumps(event)
+    assert seen_call
 
 
 def test_repeated_http_502_stops_the_per_alternative_fallback(tmp_path: Path):

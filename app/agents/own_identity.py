@@ -214,12 +214,31 @@ def _slug_is_own(identity: OwnIdentity, slug: str) -> bool:
     return _pep503(text) in identity.packages_pep and _pep503(text) != ""
 
 
+def _known_parts(known: str) -> tuple[str, list[str]]:
+    host, _, path = known.partition("/")
+    return host, [part for part in path.split("/") if part]
+
+
+def _prefix_match_allowed(known: str) -> bool:
+    """A prefix match needs a project path.
+
+    ``github.com/{owner}`` and ``{owner}.github.io`` with no project would otherwise
+    swallow every other repository that person publishes.
+    """
+    host, parts = _known_parts(known)
+    if host in _FORGES:
+        return len(parts) >= 2
+    if host.endswith(".github.io"):
+        return len(parts) >= 1
+    return True
+
+
 def _url_is_own(identity: OwnIdentity, url: str) -> str | None:
     norm = _norm_url(url)
     if not norm:
         return None
     for known in identity.urls:
-        if norm == known or norm.startswith(known + "/"):
+        if norm == known or (norm.startswith(known + "/") and _prefix_match_allowed(known)):
             return "own homepage, docs, or repository URL"
     slug = _registry_slug(url if "://" in url or url.lower().startswith("web:") else "")
     if slug and _slug_is_own(identity, slug):
