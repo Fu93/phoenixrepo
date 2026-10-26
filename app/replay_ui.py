@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REPLAYS_ROOT = ROOT / "data" / "replays"
 UI_FILE = ROOT / "app" / "ui" / "index.html"
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
-_FLAG_NAMES = ("MODEL_MISMATCH", "SOURCE_ERROR")
+_FLAG_NAMES = ("MODEL_MISMATCH", "SOURCE_ERROR", "DISCARDED_BY_POLICY")
 
 
 class ReplayError(Exception):
@@ -68,6 +68,7 @@ def replay_payload(replay_id: str) -> dict[str, Any]:
     record = json.loads((directory / "record.json").read_text(encoding="utf-8"))
     trace_path = directory / "trace.jsonl"
     steps: list[dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
     if trace_path.is_file():
         events = [
             json.loads(line)
@@ -97,8 +98,37 @@ def replay_payload(replay_id: str) -> dict[str, Any]:
         "steps": steps,
         "models": model_summary(steps),
         "verdict": verdict,
+        "verdict_reasoning": verdict_reasoning(events, str(record.get("repo_id") or "")),
         "verification": verification,
     }
+
+
+def verdict_reasoning(events: list[dict[str, Any]], repo_id: str) -> dict[str, Any] | None:
+    """The model reasoning recorded on the final-verdict call for this repository, if any.
+
+    Only a used answer counts (not one a Nemotron-only policy discarded). The latest one wins,
+    because a rerun can follow an infrastructure failure.
+    """
+    found: dict[str, Any] | None = None
+    for index, event in enumerate(events, start=1):
+        if str(event.get("action") or "") != "LLM_CALL" or str(event.get("status") or "") in {"rejected", "error"}:
+            continue
+        inputs = _as_object(event.get("input_summary")) or {}
+        output = _as_object(event.get("output_summary")) or {}
+        if inputs.get("step") != "discovery" or (repo_id and inputs.get("repo_id") not in {repo_id, None}):
+            continue
+        text = output.get("reasoning")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        served = event.get("served_model") or output.get("served_model") or ""
+        found = {
+            "text": _clip(text, 1500),
+            "served_model": str(served or ""),
+            "provider": str(output.get("provider") or "nightshift"),
+            "nemotron": not model_mismatch(served),
+            "step_index": index,
+        }
+    return found
 
 
 def tamper_replay(replay_id: str) -> dict[str, Any]:

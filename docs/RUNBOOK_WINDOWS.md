@@ -51,7 +51,10 @@ PHOENIX_NEMOTRON_POLICY=require
 PHOENIX_LLM_ATTEMPT_TIMEOUT_S=180
 PHOENIX_LLM_TOTAL_TIMEOUT_S=420
 PHOENIX_ALTERNATIVES_BUDGET_S=900
+PHOENIX_LLM_DEEP_EXTRA_BODY={"temperature":0.6,"top_p":0.95}
 ```
+
+The last line uses NVIDIA's recommended sampling for Nemotron 3 with reasoning on (temperature 0.6, top_p 0.95) for the verdict step only; the overlap checks stay at temperature 0. It does nothing unless `MODEL_NAME_DEEP` is set.
 
 180 s per attempt is three times the slowest probe reply (57 s) and below the ~330 s at which Nightshift's 502 used to arrive, so a hung call is cut sooner. After the pagerbeauty run, the report's served-model table shows the median and maximum seconds per model; set the attempt timeout to about twice that maximum.
 
@@ -120,6 +123,10 @@ py -3 scripts/revive.py https://github.com/<owner>/<repo> --deadline 3600
 ```
 
 Do not pass `--gate-verdict` for a repository you will show as a candidate; let gate 1 judge it live. This is not on the critical path.
+
+## 5b. Publish the hosted demo (once, 2 minutes)
+
+GitHub → the repository → Settings → Pages → Source: **GitHub Actions**. Then Actions → `pages` → Run workflow (or push to `main`). The page is at https://fu93.github.io/phoenixrepo/. After importing a real trace into `data/replays/`, the next push to `main` republishes it.
 
 ## 6. Housekeeping (2 minutes)
 
