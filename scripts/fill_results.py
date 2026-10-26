@@ -163,6 +163,91 @@ def _commit_count() -> str:
         return "TBD"
 
 
+def _summary_fields(record: dict[str, Any]) -> dict[str, Any]:
+    raw = record.get("output_summary")
+    if isinstance(raw, dict):
+        return raw
+    text = str(raw or "")
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    # A long reasoning excerpt can truncate the JSON string; read the short keys that precede it.
+    fields: dict[str, Any] = {}
+    for key in ("provider", "tier"):
+        m = re.search(r'"' + key + r'": "([^"]*)"', text)
+        if m:
+            fields[key] = m.group(1)
+    m = re.search(r'"elapsed_s": ([0-9.]+)', text)
+    if m:
+        fields["elapsed_s"] = float(m.group(1))
+    if '"cache_hit": true' in text:
+        fields["cache_hit"] = True
+    if '"reasoning": "' in text:
+        fields["reasoning"] = "(truncated)"
+    return fields
+
+
+def nemotron_evidence(data: dict[str, Any]) -> str:
+    """Per-tier use, latency per served model and provider failures, from the verified traces."""
+    tiers: dict[str, dict[str, int]] = {}
+    reasoning_kept = deep_used = 0
+    seconds: dict[str, list[float]] = {}
+    nightshift_failed = direct_used = direct_failed = 0
+    for case in data["per_case"]:
+        t = case["trace"]
+        if not t.get("chain_ok"):
+            continue
+        for line in Path(t["path"]).read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if "served_model" not in record:
+                continue
+            fields = _summary_fields(record)
+            provider = str(fields.get("provider") or "nightshift")
+            status = str(record.get("status") or "")
+            if status == "error":
+                if provider == "nightshift":
+                    nightshift_failed += 1
+                else:
+                    direct_failed += 1
+                continue
+            if status == "rejected":
+                continue
+            model = str(record.get("served_model") or "(missing)")
+            tier = str(fields.get("tier") or "single")
+            tiers.setdefault(tier, {})[model] = tiers.setdefault(tier, {}).get(model, 0) + 1
+            if tier == "deep":
+                deep_used += 1
+                reasoning_kept += int(bool(fields.get("reasoning")))
+            if provider == "nvidia-direct":
+                direct_used += 1
+            if not fields.get("cache_hit") and isinstance(fields.get("elapsed_s"), (int, float)):
+                seconds.setdefault(model, []).append(float(fields["elapsed_s"]))
+    if not tiers:
+        return "**TBD** (no verified case trace)."
+    lines = ["| Tier | Answers used, by served model |", "| --- | --- |"]
+    for tier in sorted(tiers):
+        lines.append(f"| {tier} | " + ", ".join(f"`{m}` {c}" for m, c in sorted(tiers[tier].items())) + " |")
+    lines += ["", "| Served model | Live answers | Median seconds | Max seconds |", "| --- | --- | --- | --- |"]
+    for model, values in sorted(seconds.items()):
+        ordered = sorted(values)
+        mid = ordered[len(ordered) // 2] if len(ordered) % 2 else (ordered[len(ordered) // 2 - 1] + ordered[len(ordered) // 2]) / 2
+        lines.append(f"| `{model}` | {len(ordered)} | {mid:.0f} | {ordered[-1]:.0f} |")
+    lost = sum(1 for c in data["per_case"] if c["outcome"] == "not judged")
+    lines += [
+        "",
+        f"Final-verdict (deep tier) answers with Nemotron's reasoning kept in the trace: **{reasoning_kept}** of **{deep_used}**. "
+        f"Nightshift calls that failed (timeout, HTTP 5xx or non-Nemotron answer): **{nightshift_failed}**; "
+        f"answers then written by NVIDIA's API (`nvidia-direct`): **{direct_used}**; failed `nvidia-direct` calls: **{direct_failed}**. "
+        f"Cases left not judged on this run: **{lost}** of **{len(data['per_case'])}**. Cached answers are counted as used but not timed.",
+    ]
+    return "\n".join(lines)
+
+
 def per_case_table(data: dict[str, Any]) -> str:
     lines = [
         "| Repository | Human label | Verdict | Outcome | Verdict answer by | Nemotron answers used | Providers | Chain | Reason (shortened) |",
@@ -195,6 +280,7 @@ def slots(data: dict[str, Any], source: str, readme: bool) -> dict[str, str]:
     out["eval-summary-table"] = markdown(data["summary"], source).rstrip()
     if readme:
         out["per-case-table"] = per_case_table(data)
+        out["nemotron-evidence"] = nemotron_evidence(data)
     traced = f"{t['chain_ok']} of {data['rows']} case traces verified"
     if t["chain_ok"]:
         share = f"**{t['answers_by_nemotron']}** of **{t['answers_used']}** answers used ({traced}, `{source}`)."
