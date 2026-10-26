@@ -1,77 +1,82 @@
 # Submission draft: Open Agent Hackathon 2026, Track 02 "The Agent That Can Explain Why"
 
-Solo entry, team PhoenixRepo. Repository: `Fu93/phoenixrepo` (branch `cursor/idea-filter-13a8`, PR #6). Deadline: **27 Oct 2026 23:45 UK time**. Video length allowed: 1 to 4 minutes. Everything here is in English.
+Solo entry, team PhoenixRepo. Repository: `Fu93/phoenixrepo`, branch `main`. Deadline: **27 Oct 2026 23:45 UTC** (London is on GMT, so the same clock time). Plan: first version submitted by **12:00 UTC**, final by **21:00 UTC**. Video: 1 to 4 minutes. Everything submitted is in English.
 
-Rules for this draft: every statement was read from the repository or from a real file on 25 Oct 2026. Anything not yet known is a `[TODO: ...]`. Nothing here claims that the revive loop has fixed a real repository with an AI-written patch, because it has not.
+Rules for this draft: every number is copied from a file. A number that lives only on the author's Windows machine says so and names the file. Anything not known yet is a `[TODO: ...]`. Nothing here claims that an AI-written patch has fixed a real repository, or that Nemotron answered a call, unless a committed trace shows it.
 
-Rubric reminder: Impact 30, Technical 20, Innovation 15, Demo 15, Product & UX 10, Sponsor 10.
+Rubric: Impact 30, Technical 20, Innovation 15, Demo 15, Product & UX 10, Sponsor 10. Separate in-kind prize: Best use of NVIDIA Nemotron.
 
-## Source of truth for numbers
+## State on 26 Oct 2026 (author's report)
 
-- `logs/curated30d_scores.md` (merged scorecard of the `curated30d` batch from `scripts/run_sharded.py`). **It did not exist when this draft was written** (the batch was still running; only per-shard files `logs/curated30d-s0..s3_scores.json` existed, and they were from an unfinished first round). Every count below that depends on it is a TODO.
-- [TODO: when `logs/curated30d_scores.md` exists, fill: repositories judged, count per verdict (CANDIDATE / ALREADY_EXISTS / NO_GO / NEEDS_REVIEW / NEEDS_PRIOR_ART / UNJUDGED), model calls per served model. Copy the numbers from the file, do not estimate.]
+These come from the author's Windows runs. The files are under `logs/` there and are not committed.
+
+- Latest gate-1 batch (`r5`, 5 repositories): 0 `CANDIDATE`, 1 `ALREADY_EXISTS` (`[TODO: owner]/pagerbeauty`), 2 `UNJUDGED`, 2 `NEEDS_REVIEW`. [TODO: scores file path and run id.]
+- Requested model `nvidia/nemotron-3-super-120b-a12b`; served model `gemini-3.1-flash-lite`, so every LLM line is `MODEL_MISMATCH`. `scripts/nightshift_probe.py` (PR #17) measures whether any Nemotron id is actually served. [TODO: probe result.]
+- Nightshift calls took 45 to 345 seconds; HTTP 502 arrived after about 5.5 minutes; one repository took 5 to 21 minutes.
+- `/ui` replays are all labelled SAMPLE until a real trace is imported with `scripts/import_replay.py`.
+- Gate 2 has one engineering trial on pwgen. [TODO: outcome and trace path.]
+
+Fill the numbers below only from the files named. Do not estimate.
 
 ## (i) Video script, 3:00 to 3:30
 
-Theme: **what it refused, and why**, with a human reviewing at every step.
-
-Record the screen at 1080p. Terminal font large. One take per segment, cut together. Show real output only; if a command fails on camera, say so and show the next step.
+Theme: **what it refused, and why**. Record at 1080p from `http://127.0.0.1:8000/ui` and a terminal with a large font. Real output only.
 
 | Time | Say (voice-over) | Show on screen |
 | --- | --- | --- |
-| 0:00 to 0:20 | "Thousands of abandoned repositories look revivable. Most should not be revived, and an agent that only says yes is useless. PhoenixRepo is built to say no, and to show its evidence." | Title card "PhoenixRepo, Track 02: The Agent That Can Explain Why". Then the README top section "What it does now: two gates". |
-| 0:20 to 0:45 | "Two gates. Gate 1: is the idea worth rescuing? Gate 2: can it get a green test run? Gate 2 only runs if gate 1 says candidate. Everything goes through Nightshift, and every step goes into a hash-chained trace." | README tables for the gate-1 verdicts and the gate-2 steps (scroll slowly). Highlight "Gate 2 only runs if gate 1 said CANDIDATE". |
-| 0:45 to 1:30 | "First refusal: an invoice generator. PhoenixRepo reads the repository, extracts the problem, searches GitHub, npm, PyPI and the web, and finds a maintained open-source invoicing tool that already solves it. The verdict is already exists. The quote it relies on is checked word for word against that tool's own page. Its own star count is never used." | Terminal: `python scripts/judge_repo.py https://github.com/tharani-2006/Invoice-generator-application` (or the saved run). Then open `reports/<run_id>/report.html` and zoom on the verdict, the alternative's name and URL, and the verbatim quote. Interim fact from an unfinished shard file: `logs/curated30d-s0_scores.json` says `tharani-2006/Invoice-generator-application` is `ALREADY_EXISTS` because of `InvoicePlane/InvoicePlane`, served by `gemini-3.1-flash-lite`. [TODO: confirm in the final `logs/curated30d_scores.md` or in a fresh judge run, and use the alternative named there.] |
-| 1:30 to 1:55 | "Second case: ytkb, a reinvented wheel." | [TODO: ytkb verdict. In the unfinished shard file (`logs/curated30d-s1_scores.json`) `SergioMendolia/ytkb` is `UNJUDGED` because Nightshift returned HTTP 502. That is not a verdict. Replace this row with the final verdict and reason from the re-judge, or drop the segment if it is still unjudged.] Show the report page with its reason and sources. |
-| 1:55 to 2:25 | "And one it did not refuse." | [TODO: protagonist chosen from curated30d results]. Show its gate-1 report: the stated problem, the alternatives checked, why none fully overlaps, and the human confirmation of the remaining gap. If no repository in the final results is `CANDIDATE`, replace this segment with an honest statement that gate 1 refused or sent everything to review, and show the `NEEDS_REVIEW` reasons. |
-| 2:25 to 3:00 | "Gate 2 builds, and only the repository's own tests can accept. Here is what it does on this repository, including the failures." | Terminal: `python scripts/revive.py https://github.com/<protagonist>`. Show the trace events `REVIVE_INSTALL`, `REVIVE_BASELINE`, `REVIVE_PRD`, `REVIVE_PATCH`, `REVIVE_VALIDATE` and `REVIVE_RESULT` with `python scripts/render_trace.py logs/trace-<run_id>.jsonl --format md`. State the real outcome on camera. If it is `RESURRECTION_FAILED`, say so and show the real test output that went back to the builder. If it is `RESURRECTED`, say "verified locally by the repository's own test command, not yet on CI". [TODO: outcome from the real run.] |
-| 3:00 to 3:15 | "A refused idea is never built. Here is gate 2 on the invoice generator: not attempted, nothing cloned." | Terminal: `python scripts/revive.py https://github.com/tharani-2006/Invoice-generator-application --gate-verdict ALREADY_EXISTS`. Show state `NOT_ATTEMPTED_GATE1` and the `REVIVE_BLOCKED_BY_GATE1` trace event. (Using `--gate-verdict` reuses the earlier verdict instead of judging again; say that on camera.) |
-| 3:15 to 3:30 | "Every line is hash-chained and records which model actually answered. A human can verify the chain and read the timeline. The limits are on the README: Nightshift is slow and the model varies, no AI-written patch has fixed a real repository yet, and this code was written with AI assistance." | Terminal: `python scripts/verify_trace.py logs/trace-<run_id>.jsonl` (prints the run hash), then the rendered markdown timeline with the `served_model` column. Final card with the repository link and the "Limits" heading from the README. |
+| 0:00 to 0:20 | "Reviving an abandoned repository is cheap to start and expensive to regret. Most should not be revived. PhoenixRepo asks first whether the idea deserves a second life, and every 'no' points at the row that proves it." | Title card, then the README's two-gate summary. |
+| 0:20 to 0:40 | "Two gates. Gate 1: is the idea worth rescuing? It reads stored evidence from Zetaris, then searches GitHub, npm and the web. Gate 2 runs only if gate 1 says candidate. Every model call goes through Meterless Nightshift, and every step goes into a hash-chained trace." | README gate tables. If PR #18 is merged: a `zetaris_query` line with its `content_hash`. |
+| 0:40 to 1:25 | "A real refusal. [pagerbeauty] [one-line job]. PhoenixRepo found [alternative], checked that it does the same job for the same user, that it is maintained and mature, and that the quote it relies on appears word for word on that page." | `/ui`, the RECORDED pagerbeauty replay: timeline, verdict card, the alternative, the verified quote and its link. [TODO: alternative name and quote from the imported record.] |
+| 1:25 to 1:50 | "It also shows which model answered. We requested Nemotron. [If probe found Nemotron: these lines were served by Nemotron.] [Else: Nightshift served gemini-3.1-flash-lite, and every such line is flagged MODEL_MISMATCH rather than hidden.]" | The served-model table and a flagged line. Say the true one. |
+| 1:50 to 2:15 | "When the evidence is incomplete, it does not guess. These came back NEEDS_REVIEW or UNJUDGED because Nightshift returned 502; finished calls are cached and the rerun picks them up." | A `NEEDS_REVIEW` or `UNJUDGED` row and its reason; the `rerun_unjudged.py` command. |
+| 2:15 to 2:40 | "A refused idea is never built: gate 2 is not attempted and nothing is cloned. [If a CANDIDATE appeared and gate 2 ran: here is what it did, including the failures.]" | `NOT_ATTEMPTED_GATE1` replay (SAMPLE label visible) or a real revive trace. Never `--gate-verdict` for a CANDIDATE shown on camera. |
+| 2:40 to 3:05 | "Anyone can check the record. The chain verifies. Change one character and it fails." | `/ui` verification: OK, then the Tamper button: FAILED. Or `verify_trace.py` before and after editing a copy. |
+| 3:05 to 3:30 | "The limits are in the README: Nightshift is slow and the served model varies, no AI-written patch has fixed a real repository yet, and this code was written with AI assistance." | README "Limits", then the repository link. |
 
-Notes for the recording:
+Notes:
 
-- A real, honest fallback for gate 2 if the protagonist run is not ready: the local trial `reports/revtry-orangekame3mirrormate/revive.json` and `logs/trace-revtry-orangekame3mirrormate.jsonl` show the loop on a real repository: baseline failed (exit 1), a PRD was drafted, four patch iterations edited `package.json` only, the repository's test command still exited 1 each time, and the state was `RESURRECTION_FAILED` ("the test command still fails after 4 iterations"). Served models: `gemini-3.1-flash-lite`, `gemini-3.5-flash-lite`. **Disclose on camera** that this trial was run with a manually supplied gate-1 verdict of `NEEDS_REVIEW`, which the current code no longer lets proceed (it would be `NOT_ATTEMPTED_GATE1`), and that it is a failure, not a success.
-- Do not show `.env`, tokens or Nightshift console pages with the runtime token.
-- Keep under 4:00 in the final cut.
+- Do not show `.env`, tokens or the Nightshift Console.
+- If a command fails on camera, say so and show the next step.
+- Keep the final cut under 4:00.
 
-## (ii) Project description for the HackOS form (248 words)
+## (ii) Project description for the HackOS form (about 230 words)
 
-PhoenixRepo is an agent that decides whether an abandoned GitHub repository deserves a second life, and explains every refusal. Most revival tools say yes to everything. PhoenixRepo has two gates and is built to say no with evidence.
+PhoenixRepo decides whether an abandoned GitHub repository deserves a second life, and explains every refusal with evidence a reviewer can check.
 
-Gate 1 asks whether the idea is worth rescuing. It reads the repository, extracts the problem and the target user, then searches prior art on GitHub, npm, PyPI and the web, including mainstream products and official built-in features. Every quote the model gives must appear verbatim in the source text, a search failure is never read as "no competition", and the repository's own stars are never used as demand. A verified full overlap turns an optimistic model answer into ALREADY_EXISTS.
+Gate 1 asks whether the idea is worth rescuing. It loads the stored evidence for the repository from Zetaris (candidate row, recorded prior art, demand signals; each query is in the trace with its content hash), then reads the repository's own text and searches GitHub, npm and the web for prior art, including official vendor features. An alternative blocks only when it does the same job for the same user, is maintained and mature, and the quote it relies on appears verbatim in its own text. A failed search is a source error, never "no competition", and the repository's own stars are never used as demand.
 
-Gate 2 runs only when gate 1 says CANDIDATE. It runs the repository's own tests, lets a model draft a plan and patches, and accepts a result only when the repository's own test command exits 0. Failures go back to the builder with the real output. Success is verified locally, not on CI.
+Gate 2 runs only when gate 1 says CANDIDATE. It runs the repository's own tests, lets a model draft a plan and patches, and accepts a result only when the repository's own test command exits 0 and an independent verifier finds no weakened tests.
 
-Every step is written to a hash-chained trace with the model that actually answered, and a renderer turns it into a timeline a human reviewer can check. All model calls go through Meterless Nightshift; Zetaris is the SQL evidence layer of the evidence-policy track; Exa is only a web search source.
+Every step is a line in a hash-chained trace that records the model requested and the model that actually answered. A token-free page replays recorded runs and shows the chain failing when one character changes.
 
-Limits: Nightshift can be slow; the served model varies. No AI-written patch has yet fixed a real repository. The code was written with AI coding assistance.
+Limits: Nightshift can be slow and may serve a different model than requested (flagged, not hidden). No AI-written patch has yet fixed a real repository. The code was written with AI coding assistance.
+
+[TODO: replace "may serve a different model" with the probe result.]
 
 ## (iii) "Built before the event" declaration
 
-- **Pre-event skeleton:** everything committed up to and including `62a1540` (`chore: complete pre-opening foundation audit`, committed 2026-10-08 18:27:02 +0000). The commit exists in the repository (`git cat-file -t 62a1540` returns `commit`).
-- **What the skeleton contains** (as declared in the README, "Pre-existing components"): the FastAPI process, the Docker image, the evidence graph and pack, the integrity hash, the state machine with the three terminal names, the audit trail, secret redaction, and `FoundationOrchestrator`. The foundation orchestrator stops at `EVIDENCE_COMPLETE` with `decision: null`: it makes no verdict and calls no model.
-- **What was built in the build window** (after 62a1540; 45 commits as of 25 Oct 2026 before the three documentation commits of that day, `git rev-list --count 62a1540..HEAD`): the Zetaris REST client and sample SQL cache; the Meterless Runtime provider with lane retry and cooldown, and the NVIDIA dev fallback; H-MEM and the Markovian loop; the seven roles and the validator; the evidence policy and the hackathon trace format; the real-repository snapshot; the idea filter and gate 1 (`scripts/judge_repo.py`, `scripts/score_candidates.py`, `app/agents/relevance.py`, multi-source prior-art search in `app/tools/builtin.py`); the batch runner `scripts/run_sharded.py`; the revive loop (`app/revive_loop.py`, `scripts/revive.py`) and its hard gate-1 precondition (`aa48ca7`); the HTML evidence report and trace renderer; the tests and the README.
-- [TODO: add the exact event start date and time and confirm that the first build-window commit is after it.]
+- **Pre-event skeleton:** everything committed up to and including `62a1540` (`chore: complete pre-opening foundation audit`, 2026-10-08 18:27:02 +0000).
+- **Contents:** the FastAPI process, the Docker image, the evidence graph and pack, the integrity hash, the state machine with the three terminal names, the audit trail, secret redaction, and `FoundationOrchestrator`, which stops at `EVIDENCE_COMPLETE` with `decision: null` and calls no model.
+- **Build window:** 22 to 27 Oct 2026. Everything after `62a1540` was built in it: Zetaris REST client and gate-1 Zetaris evidence; Meterless Runtime provider; H-MEM and Markovian; the roles and validator; gate 1 (`scripts/judge_repo.py`, `scripts/score_candidates.py`, `app/agents/relevance.py`, multi-source prior-art search); the batch and rerun tools; gate 2 (`app/revive_loop.py`, `app/revive_verify.py`, `scripts/revive.py`); the evidence report, trace renderer and `/ui` replay page; the tests and this README.
+- Count: `git rev-list --count 62a1540..main` on the final commit. [TODO: paste the number.]
 
 ## (iv) AI-assistance disclosure
 
-- Most of the code in this repository was written with AI coding assistance: Cursor cloud coding agents and an AI assistant working under the author's direction (the README names a Cursor cloud agent as the author of the earlier build-window core). The author (solo entrant) chose the design and the rules, reviewed the changes, and ran the live checks on a Windows machine.
-- The submitted product uses AI models only through Meterless Nightshift, and records which model answered each call (`requested_model` and `served_model` in every LLM trace line). Exa is used only as a keyless web search source, not as an AI provider. [TODO: confirm with the organiser form whether Cursor must be declared as a tool or a sponsor.]
-- This documentation was also drafted with AI assistance and checked against the repository.
-- Known limits (also in the README under "Limits"): Nightshift is slow and 502-prone and the served model varies between runs; alternatives are not checked for popularity or maintenance, so the overlap rule may over-refuse; the revive loop is verified locally only; no AI-written fix has yet succeeded on a real repository.
+- Most of the code was written with AI coding assistance: Cursor cloud coding agents and an AI assistant working under the author's direction. The author (solo entrant) set the design and rules, reviewed and merged the changes, and ran the live checks on a Windows machine.
+- The product uses AI models only through Meterless Nightshift and records `requested_model` and `served_model` on every LLM trace line. Exa and Keenable are used only as keyless web search sources, not as AI providers.
+- This draft was written with AI assistance and checked against the repository.
 
-## (v) Remaining submission steps
+## (v) Remaining steps, in order
 
-- [ ] Confirm the `curated30d` batch finished and `logs/curated30d_scores.md` exists. Copy the real counts into this file and the form. (Do not touch the batch while it runs.)
-- [ ] Pick the protagonist from the merged ranking (a human decision) and re-run `scripts/judge_repo.py` for it so the report and trace exist.
-- [ ] Run `scripts/revive.py` on the protagonist and keep the real outcome, including a failure.
-- [ ] Re-judge ytkb (or drop it) and fill the TODO rows in the script.
-- [ ] Verify every trace shown on screen: `python scripts/verify_trace.py logs/trace-<run_id>.jsonl`.
-- [ ] Record the video, 1 to 4 minutes (target 3:00 to 3:30); check that no token or `.env` is visible.
-- [ ] Decide what the repository link points to. PR #6 is not merged and its base is `cursor/hygen-upgrade-prd-13a8`, not `main`; see `docs/PR_SPLIT_PLAN.md`. [TODO: owner decides branch or merge; this draft does not merge anything.]
-- [ ] Run `python -m pytest -q` on the final commit and `python scripts/compliance_check.py`.
-- [ ] On HackOS: select **Track 02, "The Agent That Can Explain Why"**.
-- [ ] On HackOS: add a submission and paste the description from section (ii).
-- [ ] On HackOS: upload the video.
-- [ ] On HackOS: add the repository link, the "built before the event" declaration and the AI-assistance disclosure.
-- [ ] Submit before **27 Oct 2026 23:45 UK time**; do not leave it to the last hour.
+See `docs/RUNBOOK_WINDOWS.md` for the exact commands.
+
+- [ ] Merge PR #17 (Nightshift probe and controls) and PR #18 (Zetaris evidence with preflight) after CI is green.
+- [ ] Windows: run `scripts/nightshift_probe.py`; set `.env` from its output, or keep `MODEL_MISMATCH` and say so.
+- [ ] Windows: `scripts/zetaris_check.py` with Zetaris running (read-only).
+- [ ] Windows: rerun the 4 unfinished `r5` repositories one at a time with `--deadline`.
+- [ ] Import the pagerbeauty trace into `/ui` with `scripts/import_replay.py`; open a PR with `data/replays/`.
+- [ ] Fill every `[TODO]` above from the files named.
+- [ ] **12:00 UTC 27 Oct: submit the first version** (Track 02, description, repository link, declarations; video may follow).
+- [ ] Record the video from `/ui`; check no token or `.env` is visible.
+- [ ] Final commit: `python -m ruff check .`, `python -m pytest -q`, `python scripts/compliance_check.py`.
+- [ ] **21:00 UTC: final submission** with the video.

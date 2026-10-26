@@ -259,13 +259,23 @@ def rerun(
     sleep: Callable[[float], None] = time.sleep,
     backoff_s: float = 30.0,
     max_attempts: int = 3,
+    deadline_s: float | None = None,
+    only: list[str] | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> dict[str, Any]:
     """Re-judge the infrastructure rows and return the merged scores document.
 
     ``runner`` is called once per attempt for one repository. Tests pass a fake runner.
     ``sleep`` is called between repositories and before a retry. Tests pass a recorder.
+    ``deadline_s`` stops starting a repository or a retry once that many seconds have passed;
+    a repository already running is not interrupted, and the ones not started keep their old
+    rows and are listed in ``not_started``. ``only`` limits the rerun to those repo ids.
     """
+    started = clock()
     selected = rows_to_rerun(scores)
+    if only:
+        wanted = {item.strip() for item in only if item.strip()}
+        selected = [row for row in selected if str(row.get("repo_id") or "") in wanted]
     meta: dict[str, Any] = {
         "source": source,
         "repos": [str(row.get("repo_id") or "") for row in selected],
@@ -273,8 +283,14 @@ def rerun(
         "max_attempts": max_attempts,
         "attempts": {},
         "still_infra": [],
+        "not_started": [],
+        "deadline_seconds": deadline_s,
         "live_ran": runner is not None and bool(selected),
     }
+
+    def out_of_time() -> bool:
+        return deadline_s is not None and clock() - started >= deadline_s
+
     if not selected or runner is None:
         meta["live_ran"] = False
         merged = merge_rerun(scores, {}, meta)
@@ -284,6 +300,9 @@ def rerun(
         repo_id = str(row.get("repo_id") or "")
         if index:
             sleep(backoff_s)
+        if out_of_time():
+            meta["not_started"] = [str(r.get("repo_id") or "") for r in selected[index:]]
+            break
         attempt = 0
         result: dict[str, Any] = {}
         while True:
@@ -293,7 +312,7 @@ def rerun(
             except Exception as exc:  # noqa: BLE001 — one repo must not abort the others
                 result = {"error": str(exc), "candidates": [], "ineligible": []}
             verdict, reason = _verdict_of(result, repo_id)
-            if not is_infra_review({"verdict": verdict, "reason": reason}) or attempt >= max_attempts:
+            if not is_infra_review({"verdict": verdict, "reason": reason}) or attempt >= max_attempts or out_of_time():
                 break
             sleep(min(120.0, backoff_s * (2 ** attempt)))
         meta["attempts"][repo_id] = attempt
@@ -313,6 +332,8 @@ def main() -> int:
     parser.add_argument("--log-dir", type=Path, default=ROOT / "logs")
     parser.add_argument("--backoff", type=float, default=30.0, help="Seconds to wait between repositories.")
     parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--deadline", type=float, default=None, help="Stop starting repositories or retries after this many seconds (the one running finishes).")
+    parser.add_argument("--repo", action="append", default=[], help="Only rerun this repo id (repeatable).")
     args = parser.parse_args()
 
     scores = json.loads(args.scores.read_text(encoding="utf-8"))
@@ -340,6 +361,8 @@ def main() -> int:
         runner=runner,
         backoff_s=args.backoff,
         max_attempts=args.max_attempts,
+        deadline_s=args.deadline,
+        only=args.repo or None,
     )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -347,6 +370,7 @@ def main() -> int:
     print(json.dumps({
         "repos": (merged.get("rerun") or {}).get("repos"),
         "still_infra": (merged.get("rerun") or {}).get("still_infra"),
+        "not_started": (merged.get("rerun") or {}).get("not_started"),
         "output_json": str(args.output_json),
     }, ensure_ascii=False))
     return 0
