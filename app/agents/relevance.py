@@ -82,46 +82,140 @@ class RelevanceLLMError(InvestigationError):
 
 
 class InfraFallbackStop(Exception):
-    """Per-alternative fallback hit repeated infrastructure failures inside its time cap.
+    """The alternatives phase stopped for infrastructure, with any rows already verified.
 
-    The row is NEEDS_REVIEW. It is not a judgement of the idea, and it is not RESURRECTED.
+    ``cause`` is ``time_cap`` or ``infra_failures``. ``verified`` is the same-problem rows
+    whose quotes already checked out. ``unjudged_chunks`` is how many chunks never finished.
+    The caller applies the maturity rule to ``verified``; this exception is not itself a verdict.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        cause: str,
+        completed_calls: int = 0,
+        batch_502s: int = 0,
+        per_item_502s: int = 0,
+        failures: int = 0,
+    ) -> None:
+        super().__init__(message)
+        self.cause = cause
+        self.completed_calls = completed_calls
+        self.batch_502s = batch_502s
+        self.per_item_502s = per_item_502s
+        self.failures = failures
+        self.verified: list[dict[str, Any]] = []
+        self.unjudged_chunks: int = 0
+
+    def attach(self, verified: list[dict[str, Any]], unjudged_chunks: int) -> None:
+        """Keep every verified row. A later attach adds rows this one does not already hold."""
+        have = {str(row.get("alternative_id") or row.get("url") or "").casefold() for row in self.verified}
+        for row in verified:
+            key = str(row.get("alternative_id") or row.get("url") or "").casefold()
+            if key and key in have:
+                continue
+            self.verified.append(row)
+            if key:
+                have.add(key)
+        self.unjudged_chunks = unjudged_chunks
 
 
 # One repository must not spend an hour re-judging every alternative after HTTP 502.
+# This bounds failed batch retries and per-item infrastructure time. A call that returns
+# a judgement does not consume it.
 FALLBACK_BUDGET_S = 120.0
 FALLBACK_INFRA_LIMIT = 2
+_INFRA_ERROR_TOKENS = ("502", "503", "504", "429", "timeout", "timed out", "http 5")
+
+
+def _infra_error(message: str) -> bool:
+    low = str(message or "").lower()
+    return any(token in low for token in _INFRA_ERROR_TOKENS)
 
 
 class FallbackBudget:
-    """Clock for the per-item fallback of one repository."""
+    """Per-repo budget for alternative judging after infrastructure failures.
+
+    Successful model calls increment ``completed_calls`` and do not move the clock.
+    HTTP 502 on a batch call increments ``batch_502s``. The same on a per-item call
+    increments ``per_item_502s``. Time is charged only while a call is failing, and
+    every batch attempt receives only the time still left, so two retries cannot run
+    for the client's full timeout each.
+    """
 
     def __init__(self, seconds: float = FALLBACK_BUDGET_S, clock: Callable[[], float] | None = None) -> None:
         self.seconds = seconds
         self.clock = clock or time.monotonic
-        self.started: float | None = None
         self.failures = 0
+        self.batch_502s = 0
+        self.per_item_502s = 0
+        self.completed_calls = 0
+        self.infra_seconds = 0.0
+        self.last_cause = ""
 
     def remaining(self) -> float:
-        if self.started is None:
-            return self.seconds
-        return self.seconds - (self.clock() - self.started)
+        return self.seconds - self.infra_seconds
+
+    def time_exhausted(self) -> bool:
+        if self.infra_seconds <= 0:
+            return False
+        return self.infra_seconds >= self.seconds or self.remaining() <= 1.0
+
+    def stop(self, cause: str) -> InfraFallbackStop:
+        """Build the stop from the trigger that actually fired."""
+        if cause == "time_cap":
+            message = (
+                f"infra: time cap exceeded after {self.completed_calls} completed alternative calls "
+                f"with {self.batch_502s} batch 502s and {self.per_item_502s} per-item 502s"
+            )
+        else:
+            message = f"infra: stopped after {self.failures} infrastructure failures"
+        if self.last_cause:
+            message = f"{message}; cause: {self.last_cause}"
+        return InfraFallbackStop(
+            message,
+            cause=cause,
+            completed_calls=self.completed_calls,
+            batch_502s=self.batch_502s,
+            per_item_502s=self.per_item_502s,
+            failures=self.failures,
+        )
+
+    def guard_new_chunk(self) -> None:
+        """Stop before another chunk. The chunk whose batch just failed may still fall back per item."""
+        if self.failures >= FALLBACK_INFRA_LIMIT:
+            raise self.stop("infra_failures")
+        if self.time_exhausted():
+            raise self.stop("time_cap")
 
     def allow(self) -> float:
-        if self.started is None:
-            self.started = self.clock()
-        left = self.remaining()
-        if self.failures >= FALLBACK_INFRA_LIMIT or left <= 1.0:
-            raise InfraFallbackStop(
-                f"infra: HTTP 502 during per-alternative fallback; stopped after {self.failures} "
-                f"infrastructure failure(s) within the {self.seconds:.0f}s cap"
-            )
-        return left
+        """Seconds a per-item salvage call may spend. Failure count does not block that salvage."""
+        if self.time_exhausted():
+            raise self.stop("time_cap")
+        return max(0.0, self.remaining())
+
+    def note_completed(self) -> None:
+        self.completed_calls += 1
+
+    def charge_failure(self, elapsed: float, message: str, *, kind: str) -> None:
+        """Count one infrastructure failure. ``elapsed`` is the time of this failed call only."""
+        self.infra_seconds += max(0.0, float(elapsed))
+        text = str(message or "").strip()
+        if text:
+            self.last_cause = text[:180]
+        if not _infra_error(text):
+            return
+        self.failures += 1
+        if "502" in text:
+            if kind == "batch":
+                self.batch_502s += 1
+            else:
+                self.per_item_502s += 1
 
     def note(self, message: str) -> None:
-        low = str(message or "").lower()
-        if any(token in low for token in ("502", "503", "504", "429", "timeout", "timed out", "http 5")):
-            self.failures += 1
+        """Compatibility for callers that only know an error string."""
+        self.charge_failure(0.0, message, kind="per_item")
 
 
 def extract_json_object(text: str) -> dict[str, Any] | None:
@@ -1942,6 +2036,9 @@ def judge_alternative_relevance(
         "overlap": overlap,
         "reason": reason,
         "quotes": [str(q).strip() for q in quotes if str(q).strip()],
+        "quote_verified": True,
+        "source": str(search_result.get("source") or ""),
+        "archived": search_result.get("archived", False),
     }
     return alt_row, {
         "same_problem": True,
@@ -2008,6 +2105,7 @@ def _trace_llm(
             "served_model": served or "",
             "parsed_indexes": info.get("parsed_indexes"),
             "reason": info.get("reason"),
+            **({"overlap": info.get("overlap"), "same_problem": info.get("same_problem"), "quote_verified": info.get("quote_verified")} if "quote_verified" in info else {}),
         },
         status=status,
         **kwargs,
@@ -2093,7 +2191,9 @@ def _row_from_entry(
         "overlap": str(entry.get("overlap") or "none").strip().lower(),
         "reason": str(entry.get("reason") or "").strip(),
         "quotes": [str(q).strip() for q in quotes if str(q).strip()],
+        "quote_verified": True,
         "source": str(res.get("source") or ""),
+        "archived": res.get("archived", False),
     }
 
 
@@ -2126,8 +2226,9 @@ def _per_item(
     budget: FallbackBudget | None,
     index: int | None = None,
 ) -> dict[str, Any] | None:
-    """Judge one alternative. Repeated HTTP 502 stops the rest of this repository's fallback."""
+    """Judge one alternative. A per-item infrastructure failure is charged to the shared budget."""
     left = budget.allow() if budget is not None else None
+    started = budget.clock() if budget is not None else 0.0
     alt_row, meta = judge_alternative_relevance(
         problem_statement=problem_statement,
         candidate_repo_id=candidate_repo_id,
@@ -2136,16 +2237,30 @@ def _per_item(
         trace=trace,
         call_budget_s=left,
     )
+    overlap = (alt_row or {}).get("overlap", meta.get("overlap"))
+    same = True if alt_row is not None else meta.get("same_problem")
+    quote_verified = alt_row is not None
     _trace_llm(
         trace, "ALTERNATIVE_CALL", candidate_repo_id,
         str(meta.get("requested_model") or (client.model if client is not None else "")),
         str(meta.get("served_model") or ""),
-        {"alternative": res.get("alternative_id"), "indexes": [index] if index is not None else None, "reason": meta.get("error") or meta.get("reason")},
+        {
+            "alternative": res.get("alternative_id"),
+            "indexes": [index] if index is not None else None,
+            "reason": meta.get("error") or meta.get("reason"),
+            "overlap": overlap,
+            "same_problem": same,
+            "quote_verified": quote_verified,
+        },
         status="error" if meta.get("error") or meta.get("fallback") else "ok",
         record_model=getattr(client, "trace", None) is None,
     )
-    if budget is not None and meta.get("error"):
-        budget.note(str(meta.get("error") or ""))
+    if budget is not None:
+        error = str(meta.get("error") or "")
+        if error and _infra_error(error):
+            budget.charge_failure(budget.clock() - started, error, kind="per_item")
+        else:
+            budget.note_completed()
     if alt_row is not None and alt_row.get("same_problem"):
         return alt_row
     return None
@@ -2194,19 +2309,33 @@ def judge_alternatives_batch(
 
     def _call(prompt: str, which: list[int]) -> list[dict[str, Any]] | None:
         """One model call. None means the transport failed. [] means the reply had no complete objects."""
+        left = None
+        started = 0.0
+        if fallback_budget is not None:
+            if fallback_budget.time_exhausted():
+                raise fallback_budget.stop("time_cap")
+            left = fallback_budget.remaining()
+            started = fallback_budget.clock()
         try:
             text, req_m, srv_m = client.complete(
-                prompt, system, repo_id=candidate_repo_id, step="alternative_batch"
+                prompt, system, repo_id=candidate_repo_id, step="alternative_batch",
+                call_budget_s=left,
             )
+        except InfraFallbackStop:
+            raise
         except Exception as exc:
             if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
                 raise
+            if fallback_budget is not None:
+                fallback_budget.charge_failure(fallback_budget.clock() - started, str(exc), kind="batch")
             _trace_llm(
                 trace, "ALTERNATIVE_BATCH_CALL", candidate_repo_id, client.model, "",
                 {"indexes": which, "reason": str(exc)[:160]}, status="error",
                 record_model=getattr(client, "trace", None) is None,
             )
             raise
+        if fallback_budget is not None:
+            fallback_budget.note_completed()
         entries = extract_result_entries(text)
         _trace_llm(
             trace, "ALTERNATIVE_BATCH_CALL", candidate_repo_id, req_m, srv_m,
@@ -2221,9 +2350,13 @@ def judge_alternatives_batch(
     entries: list[dict[str, Any]] | None = None
     last_exc: Exception | None = None
     for attempt in range(BATCH_CALL_ATTEMPTS):
+        if fallback_budget is not None and fallback_budget.time_exhausted():
+            raise fallback_budget.stop("time_cap")
         prompt = base_prompt if attempt == 0 else base_prompt + _BATCH_RETRY_NOTE
         try:
             entries = _call(prompt, indexes)
+        except InfraFallbackStop:
+            raise
         except RelevanceLLMError as exc:
             if "refusing to score with a small local model" in str(exc):
                 raise
@@ -2241,6 +2374,8 @@ def judge_alternatives_batch(
                 continue
             _fallback(f"batch call failed after {BATCH_CALL_ATTEMPTS} attempts: {str(exc)[:160]}")
             return None
+        except InfraFallbackStop:
+            raise
         except Exception as exc:
             last_exc = exc
             entries = None
@@ -2273,6 +2408,9 @@ def judge_alternatives_batch(
             follow_prompt = _batch_prompt(problem_statement, missing, max_chars_per_item)
             try:
                 follow = _call(follow_prompt, [i for i, _, _ in missing])
+            except InfraFallbackStop as exc:
+                exc.attach(verified, 0)
+                raise
             except RelevanceLLMError as exc:
                 if "refusing to score with a small local model" in str(exc):
                     raise
@@ -2298,12 +2436,16 @@ def judge_alternatives_batch(
             if follow:
                 more, missing = _apply_entries(follow, missing, candidate_repo_id, problem_statement, trace)
                 verified.extend(more)
-        for _i, res, _rtext in missing:
-            alt_row = _per_item(
-                problem_statement, candidate_repo_id, res, client, trace, fallback_budget, _i,
-            )
-            if alt_row is not None:
-                verified.append(alt_row)
+        try:
+            for _i, res, _rtext in missing:
+                alt_row = _per_item(
+                    problem_statement, candidate_repo_id, res, client, trace, fallback_budget, _i,
+                )
+                if alt_row is not None:
+                    verified.append(alt_row)
+        except InfraFallbackStop as exc:
+            exc.attach(verified, 0)
+            raise
     return verified
 
 
@@ -2317,6 +2459,46 @@ def _trace_own(trace: Any | None, repo_id: str, identity: Any, dropped: list[dic
         output_summary={
             "own_identity": dropped,
             "identities": identity.as_dict() if hasattr(identity, "as_dict") else {},
+        },
+        status="ok",
+    )
+
+
+def _trace_partial_alternatives(
+    trace: Any | None,
+    repo_id: str,
+    searched: int,
+    verified: list[dict[str, Any]],
+    exc: InfraFallbackStop,
+) -> None:
+    """Record the rows already judged before the alternatives phase stops."""
+    if trace is None:
+        return
+    trace.event(
+        agent_name="orchestrator",
+        action="ALTERNATIVES_VERIFIED",
+        input_summary={"repo_id": repo_id, "searched": searched, "partial": True},
+        output_summary={
+            "partial": True,
+            "unjudged_chunks": exc.unjudged_chunks,
+            "cause": exc.cause,
+            "completed_calls": exc.completed_calls,
+            "batch_502s": exc.batch_502s,
+            "per_item_502s": exc.per_item_502s,
+            "failures": exc.failures,
+            "alternatives": [
+                {
+                    "alternative_id": row.get("alternative_id"),
+                    "url": row.get("url"),
+                    "source": row.get("source"),
+                    "overlap": row.get("overlap"),
+                    "same_problem": row.get("same_problem"),
+                    "quote_verified": row.get("quote_verified"),
+                    "reason": row.get("reason"),
+                    "quotes": row.get("quotes"),
+                }
+                for row in verified
+            ],
         },
         status="ok",
     )
@@ -2337,8 +2519,9 @@ def filter_relevant_alternatives(
     Tries one batched LLM call per chunk of ALTERNATIVE_CHUNK_SIZE. A chunk that returns no
     parseable entry falls back to one call per alternative for that chunk only. A chunk that
     parses in part is finished inside judge_alternatives_batch, which retries only the missing items.
-    The per-item fallback shares one time cap per repository. Repeated HTTP 502 raises
-    InfraFallbackStop instead of calling Nightshift for every remaining alternative.
+    Batch retries share one per-repo time budget. A call that returns a judgement does not consume
+    it. Repeated infrastructure failures, or that budget running out, raise InfraFallbackStop
+    carrying the rows already verified and the number of chunks left unjudged.
     The candidate's own package, docs, homepage, fork, and mirror are removed before the call
     and again from whatever the model returns.
     """
@@ -2350,21 +2533,94 @@ def filter_relevant_alternatives(
     _trace_own(trace, candidate_repo_id, identity, dropped)
     budget = fallback_budget if fallback_budget is not None else FallbackBudget(clock=clock)
     verified_alts: list[dict[str, Any]] = []
-    for start in range(0, len(rows), ALTERNATIVE_CHUNK_SIZE):
-        if budget.failures >= FALLBACK_INFRA_LIMIT or (budget.started is not None and budget.remaining() <= 1.0):
-            budget.allow()
-        chunk = rows[start:start + ALTERNATIVE_CHUNK_SIZE]
-        if len(chunk) > 1:
-            batch = judge_alternatives_batch(
-                problem_statement, candidate_repo_id, chunk, client=client, trace=trace, fallback_budget=budget,
-            )
-            if batch is not None:
-                verified_alts.extend(batch)
-                continue
-        for res in chunk:
-            alt_row = _per_item(problem_statement, candidate_repo_id, res, client, trace, budget)
-            if alt_row is not None:
-                verified_alts.append(alt_row)
+    chunk_count = (len(rows) + ALTERNATIVE_CHUNK_SIZE - 1) // ALTERNATIVE_CHUNK_SIZE if rows else 0
+    finished = 0
+    try:
+        for start in range(0, len(rows), ALTERNATIVE_CHUNK_SIZE):
+            budget.guard_new_chunk()
+            chunk = rows[start:start + ALTERNATIVE_CHUNK_SIZE]
+            if len(chunk) > 1:
+                batch = judge_alternatives_batch(
+                    problem_statement, candidate_repo_id, chunk, client=client, trace=trace, fallback_budget=budget,
+                )
+                if batch is not None:
+                    verified_alts.extend(batch)
+                    finished += 1
+                    continue
+            if budget.time_exhausted():
+                raise budget.stop("time_cap")
+            for res in chunk:
+                if budget.time_exhausted():
+                    raise budget.stop("time_cap")
+                alt_row = _per_item(problem_statement, candidate_repo_id, res, client, trace, budget)
+                if alt_row is not None:
+                    verified_alts.append(alt_row)
+            finished += 1
+    except InfraFallbackStop as exc:
+        verified_alts, dropped_after = split_own(identity, verified_alts)
+        _trace_own(trace, candidate_repo_id, identity, dropped_after)
+        exc.attach(verified_alts, max(0, chunk_count - finished))
+        _trace_partial_alternatives(trace, candidate_repo_id, len(search_results), exc.verified, exc)
+        raise
     verified_alts, dropped_after = split_own(identity, verified_alts)
     _trace_own(trace, candidate_repo_id, identity, dropped_after)
     return verified_alts
+
+
+def judge_partial_alternatives(
+    candidate: dict[str, Any],
+    verified: list[dict[str, Any]],
+    *,
+    unjudged_chunks: int,
+    infra_reason: str,
+    as_of: Any | None = None,
+) -> DiscoveryDecision:
+    """Apply the maturity rule to alternatives judged before the phase stopped.
+
+    A verified full overlap blocks only when ``evaluate_blocker`` says it blocks.
+    An unverified quote, a partial overlap, or an immature product does not block.
+    Unjudged chunks never produce CANDIDATE.
+    """
+    from datetime import date as _date
+
+    from app.agents.blocker import evaluate_blocker
+
+    when = as_of or _date.today()
+    blocking: list[dict[str, Any]] = []
+    must_beat: list[dict[str, str]] = []
+    labels: list[str] = []
+    for row in verified:
+        name = str(row.get("alternative_id") or row.get("url") or "").strip()
+        overlap = str(row.get("overlap") or "").strip().lower()
+        quotes = [str(q).strip() for q in (row.get("quotes") or []) if str(q).strip()]
+        quote_ok = row.get("quote_verified") is not False and bool(quotes)
+        labels.append(
+            f"{name} (overlap {overlap or 'unknown'}, {'quote verified' if quote_ok else 'quote unverified'})"
+        )
+        if row.get("same_problem") is not True or overlap != "full" or not quote_ok:
+            continue
+        decision = evaluate_blocker(candidate, row, as_of=when)
+        if decision.get("blocks") and decision.get("verdict_if_blocked") == "ALREADY_EXISTS":
+            blocking.append(row)
+            continue
+        must_beat.append({
+            "alternative": name,
+            "overlap": overlap,
+            "quote": quotes[0] if quotes else "",
+            "reason": "did not block: " + "; ".join(decision.get("reasons") or []),
+        })
+    if blocking:
+        chosen = blocking[0]
+        quotes = [str(q).strip() for q in (chosen.get("quotes") or []) if str(q).strip()]
+        name = chosen.get("url") or chosen.get("alternative_id")
+        reason = (
+            f"verified full-overlap alternative {name} already solves the same problem"
+            + (f" (quote: '{quotes[0]}')" if quotes else "")
+        )
+        if unjudged_chunks:
+            reason += f". Alternatives phase stopped with {unjudged_chunks} chunk(s) unjudged"
+        picked = [{**chosen, "quotes": quotes, "overlap": "full", "reason": reason}]
+        return DiscoveryDecision("ALREADY_EXISTS", reason, _evidence_rows(picked), must_beat)
+    shown = ", ".join(labels) if labels else "none"
+    reason = f"{infra_reason}; {unjudged_chunks} chunk(s) unjudged; verified: {shown}"
+    return DiscoveryDecision("NEEDS_REVIEW", reason, [], must_beat)

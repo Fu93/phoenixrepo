@@ -13,6 +13,14 @@ def test_infra_rows_are_selected_and_finished_judgements_are_not():
     assert rr.is_infra_review({"verdict": "NEEDS_REVIEW", "reason": "Nightshift request failed: HTTP 502"})
     assert rr.is_infra_review({"verdict": "NEEDS_REVIEW", "reason": "LLM response was not valid JSON"})
     assert rr.is_infra_review({"verdict": "NEEDS_REVIEW", "reason": "the call timed out"})
+    assert rr.is_infra_review({
+        "verdict": "NEEDS_REVIEW",
+        "reason": "infra: time cap exceeded after 3 completed alternative calls with 2 batch 502s and 0 per-item 502s; 2 chunk(s) unjudged; verified: NeritonDias/telecollection (overlap full, quote verified)",
+    })
+    assert not rr.is_infra_review({
+        "verdict": "ALREADY_EXISTS",
+        "reason": "verified full-overlap alternative https://github.com/NeritonDias/telecollection already solves the same problem",
+    })
     assert not rr.is_infra_review({"verdict": "NEEDS_REVIEW", "reason": "ALTERNATIVE_OVERLAP partial with tool"})
     assert not rr.is_infra_review({"verdict": "NEEDS_REVIEW", "reason": "MAINSTREAM_OVERLAP with a built-in feature"})
     assert not rr.is_infra_review({"verdict": "NEEDS_REVIEW", "reason": "quote 'alpha' not found in the repository text"})

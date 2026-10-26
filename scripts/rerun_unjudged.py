@@ -33,6 +33,7 @@ from scripts.evidence_report import format_decision_lines  # noqa: E402
 
 # Phrases that mean the row was not a finished judgement.
 _INFRA_MARKERS = (
+    "infra:",
     "http 5",
     "http 429",
     "timed out",

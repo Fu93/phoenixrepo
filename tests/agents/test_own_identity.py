@@ -311,13 +311,17 @@ def test_fallback_cap_abandons_a_slow_call_without_recording_late_provenance(tmp
             candidate=CANDIDATE,
         )
     except InfraFallbackStop as exc:
-        reason = str(exc)
+        stopped = exc
     else:
         raise AssertionError("fallback kept waiting on a call the cap had already given up")
     elapsed = time.monotonic() - started
+    reason = str(stopped)
     assert elapsed < 1.5
     assert reason.startswith("infra:")
-    assert "HTTP 502" in reason
+    assert "HTTP 502" not in reason
+    assert "timed out" in reason.lower()
+    assert stopped.failures >= 2
+    assert stopped.cause == "infra_failures"
     assert is_infra_review({"verdict": "NEEDS_REVIEW", "reason": reason})
     release.set()
     time.sleep(0.4)
@@ -355,10 +359,15 @@ def test_repeated_http_502_stops_the_per_alternative_fallback(tmp_path: Path):
     try:
         filter_relevant_alternatives(PROBLEM, "phillipdupuis/pydantic-to-typescript", rows, client=client, candidate=CANDIDATE)
     except InfraFallbackStop as exc:
-        reason = str(exc)
+        stopped = exc
     else:
         raise AssertionError("fallback kept calling after repeated HTTP 502")
+    reason = str(stopped)
     assert reason.startswith("infra:")
     assert "HTTP 502" in reason
+    assert "infrastructure failures" in reason
+    assert "0 infrastructure" not in reason
+    assert stopped.failures >= 2
+    assert stopped.batch_502s >= 2
     assert len(calls) < len(rows)
     assert is_infra_review({"verdict": "NEEDS_REVIEW", "reason": reason})
