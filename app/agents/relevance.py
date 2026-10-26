@@ -107,8 +107,14 @@ class InfraFallbackStop(Exception):
         self.failures = failures
         self.verified: list[dict[str, Any]] = []
         self.unjudged_chunks: int = 0
+        self.verified_chunk_indexes: list[int] = []
 
-    def attach(self, verified: list[dict[str, Any]], unjudged_chunks: int) -> None:
+    def attach(
+        self,
+        verified: list[dict[str, Any]],
+        unjudged_chunks: int,
+        verified_chunk_indexes: list[int] | None = None,
+    ) -> None:
         """Keep every verified row. A later attach adds rows this one does not already hold."""
         have = {str(row.get("alternative_id") or row.get("url") or "").casefold() for row in self.verified}
         for row in verified:
@@ -119,19 +125,65 @@ class InfraFallbackStop(Exception):
             if key:
                 have.add(key)
         self.unjudged_chunks = unjudged_chunks
+        if verified_chunk_indexes is not None:
+            merged = list(self.verified_chunk_indexes)
+            for index in verified_chunk_indexes:
+                if index not in merged:
+                    merged.append(index)
+            self.verified_chunk_indexes = merged
 
 
 # One repository must not spend an hour re-judging every alternative after HTTP 502.
 # This bounds failed batch retries and per-item infrastructure time. A call that returns
-# a judgement does not consume it.
-FALLBACK_BUDGET_S = 120.0
+# a judgement does not consume it. The filter replaces this floor with
+# alternatives_budget_seconds(chunk_count): max(floor, per-chunk seconds × chunks),
+# still capped, and still charged only on failures.
+FALLBACK_BUDGET_S = 600.0
 FALLBACK_INFRA_LIMIT = 2
+ALTERNATIVES_BUDGET_FLOOR_S = 600.0
+ALTERNATIVES_CHUNK_SECONDS = 90.0
+ALTERNATIVES_BUDGET_CAP_S = 3600.0
 _INFRA_ERROR_TOKENS = ("502", "503", "504", "429", "timeout", "timed out", "http 5")
 
 
 def _infra_error(message: str) -> bool:
     low = str(message or "").lower()
     return any(token in low for token in _INFRA_ERROR_TOKENS)
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def alternatives_budget_seconds(chunk_count: int) -> float:
+    """Per-repo seconds for alternative judging. Only failures spend the clock.
+
+    The formula is max(floor, per-chunk seconds × chunks), then the overall cap.
+    ``PHOENIX_ALTERNATIVES_BUDGET_S`` replaces the formula. ``PHOENIX_ALTERNATIVES_BUDGET_FLOOR_S``
+    (default 600), ``PHOENIX_ALTERNATIVES_CHUNK_SECONDS`` (default 90), and
+    ``PHOENIX_ALTERNATIVES_BUDGET_CAP_S`` (default 3600) adjust it. One Nightshift attempt is
+    still bounded by the client's total timeout.
+    """
+    cap = _env_float("PHOENIX_ALTERNATIVES_BUDGET_CAP_S", ALTERNATIVES_BUDGET_CAP_S)
+    override = os.environ.get("PHOENIX_ALTERNATIVES_BUDGET_S", "").strip()
+    if override:
+        try:
+            value = max(0.0, float(override))
+        except ValueError:
+            value = 0.0
+    else:
+        floor = _env_float("PHOENIX_ALTERNATIVES_BUDGET_FLOOR_S", ALTERNATIVES_BUDGET_FLOOR_S)
+        per_chunk = _env_float("PHOENIX_ALTERNATIVES_CHUNK_SECONDS", ALTERNATIVES_CHUNK_SECONDS)
+        value = max(floor, per_chunk * max(0, int(chunk_count)))
+    if cap > 0:
+        value = min(cap, value)
+    return value
 
 
 class FallbackBudget:
@@ -538,14 +590,17 @@ class RelevanceClient:
         }
 
         if isinstance(self.timeout, (int, float)):
-            client_timeout = httpx.Timeout(connect=10.0, read=float(self.timeout), write=30.0, pool=10.0)
+            configured_read = float(self.timeout)
+            client_timeout = httpx.Timeout(connect=10.0, read=configured_read, write=30.0, pool=10.0)
         elif isinstance(self.timeout, httpx.Timeout):
+            configured_read = float(self.timeout.read or 90.0)
             client_timeout = self.timeout
         else:
-            client_timeout = httpx.Timeout(connect=10.0, read=90.0, write=30.0, pool=10.0)
+            configured_read = 90.0
+            client_timeout = httpx.Timeout(connect=10.0, read=configured_read, write=30.0, pool=10.0)
 
-        def _do_post() -> httpx.Response:
-            with httpx.Client(timeout=client_timeout, transport=self.transport) as client:
+        def _do_post(timeout: httpx.Timeout = client_timeout) -> httpx.Response:
+            with httpx.Client(timeout=timeout, transport=self.transport) as client:
                 return client.post(url, headers=headers, json=payload)
 
         last_exc: Exception | None = None
@@ -558,16 +613,28 @@ class RelevanceClient:
             if delay > 0:
                 time.sleep(delay)
 
-            time_left = max(0.01, min(self.wall_clock_timeout, total_cap - (time.monotonic() - call_start)))
+            # Discovery calls keep the 120s wall. An alternatives call passes call_budget_s,
+            # and a healthy Nightshift judgement can take several minutes, so that attempt
+            # may use the remaining budget up to total_timeout. A short budget stays short.
+            elapsed = time.monotonic() - call_start
+            remaining_cap = total_cap - elapsed
+            if call_budget_s is None:
+                attempt_cap = self.wall_clock_timeout
+            else:
+                attempt_cap = max(self.wall_clock_timeout, total_cap)
+            time_left = max(0.01, min(attempt_cap, remaining_cap))
+            attempt_timeout = client_timeout
+            if call_budget_s is not None and time_left > configured_read:
+                attempt_timeout = httpx.Timeout(connect=10.0, read=time_left, write=30.0, pool=10.0)
 
             # The worker only fills its own box. Cache, requested_model, and served_model are
             # written on this thread after a successful join, so an abandoned HTTP 502 or a late
             # 200 cannot overwrite provenance for the call that the fallback cap already gave up on.
             box: dict[str, Any] = {}
 
-            def run(box: dict[str, Any] = box) -> None:
+            def run(box: dict[str, Any] = box, timeout: httpx.Timeout = attempt_timeout) -> None:
                 try:
-                    box["resp"] = _do_post()
+                    box["resp"] = _do_post(timeout)
                 except Exception as exc:
                     box["error"] = exc
 
@@ -576,7 +643,7 @@ class RelevanceClient:
             worker.join(time_left)
             if worker.is_alive():
                 raise RelevanceLLMError(
-                    f"Nightshift request timed out (wall-clock cap of {self.wall_clock_timeout}s exceeded)."
+                    f"Nightshift request timed out (wall-clock cap of {time_left:.2f}s exceeded)."
                 )
             if "error" in box:
                 exc = box["error"]
@@ -2064,8 +2131,9 @@ BATCH_INSTRUCTION = (
 # 2. The reply was kept only when every index was present. A cut-off array, or one omitted
 #    index, threw away the objects that had already parsed.
 # 3. The caller then re-judged every alternative in the chunk on its own.
-# Chunks of 2 fit that budget. A partial reply keeps every object that closed, and only the
-# indexes that did not parse are retried.
+# Chunks of 2 fit a single reply. A partial reply keeps every object that closed, and only the
+# indexes that did not parse are retried. The per-repo alternatives budget, not a 120s cap,
+# bounds how long those calls may run. A finished chunk is cached with the requested model.
 BATCH_CALL_ATTEMPTS = 2
 ALTERNATIVE_CHUNK_SIZE = 2
 _BATCH_RETRY_NOTE = (
@@ -2096,17 +2164,28 @@ def _trace_llm(
     kwargs: dict[str, Any] = {}
     if record_model:
         kwargs["llm"] = {"requested_model": requested or "", "served_model": served or ""}
+    summary = {
+        "requested_model": requested or "",
+        "served_model": served or "",
+        "parsed_indexes": info.get("parsed_indexes"),
+        "reason": info.get("reason"),
+    }
+    if "quote_verified" in info:
+        summary["overlap"] = info.get("overlap")
+        summary["same_problem"] = info.get("same_problem")
+        summary["quote_verified"] = info.get("quote_verified")
+    if info.get("chunk_index") is not None:
+        summary["chunk_index"] = info.get("chunk_index")
     trace.event(
         agent_name="orchestrator",
         action=action,
-        input_summary={"repo_id": repo_id, "indexes": info.get("indexes"), "alternative": info.get("alternative")},
-        output_summary={
-            "requested_model": requested or "",
-            "served_model": served or "",
-            "parsed_indexes": info.get("parsed_indexes"),
-            "reason": info.get("reason"),
-            **({"overlap": info.get("overlap"), "same_problem": info.get("same_problem"), "quote_verified": info.get("quote_verified")} if "quote_verified" in info else {}),
+        input_summary={
+            "repo_id": repo_id,
+            "indexes": info.get("indexes"),
+            "alternative": info.get("alternative"),
+            **({"chunk_index": info.get("chunk_index")} if info.get("chunk_index") is not None else {}),
         },
+        output_summary=summary,
         status=status,
         **kwargs,
     )
@@ -2225,6 +2304,7 @@ def _per_item(
     trace: Any | None,
     budget: FallbackBudget | None,
     index: int | None = None,
+    chunk_index: int | None = None,
 ) -> dict[str, Any] | None:
     """Judge one alternative. A per-item infrastructure failure is charged to the shared budget."""
     left = budget.allow() if budget is not None else None
@@ -2251,6 +2331,7 @@ def _per_item(
             "overlap": overlap,
             "same_problem": same,
             "quote_verified": quote_verified,
+            "chunk_index": chunk_index,
         },
         status="error" if meta.get("error") or meta.get("fallback") else "ok",
         record_model=getattr(client, "trace", None) is None,
@@ -2274,6 +2355,7 @@ def judge_alternatives_batch(
     trace: Any | None = None,
     max_chars_per_item: int = 900,
     fallback_budget: FallbackBudget | None = None,
+    chunk_index: int | None = None,
 ) -> list[dict[str, Any]] | None:
     """Judge alternatives in one call (step="alternative_batch").
 
@@ -2330,7 +2412,7 @@ def judge_alternatives_batch(
                 fallback_budget.charge_failure(fallback_budget.clock() - started, str(exc), kind="batch")
             _trace_llm(
                 trace, "ALTERNATIVE_BATCH_CALL", candidate_repo_id, client.model, "",
-                {"indexes": which, "reason": str(exc)[:160]}, status="error",
+                {"indexes": which, "reason": str(exc)[:160], "chunk_index": chunk_index}, status="error",
                 record_model=getattr(client, "trace", None) is None,
             )
             raise
@@ -2339,7 +2421,7 @@ def judge_alternatives_batch(
         entries = extract_result_entries(text)
         _trace_llm(
             trace, "ALTERNATIVE_BATCH_CALL", candidate_repo_id, req_m, srv_m,
-            {"indexes": which, "parsed_indexes": sorted(_index_map(entries))},
+            {"indexes": which, "parsed_indexes": sorted(_index_map(entries)), "chunk_index": chunk_index},
             status="ok" if entries else "error",
             record_model=getattr(client, "trace", None) is None,
         )
@@ -2440,6 +2522,7 @@ def judge_alternatives_batch(
             for _i, res, _rtext in missing:
                 alt_row = _per_item(
                     problem_statement, candidate_repo_id, res, client, trace, fallback_budget, _i,
+                    chunk_index=chunk_index,
                 )
                 if alt_row is not None:
                     verified.append(alt_row)
@@ -2486,6 +2569,7 @@ def _trace_partial_alternatives(
             "batch_502s": exc.batch_502s,
             "per_item_502s": exc.per_item_502s,
             "failures": exc.failures,
+            "verified_chunk_indexes": list(exc.verified_chunk_indexes),
             "alternatives": [
                 {
                     "alternative_id": row.get("alternative_id"),
@@ -2519,9 +2603,12 @@ def filter_relevant_alternatives(
     Tries one batched LLM call per chunk of ALTERNATIVE_CHUNK_SIZE. A chunk that returns no
     parseable entry falls back to one call per alternative for that chunk only. A chunk that
     parses in part is finished inside judge_alternatives_batch, which retries only the missing items.
-    Batch retries share one per-repo time budget. A call that returns a judgement does not consume
-    it. Repeated infrastructure failures, or that budget running out, raise InfraFallbackStop
-    carrying the rows already verified and the number of chunks left unjudged.
+    Batch retries share one per-repo time budget: max(600 seconds, 90 seconds times the chunk
+    count), then an overall cap. A call that returns a judgement does not consume it. A finished
+    batch chunk is reused from the relevance cache, whose key includes the requested model.
+    Repeated infrastructure failures, or that budget running out, raise InfraFallbackStop
+    carrying the rows already verified, the chunk indexes that finished, and how many chunks
+    were left unjudged.
     The candidate's own package, docs, homepage, fork, and mirror are removed before the call
     and again from whatever the model returns.
     """
@@ -2531,35 +2618,57 @@ def filter_relevant_alternatives(
     identity = build_identity(candidate or {"repo_id": candidate_repo_id})
     rows, dropped = split_own(identity, rows)
     _trace_own(trace, candidate_repo_id, identity, dropped)
-    budget = fallback_budget if fallback_budget is not None else FallbackBudget(clock=clock)
-    verified_alts: list[dict[str, Any]] = []
     chunk_count = (len(rows) + ALTERNATIVE_CHUNK_SIZE - 1) // ALTERNATIVE_CHUNK_SIZE if rows else 0
+    if fallback_budget is not None:
+        budget = fallback_budget
+    else:
+        budget = FallbackBudget(seconds=alternatives_budget_seconds(chunk_count), clock=clock)
+    verified_alts: list[dict[str, Any]] = []
+    verified_chunk_indexes: list[int] = []
     finished = 0
     try:
-        for start in range(0, len(rows), ALTERNATIVE_CHUNK_SIZE):
+        for chunk_index, start in enumerate(range(0, len(rows), ALTERNATIVE_CHUNK_SIZE)):
             budget.guard_new_chunk()
             chunk = rows[start:start + ALTERNATIVE_CHUNK_SIZE]
+            judged = False
             if len(chunk) > 1:
                 batch = judge_alternatives_batch(
-                    problem_statement, candidate_repo_id, chunk, client=client, trace=trace, fallback_budget=budget,
+                    problem_statement, candidate_repo_id, chunk, client=client, trace=trace,
+                    fallback_budget=budget, chunk_index=chunk_index,
                 )
                 if batch is not None:
                     verified_alts.extend(batch)
-                    finished += 1
-                    continue
-            if budget.time_exhausted():
-                raise budget.stop("time_cap")
-            for res in chunk:
+                    judged = True
+            if not judged:
                 if budget.time_exhausted():
                     raise budget.stop("time_cap")
-                alt_row = _per_item(problem_statement, candidate_repo_id, res, client, trace, budget)
-                if alt_row is not None:
-                    verified_alts.append(alt_row)
-            finished += 1
+                per_item_failures = 0
+                for res in chunk:
+                    if budget.time_exhausted():
+                        raise budget.stop("time_cap")
+                    before = budget.failures
+                    alt_row = _per_item(
+                        problem_statement, candidate_repo_id, res, client, trace, budget,
+                        chunk_index=chunk_index,
+                    )
+                    if budget.failures > before:
+                        per_item_failures += 1
+                    if alt_row is not None:
+                        verified_alts.append(alt_row)
+                # A batch that failed open can still finish on the per-item salvage.
+                # Those rows are judged. A per-item infrastructure error leaves the chunk unjudged.
+                judged = per_item_failures == 0
+            if judged:
+                verified_chunk_indexes.append(chunk_index)
+                finished += 1
+            elif budget.failures >= FALLBACK_INFRA_LIMIT:
+                raise budget.stop("infra_failures")
+            elif budget.time_exhausted():
+                raise budget.stop("time_cap")
     except InfraFallbackStop as exc:
         verified_alts, dropped_after = split_own(identity, verified_alts)
         _trace_own(trace, candidate_repo_id, identity, dropped_after)
-        exc.attach(verified_alts, max(0, chunk_count - finished))
+        exc.attach(verified_alts, max(0, chunk_count - finished), verified_chunk_indexes)
         _trace_partial_alternatives(trace, candidate_repo_id, len(search_results), exc.verified, exc)
         raise
     verified_alts, dropped_after = split_own(identity, verified_alts)
