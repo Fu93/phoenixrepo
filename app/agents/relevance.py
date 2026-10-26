@@ -1324,7 +1324,9 @@ def normalize_whitespace(text: str) -> str:
 _MARKUP_TRANS = str.maketrans({
     "*": " ", "_": " ", "`": " ", "#": " ", ">": " ",
     "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-",
+    "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2015": "-", "\u2212": "-", "\u2026": "...",
 })
+_DASH_SPACING = re.compile(r"\s*-\s*")
 
 
 def _normalize_for_quote(text: str) -> str:
@@ -1333,7 +1335,8 @@ def _normalize_for_quote(text: str) -> str:
     Deterministic: the words and their order must still match exactly. This only stops
     "**Rammingen** is ..." in a README from failing against the quote "Rammingen is ...".
     """
-    return normalize_whitespace(str(text or "").translate(_MARKUP_TRANS)).casefold()
+    # "A — B" on a page and "A - B" or "A-B" in a quote are the same words in the same order.
+    return _DASH_SPACING.sub("-", normalize_whitespace(str(text or "").translate(_MARKUP_TRANS))).casefold()
 
 
 def quote_in_text(quote: str, text: str) -> bool:
@@ -1896,6 +1899,27 @@ def judge_discovery(
                         verdict = "NEEDS_REVIEW"
                         reason = f"must beat {named.get('alternative_id')}: {why}"
                         picked = [{**named, "reason": reason}]
+        def _quote_checks(row: dict[str, Any]) -> list[str]:
+            text = f"{row.get('excerpt', '')} {row.get('description', '')} {row.get('text', '')} {row.get('readme', '')}"
+            return [str(q) for q in (row.get("quotes") or []) if str(q).strip() and quote_in_text(str(q), text)]
+
+        verified_blockers = [r for r in blocking_full if _quote_checks(r)]
+        if verdict == "NEEDS_REVIEW" and verified_blockers:
+            # The model said ALREADY_EXISTS but named a blocker the checks could not match or
+            # verify, while another alternative passed full overlap and A-E and carries a quote
+            # found verbatim in its own text. That row would override a CANDIDATE (above), so it
+            # must not be lost here because the model spelled a different name. A row with no
+            # verified quote of its own never takes this path.
+            unverified = reason
+            m = verified_blockers[0]
+            quotes = _quote_checks(m)
+            verdict = "ALREADY_EXISTS"
+            reason = (
+                f"verified full-overlap alternative {m.get('url') or m.get('alternative_id')} already solves the same problem"
+                + (f" (quote: '{quotes[0]}')" if quotes else "")
+                + f"; the model's named blocker did not verify ({unverified[:160]})"
+            )
+            picked = [{**m, "quotes": quotes, "overlap": "full", "reason": reason}]
     elif raw_verdict == "NO_GO":
         if problem_quote and problem_quote.casefold() not in {"unknown", "none", "null", ""}:
             if not quote_in_text(problem_quote, cand_text):
