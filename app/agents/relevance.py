@@ -32,6 +32,7 @@ import httpx
 
 from app.errors import InvestigationError
 from app.prompts import load_prompt
+from config.settings import DEFAULT_NIGHTSHIFT_MODEL, model_mismatch
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -231,7 +232,7 @@ def _complete_json(client, prompt, system_prompt, repo_id, step, validate=None):
 class RelevanceClient:
     base_url: str = "http://127.0.0.1:8088/v1"
     token: str | None = None
-    model: str = "meterless/auto"
+    model: str = DEFAULT_NIGHTSHIFT_MODEL
     cache_dir: Path | None = None
     timeout: float | httpx.Timeout = 90.0
     wall_clock_timeout: float = 120.0
@@ -239,6 +240,7 @@ class RelevanceClient:
     transport: httpx.BaseTransport | None = None
     mock_handler: Callable[[str, str], str] | None = None
     mock_served_model: str | None = None
+    trace: Any | None = None
 
     def __post_init__(self) -> None:
         self.base_url = self.base_url.rstrip("/")
@@ -252,8 +254,45 @@ class RelevanceClient:
         self.served_models: set[str] = set()
         self.model_calls: dict[str, int] = {}
         self.repo_mismatches: set[str] = set()
+        self.mismatch_count: int = 0
         self.last_cache_hit: bool = False
         self.last_cache_file: Path | None = None
+        self._call_noted: bool = False
+
+    def _call_label(self, served: str) -> str:
+        return served if served else "(missing)"
+
+    def _observe(self, requested: str, served: str, repo_id: str, step: str, status: str = "ok") -> None:
+        """Count one model reply and, when a trace is attached, write one LLM_CALL line.
+
+        served is stored as Nightshift returned it. A missing model stays empty and is
+        counted under "(missing)". It is not replaced with the requested id.
+        """
+
+        self._call_noted = True
+        label = self._call_label(served)
+        self.served_models.add(label)
+        self.model_calls[label] = self.model_calls.get(label, 0) + 1
+        if model_mismatch(served):
+            self.mismatch_count += 1
+            if repo_id:
+                self.repo_mismatches.add(repo_id)
+        if self.trace is None:
+            return
+        self.trace.event(
+            agent_name="orchestrator",
+            action="LLM_CALL",
+            input_summary={"repo_id": repo_id, "step": step or ""},
+            output_summary={"requested_model": requested, "served_model": served},
+            llm={"requested_model": requested, "served_model": served},
+            status=status,
+        )
+
+    def _log_served(self, repo_id: str, step: str, served: str, elapsed: float, cache_hit: bool) -> None:
+        shown = served if served else "(missing)"
+        label = "cache_hit " if cache_hit else ""
+        sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} {label}served={shown} {elapsed:.2f}s\n")
+        sys.stderr.flush()
 
     def discard_last(self) -> None:
         """Delete the cache entry of the last call, so an unusable answer is never replayed."""
@@ -304,6 +343,27 @@ class RelevanceClient:
         call_budget_s: float | None = None,
     ) -> tuple[str, str, str]:
         """Return (response_text, requested_model, served_model)."""
+
+        self._call_noted = False
+        try:
+            return self._complete(
+                prompt, system_prompt, repo_id=repo_id, step=step, call_budget_s=call_budget_s,
+            )
+        except RelevanceLLMError:
+            if not self._call_noted:
+                # The join already gave up. Record the requested id and an empty serve.
+                # Do not copy a model id from a response that arrived after the cap.
+                self._observe(self.model, "", repo_id, step, status="error")
+            raise
+
+    def _complete(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        repo_id: str = "",
+        step: str = "",
+        call_budget_s: float | None = None,
+    ) -> tuple[str, str, str]:
         call_start = time.monotonic()
         total_cap = self.total_timeout if call_budget_s is None else min(self.total_timeout, max(0.0, call_budget_s))
         prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
@@ -314,22 +374,19 @@ class RelevanceClient:
         if cache_file.exists():
             try:
                 cached = json.loads(cache_file.read_text(encoding="utf-8"))
-                served = cached.get("served_model") or self.model
+                raw_served = cached.get("served_model")
+                served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
+                    self._observe(self.model, served, repo_id, step, status="error")
                     raise RelevanceLLMError(
                         f"Nightshift served local model {served}; refusing to score with a small local model"
                     )
-                self.served_models.add(served)
-                self.model_calls[served] = self.model_calls.get(served, 0) + 1
-                req_m = cached.get("requested_model", self.model)
-                if req_m and served and req_m != served:
-                    if repo_id:
-                        self.repo_mismatches.add(repo_id)
+                req_raw = cached.get("requested_model")
+                req_m = req_raw.strip() if isinstance(req_raw, str) and req_raw.strip() else self.model
+                self._observe(req_m, served, repo_id, step)
                 self.last_cache_hit = True
                 self.last_cache_file = cache_file
-                elapsed = time.monotonic() - call_start
-                sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} cache_hit served={served} {elapsed:.2f}s\n")
-                sys.stderr.flush()
+                self._log_served(repo_id, step, served, time.monotonic() - call_start, cache_hit=True)
                 return cached.get("response_text", ""), req_m, served
             except RelevanceLLMError:
                 raise
@@ -337,8 +394,11 @@ class RelevanceClient:
                 pass
 
         if self.mock_handler is not None:
-            served = self.mock_served_model or self.model
+            # A mock that does not name a served model is declaring that it served the request.
+            # An explicit empty string is a missing model field and stays empty.
+            served = self.model if self.mock_served_model is None else self.mock_served_model
             if served.startswith("local-runtime/"):
+                self._observe(self.model, served, repo_id, step, status="error")
                 raise RelevanceLLMError(
                     f"Nightshift served local model {served}; refusing to score with a small local model"
                 )
@@ -354,16 +414,10 @@ class RelevanceClient:
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
             cache_file.write_text(json.dumps(record, indent=2), encoding="utf-8")
-            self.served_models.add(served)
-            self.model_calls[served] = self.model_calls.get(served, 0) + 1
-            if self.model and served and self.model != served:
-                if repo_id:
-                    self.repo_mismatches.add(repo_id)
+            self._observe(self.model, served, repo_id, step)
             self.last_cache_hit = False
             self.last_cache_file = cache_file
-            elapsed = time.monotonic() - call_start
-            sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} served={served} {elapsed:.2f}s\n")
-            sys.stderr.flush()
+            self._log_served(repo_id, step, served, time.monotonic() - call_start, cache_hit=False)
             return resp_text, self.model, served
 
         if not self.token or self.token == "rt-local":
@@ -446,8 +500,10 @@ class RelevanceClient:
 
             if resp.status_code == 200:
                 data = resp.json()
-                served = str(data.get("model") or "").strip() or self.model
+                raw_served = data.get("model") if isinstance(data, dict) else None
+                served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
+                    self._observe(self.model, served, repo_id, step, status="error")
                     raise RelevanceLLMError(
                         f"Nightshift served local model {served}; refusing to score with a small local model"
                     )
@@ -472,16 +528,10 @@ class RelevanceClient:
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }
                 cache_file.write_text(json.dumps(record, indent=2), encoding="utf-8")
-                self.served_models.add(served)
-                self.model_calls[served] = self.model_calls.get(served, 0) + 1
-                if self.model and served and self.model != served:
-                    if repo_id:
-                        self.repo_mismatches.add(repo_id)
+                self._observe(self.model, served, repo_id, step)
                 self.last_cache_hit = False
                 self.last_cache_file = cache_file
-                elapsed = time.monotonic() - call_start
-                sys.stderr.write(f"[{repo_id or 'unknown'}] step={step or 'unknown'} served={served} {elapsed:.2f}s\n")
-                sys.stderr.flush()
+                self._log_served(repo_id, step, served, time.monotonic() - call_start, cache_hit=False)
                 return text, self.model, served
 
             if resp.status_code in (401, 403):
@@ -553,7 +603,7 @@ def extract_capabilities(
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
             raise
         return [], {
-            "requested_model": getattr(client, "model", "meterless/auto"),
+            "requested_model": getattr(client, "model", DEFAULT_NIGHTSHIFT_MODEL),
             "served_model": "",
             "fallback": True,
             "error": str(exc),
@@ -661,7 +711,7 @@ def judge_demand(
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
             raise
         return None, {
-            "requested_model": getattr(client, "model", "meterless/auto"),
+            "requested_model": getattr(client, "model", DEFAULT_NIGHTSHIFT_MODEL),
             "served_model": "",
             "fallback": True,
             "error": str(exc),
@@ -754,7 +804,7 @@ def judge_alternative_coverage(
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
             raise
         return False, "", {
-            "requested_model": getattr(client, "model", "meterless/auto"),
+            "requested_model": getattr(client, "model", DEFAULT_NIGHTSHIFT_MODEL),
             "served_model": "",
             "fallback": True,
             "error": str(exc),
@@ -1448,7 +1498,7 @@ def extract_problem_statement(
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
             raise
         return None, {
-            "requested_model": getattr(client, "model", "meterless/auto"),
+            "requested_model": getattr(client, "model", DEFAULT_NIGHTSHIFT_MODEL),
             "served_model": "",
             "fallback": True,
             "error": str(exc),
@@ -1821,7 +1871,7 @@ def judge_alternative_relevance(
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
             raise
         return None, {
-            "requested_model": getattr(client, "model", "meterless/auto"),
+            "requested_model": getattr(client, "model", DEFAULT_NIGHTSHIFT_MODEL),
             "served_model": "",
             "fallback": True,
             "error": str(exc),
@@ -1929,10 +1979,26 @@ _BATCH_RETRY_NOTE = (
 )
 
 
-def _trace_llm(trace: Any | None, action: str, repo_id: str, requested: str, served: str, info: dict[str, Any], status: str = "ok") -> None:
-    """One trace line per model call. served_model is a top-level field, inside the hash chain."""
+def _trace_llm(
+    trace: Any | None,
+    action: str,
+    repo_id: str,
+    requested: str,
+    served: str,
+    info: dict[str, Any],
+    status: str = "ok",
+    record_model: bool = True,
+) -> None:
+    """One trace line per model call. served_model is a top-level field, inside the hash chain.
+
+    record_model is false when RelevanceClient.complete already wrote the LLM_CALL line
+    for this attempt. The batch outcome line then stays, without a second model flag.
+    """
     if trace is None:
         return
+    kwargs: dict[str, Any] = {}
+    if record_model:
+        kwargs["llm"] = {"requested_model": requested or "", "served_model": served or ""}
     trace.event(
         agent_name="orchestrator",
         action=action,
@@ -1943,8 +2009,8 @@ def _trace_llm(trace: Any | None, action: str, repo_id: str, requested: str, ser
             "parsed_indexes": info.get("parsed_indexes"),
             "reason": info.get("reason"),
         },
-        llm={"requested_model": requested or "", "served_model": served or ""},
         status=status,
+        **kwargs,
     )
 
 
@@ -2076,6 +2142,7 @@ def _per_item(
         str(meta.get("served_model") or ""),
         {"alternative": res.get("alternative_id"), "indexes": [index] if index is not None else None, "reason": meta.get("error") or meta.get("reason")},
         status="error" if meta.get("error") or meta.get("fallback") else "ok",
+        record_model=getattr(client, "trace", None) is None,
     )
     if budget is not None and meta.get("error"):
         budget.note(str(meta.get("error") or ""))
@@ -2122,7 +2189,6 @@ def judge_alternatives_batch(
                 action="ALTERNATIVE_BATCH_FALLBACK",
                 input_summary={"repo_id": candidate_repo_id, "alternatives": len(items)},
                 output_summary={"reason": reason, "requested_model": client.model, "served_model": ""},
-                llm={"requested_model": client.model, "served_model": ""},
                 status="error",
             )
 
@@ -2138,6 +2204,7 @@ def judge_alternatives_batch(
             _trace_llm(
                 trace, "ALTERNATIVE_BATCH_CALL", candidate_repo_id, client.model, "",
                 {"indexes": which, "reason": str(exc)[:160]}, status="error",
+                record_model=getattr(client, "trace", None) is None,
             )
             raise
         entries = extract_result_entries(text)
@@ -2145,6 +2212,7 @@ def judge_alternatives_batch(
             trace, "ALTERNATIVE_BATCH_CALL", candidate_repo_id, req_m, srv_m,
             {"indexes": which, "parsed_indexes": sorted(_index_map(entries))},
             status="ok" if entries else "error",
+            record_model=getattr(client, "trace", None) is None,
         )
         if not entries:
             client.discard_last()
@@ -2168,7 +2236,6 @@ def judge_alternatives_batch(
                         action="ALTERNATIVE_BATCH_RETRY",
                         input_summary={"repo_id": candidate_repo_id, "attempt": attempt + 1, "indexes": indexes},
                         output_summary={"reason": str(exc)[:160], "requested_model": client.model, "served_model": ""},
-                        llm={"requested_model": client.model, "served_model": ""},
                         status="error",
                     )
                 continue
@@ -2184,7 +2251,6 @@ def judge_alternatives_batch(
                         action="ALTERNATIVE_BATCH_RETRY",
                         input_summary={"repo_id": candidate_repo_id, "attempt": attempt + 1, "indexes": indexes},
                         output_summary={"reason": str(exc)[:160], "requested_model": client.model, "served_model": ""},
-                        llm={"requested_model": client.model, "served_model": ""},
                         status="error",
                     )
                 continue
@@ -2217,7 +2283,6 @@ def judge_alternatives_batch(
                         action="ALTERNATIVE_BATCH_RETRY",
                         input_summary={"repo_id": candidate_repo_id, "indexes": [i for i, _, _ in missing]},
                         output_summary={"reason": str(exc)[:160], "requested_model": client.model, "served_model": ""},
-                        llm={"requested_model": client.model, "served_model": ""},
                         status="error",
                     )
             except Exception as exc:
@@ -2228,7 +2293,6 @@ def judge_alternatives_batch(
                         action="ALTERNATIVE_BATCH_RETRY",
                         input_summary={"repo_id": candidate_repo_id, "indexes": [i for i, _, _ in missing]},
                         output_summary={"reason": str(exc)[:160], "requested_model": client.model, "served_model": ""},
-                        llm={"requested_model": client.model, "served_model": ""},
                         status="error",
                     )
             if follow:

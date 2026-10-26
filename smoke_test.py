@@ -103,7 +103,7 @@ def zetaris_sql() -> None:
 def model_reply() -> str:
     base = env("MODEL_BASE_URL", "METERLESS_BASE_URL")
     key = env("MODEL_API_KEY", "METERLESS_RUNTIME_TOKEN")
-    model = env("MODEL_NAME", "NEMOTRON_MODEL", "METERLESS_MODEL") or "meterless/auto"
+    model = env("MODEL_NAME", "NEMOTRON_MODEL", "METERLESS_MODEL") or "nvidia/nemotron-3-super-120b-a12b"
     if not base or not key or not model:
         raise AssertionError(
             "MODEL_BASE_URL/METERLESS_BASE_URL, MODEL_API_KEY/METERLESS_RUNTIME_TOKEN, "

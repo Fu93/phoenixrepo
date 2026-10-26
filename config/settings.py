@@ -3,6 +3,12 @@ import os
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Gate-1 verdict calls ask Nightshift for this id unless MODEL_NAME is set.
+# Nightshift may still answer with a different id. That id is served_model, never rewritten.
+DEFAULT_NIGHTSHIFT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+NEMOTRON_FAMILY_PREFIX = "nvidia/nemotron-"
+SAMPLE_STANDIN_MODEL = "deterministic-rule-standin"
+
 # Documented stand-ins. A copied .env.example must not look configured.
 _PLACEHOLDER_SECRETS = {
     "changeme",
@@ -32,6 +38,28 @@ def usable_secret(value: str | None) -> str | None:
     return text
 
 
+def is_nemotron_family(model: object) -> bool:
+    """True only for an nvidia/nemotron-* id. A different Nemotron size still matches."""
+
+    return isinstance(model, str) and model.strip().startswith(NEMOTRON_FAMILY_PREFIX)
+
+
+def model_mismatch(served: object) -> bool:
+    """True when a model reply is missing or not in the nvidia/nemotron-* family.
+
+    An empty served model is a mismatch. The requested id is never copied into it.
+    The sample stand-in names itself and is not a Nightshift reply, so it is not a
+    routing mismatch.
+    """
+
+    if not isinstance(served, str) or not served.strip():
+        return True
+    text = served.strip()
+    if text == SAMPLE_STANDIN_MODEL:
+        return False
+    return not is_nemotron_family(text)
+
+
 class Settings(BaseSettings):
     """Runtime settings. Meterless Nightshift is the primary model provider."""
 
@@ -44,7 +72,7 @@ class Settings(BaseSettings):
 
     meterless_base_url: str = "http://127.0.0.1:8088/v1"
     meterless_runtime_token: str | None = None
-    meterless_model: str = "meterless/auto"
+    meterless_model: str = DEFAULT_NIGHTSHIFT_MODEL
     model_override: str = Field(default="", validation_alias=AliasChoices("MODEL_NAME"))
     meterless_max_tokens: int = 8192
     meterless_app: str = "phoenixrepo"
@@ -89,13 +117,16 @@ class Settings(BaseSettings):
         return usable_secret(str(value))
 
     def requested_model(self) -> str:
-        """Nightshift model id to send. MODEL_NAME overrides METERLESS_MODEL."""
+        """Nightshift model id to send. MODEL_NAME overrides METERLESS_MODEL.
+
+        With neither set, gate-1 and the revive loop request the Nemotron lane.
+        """
 
         override = (self.model_override or "").strip()
         if override:
             return override
         configured = (self.meterless_model or "").strip()
-        return configured or "meterless/auto"
+        return configured or DEFAULT_NIGHTSHIFT_MODEL
 
     def secret_values(self) -> list[str]:
         values = [

@@ -168,7 +168,15 @@ def judge(url: str, out_dir: Path | None = None, use_llm: bool = True, run_id: s
     events = evidence_report.load_events(logs, run_ids=[rid])
     report = out / "report.html"
     report.write_text(
-        evidence_report.render_repo_html(repo_id, verdict, reason, evidence_report.events_for_repo(events, repo_id), run_id=rid, run_hash=str(results.get("run_hash") or "")),
+        evidence_report.render_repo_html(
+            repo_id,
+            verdict,
+            reason,
+            evidence_report.events_for_repo(events, repo_id),
+            run_id=rid,
+            run_hash=str(results.get("run_hash") or ""),
+            model_rows=evidence_report.served_model_rows(events),
+        ),
         encoding="utf-8",
     )
     return {"repo_id": repo_id, "verdict": verdict, "reason": reason, "run_id": rid, "run_hash": results.get("run_hash"), "report": str(report)}

@@ -104,6 +104,25 @@ def _job_value(job: dict, key: str, default):
     return job[key] if key in job else default
 
 
+def build_relevance_client(**overrides):
+    """Meterless client for the revive loop.
+
+    The requested model is Settings.requested_model(): the Nemotron lane unless
+    MODEL_NAME (or METERLESS_MODEL) overrides it. This does not add a provider.
+    """
+
+    from config.settings import Settings
+
+    settings = Settings()
+    params = {
+        "base_url": settings.meterless_base_url,
+        "token": settings.meterless_runtime_token,
+        "model": settings.requested_model(),
+    }
+    params.update(overrides)
+    return RelevanceClient(**params)
+
+
 def _exit_code(state: str) -> int:
     if state == "NOT_ATTEMPTED_GATE1":
         return 3
@@ -186,7 +205,7 @@ def run_job(args: argparse.Namespace, job: dict, index: int) -> int:
         description = str(judge_repo.fetch_repo(full_name)["repo"].get("description") or "")
     except Exception:  # noqa: BLE001
         pass
-    client = RelevanceClient()
+    client = build_relevance_client(trace=trace)
     result = revive_loop.revive(
         target,
         client,

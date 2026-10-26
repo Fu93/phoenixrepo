@@ -870,6 +870,9 @@ def _do_score_candidates(
                 llm_bound = None
                 llm_prompt = None
 
+    if relevance_client is not None and getattr(relevance_client, "trace", None) is None:
+        relevance_client.trace = trace
+
     # 1. Read discovery CSVs
     candidates_raw = _read_csv(active_data_dir / "discovery_candidates.csv", DISCOVERY_COLUMNS)
     prior_raw = _read_csv(active_data_dir / "prior_art.csv", PRIOR_ART_COLUMNS)
@@ -1532,6 +1535,7 @@ def _do_score_candidates(
         "command": command_str or " ".join(sys.argv),
         "llm_used": bool(relevance_client and len(relevance_client.served_models) > 0),
         "model_calls": relevance_client.model_calls if relevance_client else {},
+        "model_mismatch_count": trace.model_mismatch_count(),
         "warnings": warnings,
         "duplicated_vectors": duplicated_vectors,
         "duplicated_score_vectors": duplicated_vectors,
@@ -1566,6 +1570,8 @@ def _render_markdown(data: dict[str, Any]) -> str:
 
     model_calls = data.get("model_calls") or {}
     lines.append("## Model Call Summary")
+    lines.append("")
+    lines.append(f"- **MODEL_MISMATCH**: {int(data.get('model_mismatch_count') or 0)}")
     lines.append("")
     if model_calls:
         lines.append("| Served Model | Calls |")

@@ -10,7 +10,7 @@ def test_env_example_exists():
 def test_model_name_overrides_meterless_model(monkeypatch):
     monkeypatch.delenv("MODEL_NAME", raising=False)
     monkeypatch.delenv("METERLESS_MODEL", raising=False)
-    assert Settings(_env_file=None).requested_model() == "meterless/auto"
+    assert Settings(_env_file=None).requested_model() == "nvidia/nemotron-3-super-120b-a12b"
     monkeypatch.setenv("METERLESS_MODEL", "meterless/fast")
     assert Settings(_env_file=None).requested_model() == "meterless/fast"
     monkeypatch.setenv("MODEL_NAME", "nvidia/nemotron-3-super-120b-a12b")

@@ -864,7 +864,7 @@ def test_cli_refuses_a_blocked_verdict_and_passes_approval(tmp_path, monkeypatch
 
     monkeypatch.setattr(revive_cli, "_git", fake_git)
     monkeypatch.setattr(revive_cli.judge_repo, "fetch_repo", lambda name: {"repo": {"description": ""}})
-    monkeypatch.setattr(revive_cli, "RelevanceClient", lambda: type("C", (), {"served_models": set()})())
+    monkeypatch.setattr(revive_cli, "RelevanceClient", lambda **_kwargs: type("C", (), {"served_models": set()})())
 
     def explode(*args, **kwargs):
         raise AssertionError("gate 1 was re-judged")

@@ -160,7 +160,59 @@ def _md_cell(value: Any) -> str:
     return str(value or "").replace("|", "/").replace("\n", " ").strip()
 
 
-def render_repo_html(repo_id: str, verdict: str, reason: str, ev: dict[str, Any], run_id: str = "", run_hash: str = "") -> str:
+def served_model_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per served model for a run. A blank served_model stays `(missing)`.
+
+    Only lines that recorded requested_model (an LLM call) are counted. The requested
+    id is never substituted for a missing serve.
+    """
+
+    counts: dict[str, dict[str, int]] = {}
+    for event in events:
+        if "requested_model" not in event:
+            continue
+        served = event.get("served_model")
+        label = served.strip() if isinstance(served, str) and served.strip() else "(missing)"
+        row = counts.setdefault(label, {"calls": 0, "mismatches": 0})
+        row["calls"] += 1
+        if "MODEL_MISMATCH" in (event.get("flags") or []):
+            row["mismatches"] += 1
+    return [
+        {"served_model": name, "calls": info["calls"], "mismatches": info["mismatches"]}
+        for name, info in sorted(counts.items())
+    ]
+
+
+def render_served_model_table(rows: list[dict[str, Any]] | None) -> str:
+    if rows is None:
+        return ""
+    mismatches = sum(int(row.get("mismatches") or 0) for row in rows)
+    parts = ["<h2>Served models</h2>", f"<p>MODEL_MISMATCH: {mismatches}</p>"]
+    if not rows:
+        parts.append('<p class="muted">No LLM calls were recorded for this run.</p>')
+        return "\n".join(parts)
+    parts.append("<table><tr><th>Served model</th><th>Calls</th><th>MODEL_MISMATCH</th></tr>")
+    for row in rows:
+        parts.append(
+            "<tr>"
+            f"<td><code>{_e(row.get('served_model'))}</code></td>"
+            f"<td>{_e(row.get('calls'))}</td>"
+            f"<td>{_e(row.get('mismatches'))}</td>"
+            "</tr>"
+        )
+    parts.append("</table>")
+    return "\n".join(parts)
+
+
+def render_repo_html(
+    repo_id: str,
+    verdict: str,
+    reason: str,
+    ev: dict[str, Any],
+    run_id: str = "",
+    run_hash: str = "",
+    model_rows: list[dict[str, Any]] | None = None,
+) -> str:
     color, label = VERDICT_STYLE.get(verdict, ("#475467", verdict))
     parts: list[str] = []
     parts.append(f"<h1>{_e(repo_id)}</h1>")
@@ -250,6 +302,7 @@ def render_repo_html(repo_id: str, verdict: str, reason: str, ev: dict[str, Any]
         )
         parts.append(f"<table><tr><th>Source</th><th>Results</th><th>Status</th></tr>{rows}</table>")
 
+    parts.append(render_served_model_table(model_rows))
     parts.append("<h2>Evidence trail</h2>")
     meta = []
     if isinstance(prob, dict):
@@ -282,6 +335,7 @@ def _slug(repo_id: str) -> str:
 
 def render_all(results: dict[str, Any], events: list[dict[str, Any]], out_dir: Path, run_id: str = "") -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
+    model_rows = served_model_rows(events)
     rows: list[tuple[str, str, str]] = []
     written: list[Path] = []
     entries = [(c.get("repo_id"), "CANDIDATE", c.get("reason") or "") for c in results.get("candidates") or []]
@@ -292,7 +346,15 @@ def render_all(results: dict[str, Any], events: list[dict[str, Any]], out_dir: P
         ev = events_for_repo(events, str(repo_id))
         path = out_dir / f"{_slug(str(repo_id))}.html"
         path.write_text(
-            render_repo_html(str(repo_id), verdict, reason, ev, run_id=run_id or str(results.get("run_id") or ""), run_hash=str(results.get("run_hash") or "")),
+            render_repo_html(
+                str(repo_id),
+                verdict,
+                reason,
+                ev,
+                run_id=run_id or str(results.get("run_id") or ""),
+                run_hash=str(results.get("run_hash") or ""),
+                model_rows=model_rows,
+            ),
             encoding="utf-8",
         )
         written.append(path)
@@ -300,7 +362,12 @@ def render_all(results: dict[str, Any], events: list[dict[str, Any]], out_dir: P
     items = "".join(
         f'<tr><td><a href="{_e(n)}">{_e(r)}</a></td><td>{_e(v)}</td></tr>' for r, v, n in sorted(rows, key=lambda x: (x[1], x[0]))
     )
-    index = _page("PhoenixRepo evidence reports", f"<h1>PhoenixRepo evidence reports</h1><table><tr><th>Repository</th><th>Verdict</th></tr>{items}</table>")
+    index_body = (
+        "<h1>PhoenixRepo evidence reports</h1>"
+        + render_served_model_table(model_rows)
+        + f"<table><tr><th>Repository</th><th>Verdict</th></tr>{items}</table>"
+    )
+    index = _page("PhoenixRepo evidence reports", index_body)
     (out_dir / "index.html").write_text(index, encoding="utf-8")
     written.append(out_dir / "index.html")
     return written
