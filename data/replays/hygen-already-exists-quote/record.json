@@ -1,0 +1,55 @@
+{
+  "id": "hygen-already-exists-quote",
+  "title": "Hygen — human label ALREADY_EXISTS with a verbatim quote",
+  "repo_id": "Fu93/hygen",
+  "repo_url": "https://github.com/Fu93/hygen",
+  "data_class": "HUMAN_LABEL",
+  "trace_class": "SAMPLE",
+  "banner": "SAMPLE hash chain over a human label copied from data/eval/gate1_labels.json. This is not a Nightshift trace and not a model verdict.",
+  "summary": "Human label in data/eval/gate1_labels.json. No model score for Fu93/hygen is in venture_scores.json.",
+  "model_verdict_recorded": false,
+  "sources": [
+    "data/eval/gate1_labels.json"
+  ],
+  "recorded_run": null,
+  "rescue_inputs": null,
+  "verdict": {
+    "verdict": "ALREADY_EXISTS",
+    "verdict_kind": "human_label",
+    "reason": "Fu93/hygen is a fork of jondot/hygen. Its README describes a code generator that lives in the project and injects into existing files. Plop's README describes a micro-generator framework that generates code or other flat text files.",
+    "quote": "Plop is what I like to call a \"micro-generator framework.\" Now, I call it that because it is a small tool that gives you a simple way to generate code or any other type of flat text files in a consistent way.",
+    "quote_source_url": "https://raw.githubusercontent.com/plopjs/plop/main/README.md",
+    "quote_source_path": "data/eval/gate1_labels.json",
+    "alternatives": [
+      {
+        "name": "candidate",
+        "url": "https://raw.githubusercontent.com/Fu93/hygen/master/README.md",
+        "quote": "`hygen` is the simple, fast, and scalable code generator that lives _in_ your project.",
+        "origin": "data/eval/gate1_labels.json"
+      },
+      {
+        "name": "candidate",
+        "url": "https://raw.githubusercontent.com/Fu93/hygen/master/README.md",
+        "quote": "Injecting into existing files",
+        "origin": "data/eval/gate1_labels.json"
+      },
+      {
+        "name": "alternative",
+        "url": "https://raw.githubusercontent.com/plopjs/plop/main/README.md",
+        "quote": "Plop is what I like to call a \"micro-generator framework.\" Now, I call it that because it is a small tool that gives you a simple way to generate code or any other type of flat text files in a consistent way.",
+        "origin": "data/eval/gate1_labels.json"
+      }
+    ],
+    "acceptable": [
+      "ALREADY_EXISTS"
+    ],
+    "forbidden": [],
+    "gate2": {
+      "state": null,
+      "historical_trace": false,
+      "rule_quote": "**Gate 2 only runs if gate 1 said `CANDIDATE`.** This is a hard precondition (commit `aa48ca7`). For any other gate-1 verdict the state is `NOT_ATTEMPTED_GATE1`, the trace records `REVIVE_BLOCKED_BY_GATE1`, and nothing is cloned, installed or patched.",
+      "rule_source": "README.md",
+      "why": "No gate-2 trace is committed for this repository. NOT_ATTEMPTED_GATE1 applies when a recorded gate-1 verdict is not CANDIDATE. This card is a human label, so that state was not recorded here."
+    }
+  }
+}

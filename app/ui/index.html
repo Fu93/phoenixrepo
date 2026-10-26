@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhoenixRepo replay</title>
+<style>
+  :root {
+    --ink: #1b1914;
+    --muted: #5c564c;
+    --paper: #f6f3ec;
+    --card: #fffdf8;
+    --line: #d9d1c3;
+    --refuse: #8d2f2a;
+    --sample: #8a5a12;
+    --sample-bg: #f8ecd4;
+    --ok: #1d6b45;
+    --fail: #8d2f2a;
+    --chip: #efe8dc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: var(--paper);
+    font: 16px/1.45 "Iowan Old Style", Palatino, Georgia, serif;
+  }
+  header, main { max-width: 1180px; margin: 0 auto; padding: 24px 20px; }
+  header { padding-bottom: 0; }
+  h1 { font-size: 32px; line-height: 1.1; margin: 0 0 8px; }
+  h2 { font-size: 18px; margin: 0 0 10px; }
+  p { margin: 0 0 10px; }
+  .lede { color: var(--muted); max-width: 68ch; }
+  .missing { background: var(--card); border: 1px solid var(--line); padding: 12px 14px; margin: 16px 0; }
+  .missing li { margin: 0 0 6px; }
+  .replay-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 18px; }
+  button, input {
+    font: inherit;
+    color: var(--ink);
+  }
+  button {
+    background: var(--card);
+    border: 1px solid var(--ink);
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+  button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  button:disabled, input:disabled { cursor: not-allowed; opacity: 0.55; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr); gap: 16px; }
+  .panel { background: var(--card); border: 1px solid var(--line); padding: 14px; min-width: 0; }
+  .banner { background: var(--sample-bg); color: var(--sample); padding: 8px 10px; margin-bottom: 10px; }
+  .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .step {
+    display: grid;
+    grid-template-columns: 2.2rem 1fr;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    margin: 0 0 8px;
+    padding: 8px;
+  }
+  .step small, .muted { color: var(--muted); }
+  .flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .flag { background: var(--refuse); color: white; font: 12px/1 ui-monospace, monospace; padding: 2px 6px; }
+  .flag.quiet { background: var(--chip); color: var(--ink); }
+  pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: #f3efe6;
+    padding: 8px;
+    max-height: 220px;
+    overflow: auto;
+  }
+  .verdict-name { font-size: 28px; margin: 0 0 6px; }
+  .verdict-name.refuse { color: var(--refuse); }
+  a { color: var(--refuse); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 4px 6px 4px 0; vertical-align: top; }
+  .chain { margin-top: 16px; }
+  .ok { color: var(--ok); font-weight: 700; }
+  .fail { color: var(--fail); font-weight: 700; }
+  fieldset { border: 1px solid var(--line); background: var(--card); margin-top: 16px; padding: 14px; }
+  legend { padding: 0 6px; }
+  label { display: block; margin: 8px 0; }
+  input[type="url"], input[type="text"] { width: min(100%, 520px); padding: 8px; border: 1px solid var(--ink); background: white; }
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; }
+    h1 { font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>PhoenixRepo gate 1, replayed</h1>
+  <p class="lede">A full recorded refusal, with no Nightshift token, no network, and no Docker. The timeline walks a committed file. The verdict card reads the same files. A SAMPLE banner means the hash chain was sealed in this repository over those copies. It is not a Nightshift log.</p>
+  <div class="missing" id="missing">
+    <strong>Not in the repository.</strong>
+    <ul><li>Loading the catalog.</li></ul>
+  </div>
+  <div class="replay-list" id="replay-list"></div>
+</header>
+<main>
+  <div class="layout">
+    <section class="panel" id="timeline" aria-label="Timeline">
+      <h2>Timeline</h2>
+      <div id="timeline-banner"></div>
+      <div class="controls">
+        <button type="button" id="play">Play</button>
+        <button type="button" id="step">Step</button>
+        <span class="muted" id="play-status"></span>
+      </div>
+      <p class="muted">Each row is one trace line: agent, requested model, served model, seconds, status. MODEL_MISMATCH appears when those models differ or the line says so. SOURCE_ERROR appears when a line records that status. Seconds stay blank when the line has no elapsed_s, seconds, or latency_ms.</p>
+      <div id="steps"></div>
+      <h2>Selected step</h2>
+      <pre id="step-detail">Choose a replay.</pre>
+    </section>
+    <section class="panel" id="verdict" aria-label="Verdict">
+      <h2>Verdict</h2>
+      <div id="verdict-body"><p class="muted">Choose a replay.</p></div>
+    </section>
+  </div>
+  <section class="panel chain" id="chain">
+    <h2>Hash chain</h2>
+    <p class="muted">Verification uses the same check as <span>scripts/verify_trace.py</span>. The chain shows the file was not edited after it was sealed. It does not show the words are true. Flip one character changes a server copy only.</p>
+    <p id="chain-status">No replay loaded.</p>
+    <button type="button" id="tamper">Flip one character and verify the copy</button>
+    <pre id="chain-result"></pre>
+  </section>
+  <fieldset id="live-box" disabled>
+    <legend>Live judge</legend>
+    <p id="live-reason">Checking whether a Nightshift token is configured.</p>
+    <form id="live-form">
+      <label>Repository URL
+        <input id="live-url" type="text" name="url" placeholder="https://github.com/owner/name" autocomplete="off">
+      </label>
+      <button type="submit" id="live-submit">Run POST /judge</button>
+    </form>
+    <pre id="live-result"></pre>
+  </fieldset>
+</main>
+<script>
+(function () {
+  var state = { replays: [], current: null, index: 0, timer: null };
+
+  function esc(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function textOf(id, value) {
+    document.getElementById(id).textContent = value;
+  }
+
+  function secondsLabel(step) {
+    if (step.seconds == null) return "not recorded";
+    return String(step.seconds) + "s";
+  }
+
+  function modelLabel(value) {
+    return value ? value : "not recorded";
+  }
+
+  function renderMissing(rows) {
+    var html = "<strong>Not in the repository.</strong><ul>";
+    (rows || []).forEach(function (row) {
+      html += "<li><strong>" + esc(row.title) + ".</strong> " + esc(row.reason) + "</li>";
+    });
+    html += "</ul>";
+    document.getElementById("missing").innerHTML = html;
+  }
+
+  function renderList() {
+    var box = document.getElementById("replay-list");
+    box.innerHTML = "";
+    state.replays.forEach(function (row) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = row.title;
+      button.setAttribute("aria-pressed", state.current && state.current.id === row.id ? "true" : "false");
+      button.addEventListener("click", function () { loadReplay(row.id); });
+      box.appendChild(button);
+    });
+  }
+
+  function renderSteps() {
+    var replay = state.current;
+    var box = document.getElementById("steps");
+    if (!replay) return;
+    var banner = document.getElementById("timeline-banner");
+    banner.className = replay.trace_class === "SAMPLE" ? "banner" : "";
+    banner.textContent = replay.banner || "";
+    box.innerHTML = "";
+    (replay.steps || []).forEach(function (step, offset) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "step";
+      button.setAttribute("aria-pressed", offset === state.index ? "true" : "false");
+      var flags = (step.flags || []).map(function (flag) {
+        return "<span class=\"flag\">" + esc(flag) + "</span>";
+      }).join("");
+      button.innerHTML =
+        "<strong>" + esc(step.index) + "</strong>" +
+        "<span><strong>" + esc(step.action) + "</strong> · " + esc(step.agent) +
+        "<br><small>requested " + esc(modelLabel(step.requested_model)) +
+        " · served " + esc(modelLabel(step.served_model)) +
+        " · " + esc(secondsLabel(step)) +
+        " · status " + esc(step.status || "not recorded") + "</small>" +
+        (flags ? "<span class=\"flags\">" + flags + "</span>" : "") +
+        "</span>";
+      button.addEventListener("click", function () {
+        state.index = offset;
+        renderSteps();
+        renderDetail();
+      });
+      box.appendChild(button);
+    });
+    if (!replay.steps || !replay.steps.length) {
+      box.innerHTML = "<p>No trace steps were committed for this replay.</p>";
+    }
+  }
+
+  function renderDetail() {
+    var replay = state.current;
+    var step = replay && replay.steps ? replay.steps[state.index] : null;
+    var node = document.getElementById("step-detail");
+    if (!step) {
+      node.textContent = "No step selected.";
+      return;
+    }
+    node.textContent = "input\n" + (step.input_summary || "") + "\n\noutput\n" + (step.output_summary || "");
+    textOf("play-status", "Step " + step.index + " of " + replay.steps.length);
+  }
+
+  function renderVerdict() {
+    var replay = state.current;
+    var node = document.getElementById("verdict-body");
+    if (!replay) return;
+    var card = replay.verdict || {};
+    var gate = card.gate2 || {};
+    var name = card.verdict || "No model verdict recorded";
+    var refuse = name === "ALREADY_EXISTS" || name === "NO_GO" || gate.state === "NOT_ATTEMPTED_GATE1";
+    var alts = (card.alternatives || []).map(function (alt) {
+      return "<li><strong>" + esc(alt.name) + "</strong> " +
+        (alt.url ? "<a href=\"" + esc(alt.url) + "\">" + esc(alt.url) + "</a>" : "") +
+        (alt.origin ? "<br><small>source " + esc(alt.origin) + "</small>" : "") +
+        (alt.stars != null && alt.stars !== "" ? "<br><small>stars " + esc(alt.stars) + "</small>" : "") +
+        (alt.overlap ? "<br><small>overlap " + esc(alt.overlap) + "</small>" : "") +
+        (alt.note ? "<br><small>" + esc(alt.note) + "</small>" : "") +
+        "<blockquote>" + esc(alt.quote || "") + "</blockquote></li>";
+    }).join("");
+    var rescue = card.rescue;
+    var rescueHtml = "<p>Rescue score: not in the source files for this replay.</p>";
+    if (rescue) {
+      var rows = "";
+      Object.keys(rescue.components || {}).forEach(function (key) {
+        var value = rescue.components[key];
+        rows += "<tr><th>" + esc(key) + "</th><td>" + esc(value == null ? "not recorded" : value) + "</td></tr>";
+      });
+      rescueHtml =
+        "<h2>Rescue score " + esc(rescue.score) + "</h2>" +
+        "<p>" + esc(rescue.note) + " changes_verdict " + esc(rescue.changes_verdict) + ". as_of " + esc(rescue.as_of) + " from " + esc(rescue.inputs_source) + ".</p>" +
+        "<table>" + rows + "</table>";
+    }
+    var acceptable = card.acceptable && card.acceptable.length
+      ? "<p>Human-acceptable labels: " + esc(card.acceptable.join(", ")) + "</p>"
+      : "";
+    node.innerHTML =
+      "<p class=\"verdict-name" + (refuse ? " refuse" : "") + "\">" + esc(name) + "</p>" +
+      "<p><span class=\"flag quiet\">" + esc(replay.data_class) + "</span> <span class=\"flag quiet\">" + esc(replay.trace_class) + "</span></p>" +
+      "<p>" + (replay.repo_url ? "<a href=\"" + esc(replay.repo_url) + "\">" + esc(replay.repo_id) + "</a>" : esc(replay.repo_id)) + "</p>" +
+      acceptable +
+      "<p>" + esc(card.reason || "") + "</p>" +
+      "<h2>Verbatim quote</h2>" +
+      "<blockquote>" + esc(card.quote || "") + "</blockquote>" +
+      "<p><a href=\"" + esc(card.quote_source_url || "#") + "\">" + esc(card.quote_source_url || "") + "</a></p>" +
+      "<p class=\"muted\">Copied from " + esc(card.quote_source_path || "") + ".</p>" +
+      "<h2>Alternatives</h2><ul>" + alts + "</ul>" +
+      rescueHtml +
+      "<h2>Gate 2</h2>" +
+      "<p>State: " + esc(gate.state || "not recorded") + "</p>" +
+      (gate.reason ? "<p>" + esc(gate.reason) + "</p>" : "") +
+      "<p>" + esc(gate.why || "") + "</p>" +
+      "<blockquote>" + esc(gate.rule_quote || "") + "</blockquote>" +
+      "<p class=\"muted\">Rule copied from " + esc(gate.rule_source || "") + ". historical_trace " + esc(gate.historical_trace) + ".</p>";
+  }
+
+  function renderChain() {
+    var replay = state.current;
+    if (!replay) return;
+    var check = replay.verification || {};
+    var recorded = replay.recorded_run;
+    var line = check.ok ? "PASS" : "FAIL";
+    var extra = "";
+    if (recorded && recorded.run_hash) {
+      extra = " Recorded run " + recorded.run_id + " hash " + recorded.run_hash +
+        " is in " + recorded.source + ". jsonl_committed " + recorded.jsonl_committed +
+        ". This page's seal is a different hash.";
+    }
+    textOf("chain-status", line + " " + (check.detail || "") + "." + extra);
+    document.getElementById("chain-status").className = check.ok ? "ok" : "fail";
+    document.getElementById("chain-result").textContent = "";
+  }
+
+  function render() {
+    renderList();
+    renderSteps();
+    renderDetail();
+    renderVerdict();
+    renderChain();
+  }
+
+  function loadReplay(id) {
+    stop();
+    return fetch("/api/replays/" + encodeURIComponent(id)).then(function (response) {
+      return response.json();
+    }).then(function (body) {
+      state.current = body;
+      state.index = 0;
+      render();
+    });
+  }
+
+  function stop() {
+    if (state.timer) {
+      clearInterval(state.timer);
+      state.timer = null;
+    }
+    document.getElementById("play").textContent = "Play";
+  }
+
+  document.getElementById("play").addEventListener("click", function () {
+    if (state.timer) {
+      stop();
+      return;
+    }
+    if (!state.current || !state.current.steps || !state.current.steps.length) return;
+    if (state.index >= state.current.steps.length - 1) {
+      state.index = 0;
+      renderSteps();
+      renderDetail();
+    }
+    document.getElementById("play").textContent = "Pause";
+    state.timer = setInterval(function () {
+      if (state.index >= state.current.steps.length - 1) {
+        stop();
+        return;
+      }
+      state.index += 1;
+      renderSteps();
+      renderDetail();
+    }, 900);
+  });
+
+  document.getElementById("step").addEventListener("click", function () {
+    if (!state.current || !state.current.steps || !state.current.steps.length) return;
+    state.index = Math.min(state.current.steps.length - 1, state.index + 1);
+    renderSteps();
+    renderDetail();
+  });
+
+  document.getElementById("tamper").addEventListener("click", function () {
+    if (!state.current) return;
+    var result = document.getElementById("chain-result");
+    result.textContent = "Checking a one-character copy…";
+    fetch("/api/replays/" + encodeURIComponent(state.current.id) + "/tamper", { method: "POST" })
+      .then(function (response) { return response.json(); })
+      .then(function (body) {
+        var line = body.ok ? "PASS" : "FAIL";
+        result.textContent = line + "\n" + (body.detail || body.error && body.error.message || "") +
+          "\n" + (body.changed || "") + "\ncommitted file modified: " + body.file_modified;
+      });
+  });
+
+  function loadLive() {
+    return fetch("/api/live").then(function (response) { return response.json(); }).then(function (body) {
+      var box = document.getElementById("live-box");
+      textOf("live-reason", body.reason || "");
+      box.disabled = !body.enabled;
+    });
+  }
+
+  document.getElementById("live-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    if (document.getElementById("live-box").disabled) return;
+    var url = document.getElementById("live-url").value;
+    var result = document.getElementById("live-result");
+    result.textContent = "Calling POST /judge…";
+    fetch("/judge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: url, use_llm: true })
+    }).then(function (response) {
+      return response.text().then(function (text) {
+        result.textContent = "HTTP " + response.status + "\n" + text;
+      });
+    });
+  });
+
+  fetch("/api/replays").then(function (response) { return response.json(); }).then(function (body) {
+    state.replays = body.replays || [];
+    renderMissing(body.missing || []);
+    renderList();
+    if (state.replays.length) return loadReplay(state.replays[0].id);
+  });
+  loadLive();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,289 @@
+"""Replay catalog for GET /ui.
+
+Facts shown for a replay are copied from files already in the repository.
+``trace_class: SAMPLE`` means the JSONL was sealed in-repo (over those copies,
+or by a local ``revive()`` call). It is not a Nightshift log. ``logs/`` is
+gitignored, and no historical ``trace-*.jsonl`` is committed.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import tempfile
+from datetime import date
+from pathlib import Path
+from typing import Any
+
+from app.agents.rescue import from_candidate_row
+from scripts.verify_trace import verify
+
+ROOT = Path(__file__).resolve().parents[1]
+REPLAYS_ROOT = ROOT / "data" / "replays"
+UI_FILE = ROOT / "app" / "ui" / "index.html"
+_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
+_FLAG_NAMES = ("MODEL_MISMATCH", "SOURCE_ERROR")
+
+
+class ReplayError(Exception):
+    def __init__(self, message: str, status: int = 404) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+def ui_path() -> Path:
+    return UI_FILE
+
+
+def catalog() -> dict[str, Any]:
+    return json.loads((REPLAYS_ROOT / "manifest.json").read_text(encoding="utf-8"))
+
+
+def live_status(settings: Any) -> dict[str, Any]:
+    """Whether POST /judge can call Nightshift. The token value is never returned."""
+
+    token = getattr(settings, "meterless_runtime_token", None)
+    if token and token != "rt-local":
+        return {
+            "enabled": True,
+            "reason": (
+                "A Nightshift token is configured. The box below calls POST /judge, "
+                "which needs the network and can take several minutes. The token is not shown."
+            ),
+        }
+    return {
+        "enabled": False,
+        "reason": (
+            "No Nightshift token is configured. Set METERLESS_RUNTIME_TOKEN to a real token "
+            "before POST /judge. A placeholder such as rt-local does not count. "
+            "Replay mode does not use a token, the network, or Docker."
+        ),
+    }
+
+
+def replay_payload(replay_id: str) -> dict[str, Any]:
+    directory = _directory(replay_id)
+    record = json.loads((directory / "record.json").read_text(encoding="utf-8"))
+    trace_path = directory / "trace.jsonl"
+    steps: list[dict[str, Any]] = []
+    if trace_path.is_file():
+        events = [
+            json.loads(line)
+            for line in trace_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        steps = [step_from_event(event, index) for index, event in enumerate(events, start=1)]
+        ok, detail = verify(trace_path)
+        verification = {"ok": ok, "detail": detail}
+    else:
+        verification = {"ok": False, "detail": "no trace file is committed for this replay"}
+    verdict = dict(record["verdict"])
+    verdict["rescue"] = _rescue(record.get("rescue_inputs"))
+    return {
+        "id": record["id"],
+        "title": record["title"],
+        "repo_id": record["repo_id"],
+        "repo_url": record.get("repo_url") or "",
+        "data_class": record["data_class"],
+        "trace_class": record["trace_class"],
+        "banner": record["banner"],
+        "model_verdict_recorded": bool(record.get("model_verdict_recorded")),
+        "sources": record.get("sources") or [],
+        "recorded_run": record.get("recorded_run"),
+        "steps": steps,
+        "verdict": verdict,
+        "verification": verification,
+    }
+
+
+def tamper_replay(replay_id: str) -> dict[str, Any]:
+    """Verify a one-character copy. The committed trace is not modified."""
+
+    directory = _directory(replay_id)
+    path = directory / "trace.jsonl"
+    if not path.is_file():
+        raise ReplayError("this replay has no trace file to tamper", 409)
+    original = path.read_text(encoding="utf-8")
+    flipped = flip_one_character(original)
+    handle = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False, encoding="utf-8")
+    try:
+        handle.write(flipped)
+        handle.close()
+        ok, detail = verify(Path(handle.name))
+    finally:
+        os.unlink(handle.name)
+    return {
+        "ok": ok,
+        "detail": detail,
+        "changed": "one character in a server copy",
+        "file_modified": False,
+    }
+
+
+def flip_one_character(text: str) -> str:
+    chars = list(text)
+    for index, char in enumerate(chars):
+        if char.isascii() and char.isalpha():
+            chars[index] = "b" if char != "b" else "c"
+            return "".join(chars)
+    raise ReplayError("trace has no letter to flip", 409)
+
+
+def step_from_event(event: dict[str, Any], index: int) -> dict[str, Any]:
+    """One timeline row. Seconds and flags come only from fields on the event."""
+
+    parsed = [_as_object(event.get("input_summary")), _as_object(event.get("output_summary"))]
+    payloads = [item for item in parsed if isinstance(item, dict)]
+    requested = _model(event, "requested_model", payloads)
+    served = _model(event, "served_model", payloads)
+    flags: set[str] = set()
+    status = str(event.get("status") or "")
+    if status in _FLAG_NAMES:
+        flags.add(status)
+    for payload in payloads:
+        _collect_flags(payload, flags)
+    if requested and served and requested != served:
+        flags.add("MODEL_MISMATCH")
+    return {
+        "index": index,
+        "agent": str(event.get("agent_name") or ""),
+        "action": str(event.get("action") or event.get("event") or ""),
+        "requested_model": requested,
+        "served_model": served,
+        "seconds": _seconds(payloads),
+        "status": status,
+        "flags": sorted(flags),
+        "timestamp": event.get("timestamp") or None,
+        "input_summary": _clip(_text(event.get("input_summary"))),
+        "output_summary": _clip(_text(event.get("output_summary"))),
+    }
+
+
+def _directory(replay_id: str) -> Path:
+    if not _ID.match(replay_id):
+        raise ReplayError("unknown replay", 404)
+    root = REPLAYS_ROOT.resolve()
+    directory = (REPLAYS_ROOT / replay_id).resolve()
+    if directory.parent != root or not directory.is_dir():
+        raise ReplayError("unknown replay", 404)
+    return directory
+
+
+def _rescue(inputs: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not inputs:
+        return None
+    scored = from_candidate_row(
+        {
+            "stargazers_count": inputs.get("stargazers_count"),
+            "forks_count": inputs.get("forks_count"),
+            "open_issues": inputs.get("open_issues"),
+            "pushed_at": inputs.get("pushed_at"),
+        },
+        as_of=date.fromisoformat(str(inputs["as_of"])),
+    )
+    return {
+        "score": scored["score"],
+        "changes_verdict": scored["changes_verdict"],
+        "components": scored["components"],
+        "as_of": inputs["as_of"],
+        "inputs": {
+            "stargazers_count": inputs.get("stargazers_count"),
+            "forks_count": inputs.get("forks_count"),
+            "open_issues": inputs.get("open_issues"),
+            "pushed_at": inputs.get("pushed_at"),
+            "days_since_push": inputs.get("days_since_push"),
+        },
+        "inputs_source": inputs.get("source"),
+        "in_source_score_file": False,
+        "note": (
+            "Computed by app.agents.rescue.from_candidate_row from the discovery row. "
+            "docs/revival/venture_scores.json does not contain rescue_potential."
+        ),
+    }
+
+
+def _model(event: dict[str, Any], key: str, payloads: list[dict[str, Any]]) -> str | None:
+    value = event.get(key)
+    if value:
+        return str(value)
+    for payload in payloads:
+        nested = payload.get(key)
+        if nested:
+            return str(nested)
+    return None
+
+
+def _seconds(payloads: list[dict[str, Any]]) -> float | None:
+    for payload in payloads:
+        for key in ("elapsed_s", "elapsed_seconds", "seconds"):
+            number = _number(payload.get(key))
+            if number is not None:
+                return number
+        millis = _number(payload.get("latency_ms"))
+        if millis is not None:
+            return millis / 1000.0
+    return None
+
+
+def _collect_flags(value: Any, found: set[str]) -> None:
+    if isinstance(value, dict):
+        listed = value.get("flags")
+        if isinstance(listed, list):
+            for item in listed:
+                if item in _FLAG_NAMES:
+                    found.add(str(item))
+        source_status = value.get("source_status")
+        if isinstance(source_status, dict):
+            for status in source_status.values():
+                if status == "SOURCE_ERROR":
+                    found.add("SOURCE_ERROR")
+        for nested in value.values():
+            _collect_flags(nested, found)
+        return
+    if isinstance(value, list):
+        for nested in value:
+            _collect_flags(nested, found)
+        return
+    if value in _FLAG_NAMES:
+        found.add(str(value))
+
+
+def _as_object(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.startswith("{"):
+        try:
+            loaded = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(loaded, dict):
+            return loaded
+    return None
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _clip(value: str, limit: int = 4000) -> str:
+    if len(value) <= limit:
+        return value
+    return value[: limit - 3] + "..."

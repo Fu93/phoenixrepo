@@ -1,0 +1,52 @@
+{
+  "id": "invoice-gate2-sample",
+  "title": "Invoice generator — SAMPLE gate 2 blocked",
+  "repo_id": "tharani-2006/Invoice-generator-application",
+  "repo_url": "https://github.com/tharani-2006/Invoice-generator-application",
+  "data_class": "RECORDED",
+  "trace_class": "SAMPLE",
+  "banner": "SAMPLE. This trace was produced by calling app.revive_loop.revive in scripts/build_replays.py with the recorded ALREADY_EXISTS verdict. Nothing was cloned. It is not a historical Nightshift run. No reports/ or logs/ revive trace for this repository is committed.",
+  "summary": "Local revive() short-circuit. State NOT_ATTEMPTED_GATE1 comes from the function, not from a past run.",
+  "model_verdict_recorded": false,
+  "sources": [
+    "docs/revival/venture_scores.json",
+    "data/real/prior_art.csv",
+    "README.md",
+    "app/revive_loop.py"
+  ],
+  "recorded_run": {
+    "run_id": "venture-019ca0071780",
+    "run_hash": "322ce42a3527a7c4a719853e61b5c2842833653fb5384f0726ed83856d475551",
+    "date": "2026-10-22T22:09:00.336503+00:00",
+    "llm_used": false,
+    "source": "docs/revival/venture_scores.json",
+    "jsonl_committed": false
+  },
+  "rescue_inputs": null,
+  "verdict": {
+    "verdict": "ALREADY_EXISTS",
+    "verdict_kind": "recorded_score",
+    "reason": "al1abb/invoify (https://github.com/al1abb/invoify) is a maintained free OSS alternative (MIT, pushed 2026-08-24T02:55:34Z, 59 days before collection) whose excerpt contains every required term (invoice, pdf). Excerpt: Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF. Method: phrase/keyword.",
+    "quote": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF.",
+    "quote_source_url": "https://github.com/al1abb/invoify",
+    "quote_source_path": "data/real/prior_art.csv",
+    "alternatives": [
+      {
+        "name": "al1abb/invoify",
+        "url": "https://github.com/al1abb/invoify",
+        "quote": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF.",
+        "origin": "data/real/prior_art.csv"
+      }
+    ],
+    "acceptable": null,
+    "gate2": {
+      "state": "NOT_ATTEMPTED_GATE1",
+      "terminal": "NOT_ATTEMPTED_GATE1",
+      "reason": "gate 1 said ALREADY_EXISTS, so no revival was attempted",
+      "historical_trace": false,
+      "rule_quote": "**Gate 2 only runs if gate 1 said `CANDIDATE`.** This is a hard precondition (commit `aa48ca7`). For any other gate-1 verdict the state is `NOT_ATTEMPTED_GATE1`, the trace records `REVIVE_BLOCKED_BY_GATE1`, and nothing is cloned, installed or patched.",
+      "rule_source": "README.md",
+      "why": "SAMPLE. revive() returned NOT_ATTEMPTED_GATE1 because the recorded gate-1 verdict is ALREADY_EXISTS. The trace event is REVIVE_BLOCKED_BY_GATE1. No historical gate-2 trace is in the repository. Nothing was cloned, installed, or patched."
+    }
+  }
+}
