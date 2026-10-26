@@ -177,3 +177,25 @@ def test_eval_resume_asks_again_for_infrastructure_rows(monkeypatch: pytest.Monk
 
     eg.evaluate(runner=runner, only=["Fu93/hygen"], resume=earlier)
     assert seen == ["Fu93/hygen"]
+
+
+def test_unjudged_and_infra_reviews_are_not_compared(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("METERLESS_RUNTIME_TOKEN", "test-token-not-used-for-network")
+
+    def runner(repo_id: str) -> dict:
+        if repo_id == "tharani-2006/Invoice-generator-application":
+            return {"verdict": "UNJUDGED", "reason": "UNJUDGED (LLM_UNAVAILABLE): Nightshift returned HTTP 502"}
+        if repo_id == "goodreasonai/ScrapeServ":
+            return {"verdict": "NEEDS_REVIEW", "reason": "INSUFFICIENT_PRIOR_ART_COVERAGE: source error in github"}
+        return {"verdict": "ALREADY_EXISTS", "reason": "full overlap"}
+
+    report = eg.evaluate(runner=runner, audit_only=True)
+    by_id = {row["repo_id"]: row for row in report["results"]}
+    assert by_id["tharani-2006/Invoice-generator-application"]["compared"] is False
+    assert by_id["goodreasonai/ScrapeServ"]["compared"] is False
+    assert report["agreement"]["not_compared"] == 2 and report["agreement"]["compared"] == 14
+    live = report["live_error_rates"]
+    assert live["set_size"] == 14
+    # Neither infrastructure row is counted as a false pass of an ALREADY_EXISTS label.
+    assert "tharani-2006/Invoice-generator-application" not in live["false_pass"]
+    assert "goodreasonai/ScrapeServ" not in live["false_pass"]
