@@ -1637,13 +1637,19 @@ def judge_discovery(
 
     # Check multi-source coverage guards
     has_source_error = source_status is not None and any(st == "SOURCE_ERROR" for st in source_status.values())
+    budget_cut = sorted(s for s, st in (source_status or {}).items() if st == "BUDGET_EXHAUSTED")
     zero_results = source_counts is not None and sum(source_counts.values()) == 0 and len(combined_priors) == 0
     fewer_than_two = source_status is not None and len(source_status) >= 2 and sum(1 for st in source_status.values() if st == "ok") < 2 and len(combined_priors) == 0
-    coverage_blocked = (insufficient_coverage and len(combined_priors) == 0) or has_source_error or zero_results or fewer_than_two
+    coverage_blocked = (insufficient_coverage and len(combined_priors) == 0) or has_source_error or bool(budget_cut) or zero_results or fewer_than_two
 
     if has_source_error:
         err_sources = [s for s, st in source_status.items() if st == "SOURCE_ERROR"]
         coverage_reason = f"INSUFFICIENT_PRIOR_ART_COVERAGE: source error in {', '.join(err_sources)}"
+    elif budget_cut:
+        coverage_reason = (
+            f"INSUFFICIENT_PRIOR_ART_COVERAGE: tool budget exhausted before the search finished ({', '.join(budget_cut)}); "
+            "an unfinished search is not evidence of no competition"
+        )
     elif zero_results:
         coverage_reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: zero alternatives found across all sources"
     elif fewer_than_two:
@@ -2090,9 +2096,27 @@ def search_prior_art(
         # but search is not a reliable source, so it is not counted as a search source.
         source_status.pop("pypi", None)
 
+    # Sources whose planned queries were skipped because the tool budget ran out. A search cut
+    # short is not a search that found no competitor, so it must block CANDIDATE like a source
+    # error does. (The budget clock starts before problem extraction, and a slow Nightshift can
+    # spend most of it before the search begins.)
+    truncated: set[str] = set()
+    searched_queries = 0
+
+    def _plan(index: int) -> set[str]:
+        planned = {src for src in ("github", "web") if src in source_status}
+        if "npm" in source_status and index < 3:
+            planned.add("npm")
+        return planned
+
     for idx, q in enumerate(queries):
-        if toolbox is None or toolbox.budget.is_exhausted():
+        if toolbox is None:
             break
+        if toolbox.budget.is_exhausted():
+            for rest in range(idx, len(queries)):
+                truncated |= _plan(rest)
+            break
+        searched_queries += 1
         bucket: list[tuple[str, dict[str, Any]]] = []
 
         # 1. GitHub repositories (every query; README fetched later for selected rows only)
@@ -2141,7 +2165,9 @@ def search_prior_art(
                         _own(gh_row, why_own)
                         continue
                     bucket.append((fn_lower, gh_row))
-            elif not gh_res.ok and str(gh_res.error or "") != "BUDGET_EXHAUSTED":
+            elif not gh_res.ok and str(gh_res.error or "") == "BUDGET_EXHAUSTED":
+                truncated.add("github")
+            elif not gh_res.ok:
                 # A rate limit (HTTP 403/429), an HTTP error or a network error is a source error,
                 # the same as for npm and web. It used to count only when the message contained
                 # the literal "SOURCE_ERROR", so a rate-limited GitHub still counted as a
@@ -2149,7 +2175,9 @@ def search_prior_art(
                 source_status["github"] = "SOURCE_ERROR"
 
         # 2. npm registry (first 3 queries)
-        if "npm" in source_status and idx < 3 and not toolbox.budget.is_exhausted():
+        if "npm" in source_status and idx < 3 and toolbox.budget.is_exhausted():
+            truncated.add("npm")
+        elif "npm" in source_status and idx < 3:
             npm_res = toolbox.call("npm", {"action": "search", "query": q})
             if npm_res.ok and isinstance(npm_res.data, dict):
                 for it in (npm_res.data.get("items") or [])[:5]:
@@ -2175,11 +2203,15 @@ def search_prior_art(
                         _own(npm_row, why_own)
                         continue
                     bucket.append((alt_id.casefold(), npm_row))
+            elif not npm_res.ok and str(npm_res.error or "") == "BUDGET_EXHAUSTED":
+                truncated.add("npm")
             elif not npm_res.ok:
                 source_status["npm"] = "SOURCE_ERROR"
 
         # 3. Web (Exa first, every query) - surfaces official features, docs and commercial products
-        if "web" in source_status and not toolbox.budget.is_exhausted():
+        if "web" in source_status and toolbox.budget.is_exhausted():
+            truncated.add("web")
+        elif "web" in source_status:
             tool_name = "web_search" if (hasattr(toolbox, "has") and toolbox.has("web_search")) or (hasattr(toolbox, "tools") and "web_search" in toolbox.tools) else "web"
             web_res = toolbox.call(tool_name, {"query": q})
             if web_res.ok and isinstance(web_res.data, dict):
@@ -2212,6 +2244,8 @@ def search_prior_art(
                         "source": "web",
                         "query": q,
                     }))
+            elif not web_res.ok and str(web_res.error or "") == "BUDGET_EXHAUSTED":
+                truncated.add("web")
             elif not web_res.ok:
                 source_status["web"] = "SOURCE_ERROR"
 
@@ -2267,6 +2301,11 @@ def search_prior_art(
         if rm_res.ok and isinstance(rm_res.data, dict):
             row["readme"] = str(rm_res.data.get("decoded_text") or "")[:2000]
 
+    # A source that skipped planned queries for lack of budget did not finish its search.
+    for src in sorted(truncated):
+        if source_status.get(src) == "ok":
+            source_status[src] = "BUDGET_EXHAUSTED"
+
     # Compute coverage status
     successful_sources = sum(1 for st in source_status.values() if st == "ok")
     has_source_error = any(st == "SOURCE_ERROR" for st in source_status.values())
@@ -2276,6 +2315,8 @@ def search_prior_art(
         insufficient_coverage = zero_found or has_source_error or (successful_sources < 2)
     else:
         insufficient_coverage = zero_found or has_source_error
+    if any(st == "BUDGET_EXHAUSTED" for st in source_status.values()):
+        insufficient_coverage = True
 
     found = SearchResultsList(
         results[:15],
@@ -2284,6 +2325,8 @@ def search_prior_art(
         insufficient_coverage=insufficient_coverage,
     )
     found.own_filtered = own_filtered
+    found.searched_queries = searched_queries
+    found.planned_queries = len(queries)
     return found
 
 

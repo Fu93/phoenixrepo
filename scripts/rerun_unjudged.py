@@ -47,6 +47,7 @@ _INFRA_MARKERS = (
     "source_error",
     "source error",
     "infra: zetaris",
+    "tool budget exhausted",
 )
 # A human-review reason that already names an overlap is a finished judgement.
 _JUDGEMENT_MARKERS = (

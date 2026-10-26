@@ -199,3 +199,19 @@ def test_unjudged_and_infra_reviews_are_not_compared(monkeypatch: pytest.MonkeyP
     # Neither infrastructure row is counted as a false pass of an ALREADY_EXISTS label.
     assert "tharani-2006/Invoice-generator-application" not in live["false_pass"]
     assert "goodreasonai/ScrapeServ" not in live["false_pass"]
+
+
+def test_resume_can_rejudge_a_verdict(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("METERLESS_RUNTIME_TOKEN", "test-token-not-used-for-network")
+    earlier = {"results": [
+        {"repo_id": "DSRegoitia/CalendarSyncProject", "verdict": "CANDIDATE", "reason": "nothing blocks"},
+        {"repo_id": "goodreasonai/ScrapeServ", "verdict": "ALREADY_EXISTS", "reason": "full overlap"},
+    ]}
+    seen: list[str] = []
+
+    def runner(repo_id: str) -> dict:
+        seen.append(repo_id)
+        return {"verdict": "NEEDS_REVIEW", "reason": "ALTERNATIVE_OVERLAP: partial"}
+
+    eg.evaluate(runner=runner, only=["DSRegoitia/CalendarSyncProject", "goodreasonai/ScrapeServ"], resume=earlier, rejudge={"CANDIDATE"})
+    assert seen == ["DSRegoitia/CalendarSyncProject"]
