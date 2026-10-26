@@ -381,3 +381,33 @@ def _write(path: Path, columns: tuple[str, ...], rows: list[dict[str, str]]) -> 
         writer.writeheader()
         for row in rows:
             writer.writerow({column: row.get(column, "") for column in columns})
+
+
+def test_zetaris_check_script_reads_only_and_seals(tmp_path):
+    from app.adapters.sample_zetaris import SampleZetaris
+    from scripts import zetaris_check
+
+    sent: list[str] = []
+
+    class Recording(SampleZetaris):
+        def run_sql(self, sql, limit=100):
+            sent.append(sql)
+            return super().run_sql(sql, limit=limit)
+
+    snap = Path(__file__).resolve().parents[2] / "data" / "real"
+    code = zetaris_check.main(["--snapshot", str(snap), "--log-dir", str(tmp_path)], client=Recording(extra_dirs=[snap]))
+    assert code in (0, 1)
+    assert sent and all(statement.lstrip().upper().startswith("SELECT ") for statement in sent)
+    (trace,) = list(tmp_path.glob("trace-zetaris-check-*.jsonl"))
+    ok, detail = verify(trace)
+    assert ok, detail
+
+
+def test_zetaris_check_script_exits_2_when_zetaris_is_down(tmp_path):
+    from scripts import zetaris_check
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    snap = _snapshot(tmp_path / "snap", stars="1", description="x")
+    assert zetaris_check.main(["--snapshot", str(snap), "--log-dir", str(tmp_path / "logs")], client=_client(handler)) == 2
