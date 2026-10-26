@@ -1,51 +1,63 @@
 {
   "name": "PhoenixRepo",
   "track": "02 The Agent That Can Explain Why",
-  "team": "PhoenixRepo",
-  "summary": "An agent team decides whether an abandoned repository should be revived. Every claim in the verdict cites a Zetaris row. H-MEM remembers those verdicts. Meterless Nightshift is the primary model provider.",
+  "team": "PhoenixRepo (solo)",
+  "repository": "https://github.com/Fu93/phoenixrepo",
+  "demo": "https://fu93.github.io/phoenixrepo/",
+  "summary": "Before anyone revives an abandoned GitHub repository, PhoenixRepo checks whether the idea already exists in a maintained form, and explains every refusal with evidence a reviewer can check: a quote found verbatim on the alternative's own page, and a hash-chained trace that records which model answered each call. Gate 1 judges the idea; gate 2, the revive loop, runs only on CANDIDATE.",
   "sponsors": {
-    "zetaris": {
-      "role": "Load-bearing evidence source. The agents' only facts are rows from phoenix.repo_evidence and phoenix.revival_signals, fetched with the REST SQL contract.",
-      "setup": "scripts/zetaris/*.sql",
-      "sample": "data/sample/*.csv is a labelled synthetic cache of those view shapes. Sample mode still goes through the Zetaris adapter and also serves data/real when that snapshot is present. There is no GitHub fallback.",
-      "real_snapshot": "data/real is a committed GitHub REST snapshot collected 2026-10-22T15:14:30Z for golang/dep, jxnblk/rgx, discreteoptimization/setcover, jondot/hygen, and 42wim/matterbridge. hygen is RESURRECTION_FAILED because the CI setup step Use Node.js 14.x failed; a verification note records Cache service responded with 400 inside actions/setup-node@v2, and the jobs log download was HTTP 403. matterbridge is CANDIDATE with CI unknown: its build workflow runs are fork pull requests awaiting approval, a CodeQL success is not build CI, and there is no qualifying stage-1 success. Revival attempts for Fu93/hygen were collected 2026-10-22T15:53:26Z: compare ahead_by 0, Actions total_count 0, every stage not_attempted. A follow-up GitHub fetch at 2026-10-22T16:24:45Z added workflow steps, advisory rows for ejs and degit, and the test-helper excerpt. The deterministic PRD is docs/revival/jondot__hygen.prd.md. Stage 1 bumps checkout and setup-node to v4 and Node 20.x and keeps yarn hygen:build -- init self. Stage 2 cites the verified advisories. Stage 3 cites https://github.com/jondot/hygen/issues/450. scripts/zetaris/load_real.ps1 and the opt-in scripts/zetaris/phoenix-real-data.compose.yml mount /home/zetaris/customer-data/shared/phoenix_real on service driver. They were not executed against the user's Docker Zetaris."
+    "nvidia": {
+      "prize": "Best use of NVIDIA Nemotron",
+      "eligibility_path": "Nemotron is called through Meterless Nightshift. Every gate-1 call requests an nvidia/nemotron-* model through Nightshift, and each LLM_CALL trace line records requested_model and the served_model that actually answered, inside the hash chain.",
+      "where_used": [
+        "Problem extraction and search-query writing (fast tier, MODEL_NAME)",
+        "Every alternative-overlap judgement (fast tier, MODEL_NAME; PHOENIX_LLM_EXTRA_BODY can switch Nemotron's thinking off for it)",
+        "The final gate-1 verdict (deep tier, MODEL_NAME_DEEP, reasoning on); the reasoning is stored on the trace line and shown in /ui next to the verbatim quote the verdict must agree with",
+        "Gate 2 plan and patch drafting (revive loop)"
+      ],
+      "policy": "PHOENIX_NEMOTRON_POLICY: label (flag a non-Nemotron answer), require (discard it and ask again), fallback-nvidia (Nightshift first; after a Nightshift timeout, HTTP 5xx or non-Nemotron answer the same request goes to NVIDIA's API and the line is traced provider nvidia-direct). The scored run used fallback-nvidia.",
+      "proof": "python scripts/verify_trace.py logs/trace-<run_id>.jsonl --require-nemotron fails unless every answer the run used was served by nvidia/nemotron-*, and prints the count and the Nightshift / nvidia-direct split.",
+      "measured": "README.md, sections Results and Why Nemotron: Nemotron share of answers used, final-verdict answers by Nemotron, provider split, served model per provider, latency per served model. Written by scripts/fill_results.py from the scored run's report and verified traces.",
+      "zetaris_run": "Gate 1 with Zetaris evidence on 2 repositories (26 Oct 2026, run hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad): 27 of 27 answers used were Nemotron's, 21 through Nightshift and 6 through nvidia-direct.",
+      "where": ["app/agents/relevance.py", "config/settings.py", "scripts/verify_trace.py", "scripts/fill_results.py", "app/ui/index.html"]
+    },
+    "meterless_runtime": {
+      "role": "Nightshift is the model route for gate 1 and gate 2 and is tried first on every call. Requests are OpenAI-compatible (POST /v1/chat/completions) with meterless-app: phoenixrepo and meterless-scope: user. Routing detail returned by Nightshift (for example winning_provider and winning_model) is stored on the trace line.",
+      "settings": ["METERLESS_BASE_URL", "METERLESS_RUNTIME_TOKEN", "MODEL_NAME", "MODEL_NAME_DEEP", "PHOENIX_LLM_ATTEMPT_TIMEOUT_S", "PHOENIX_LLM_TOTAL_TIMEOUT_S"],
+      "probe": "python scripts/nightshift_probe.py lists the nvidia/nemotron-* ids Nightshift offers and records which request settings are actually served by Nemotron.",
+      "observed": "On 26 Oct 2026 Nightshift often returned HTTP 502; those calls were answered by NVIDIA's API under fallback-nvidia and are counted separately in the README."
     },
     "meterless_engine": {
       "engines": ["H-MEM", "Markovian"],
-      "hmem": "MemoryStoreService, MemoryRetrievalService, and TrustLedgerService. In-run evidence memories are recalled into the judge step. Verdicts are promoted to long-term memory and retrieved by type before the top-k cut, so later runs still cite the prior verdict after repeated evidence writes. Repeated evidence for the same claim is refreshed, not stacked.",
-      "markovian": "Chunk manager with a bounded carryover between agent steps. The default step budget is 24 chunks and 190 seconds. The Nightshift chat client times out one second before that budget.",
+      "where": "app/engines/hmem/ and app/engines/markovian.py, used by the evidence-policy track (POST /run). Gate 1 does not use them.",
+      "hmem": "MemoryStoreService, MemoryRetrievalService and TrustLedgerService, implemented from the published H-MEM spec. Evidence memories are recalled into the judge step; verdicts are promoted to long-term memory and retrieved by type; repeated evidence for the same claim is refreshed, not stacked; superseded memories are kept, not deleted.",
+      "markovian": "ChunkManager with a bounded carryover (at most 1200 characters) between agent steps, stopping after 24 chunks.",
       "spec": "https://github.com/Meterless/Meterless/tree/main/engines/hmem",
-      "tests": "tests/engines/test_hmem_conformance.py and tests/engines/test_markovian.py are project tests modelled on the published spec. The official TypeScript conformance suite was not run."
+      "tests": "tests/engines/test_hmem_conformance.py (store, ranking formula, promotion, decay, supersede-without-delete) and tests/engines/test_markovian.py, run in CI. They are project tests modelled on the published spec; the official TypeScript conformance suite was not run."
     },
-    "meterless_runtime": {
-      "role": "Primary, selectable LLM provider. OpenAI-compatible Nightshift contract from the Power prompt on meterless.ai/engines.html (fetched 22 Oct 2026).",
-      "settings": ["METERLESS_BASE_URL", "METERLESS_RUNTIME_TOKEN", "METERLESS_MODEL", "MODEL_NAME"],
-      "default_model": "nvidia/nemotron-3-super-120b-a12b",
-      "nemotron_lane": "nvidia/nemotron-3-super-120b-a12b",
-      "served_model_observed": "On 22 Oct 2026 15:00 BST, chat requesting meterless/auto and nvidia/nemotron-3-super-120b-a12b both returned HTTP 200 with response model nvidia/nemotron-3-ultra-550b-a55b. Traces record requested_model and served_model.",
-      "headers": ["Authorization bearer runtime token", "meterless-app: phoenixrepo", "meterless-scope: user"],
-      "discovery": "GET /v1/models. /healthz is not treated as proof.",
-      "connection_test": "python scripts/test_meterless_connection.py"
+    "zetaris": {
+      "role": "Gate 1 can read its evidence (phoenix.discovery_candidates, phoenix.prior_art, phoenix.demand_signals) over the REST SQL contract with EVIDENCE_SOURCE=zetaris. Each statement is a trace line with its SQL, query_id and content_hash; a read-only preflight stops the run if Zetaris does not answer.",
+      "scope": "Exercised live and read-only on the 2 repositories in data/real (tharani-2006/Invoice-generator-application, SergioMendolia/ytkb): scripts/zetaris_check.py loads and seals the evidence rows, and a gate-1 run read its evidence from Zetaris. The 16 scored evaluation repositories were fetched live from GitHub with evidence_source=csv.",
+      "where": ["app/adapters/zetaris_evidence.py", "app/sql_catalog.py", "scripts/zetaris_check.py", "scripts/zetaris/04_phoenix_views.sql"]
     },
-    "nvidia": {
-      "role": "Secondary dev fallback only, selected with LLM_PROVIDER=nvidia. The intended Nemotron path is a Nightshift lane, with the NVIDIA key stored in Nightshift rather than in this app.",
-      "direct_base_url": "https://integrate.api.nvidia.com/v1",
-      "note": "Gate-1 and the revive loop request nvidia/nemotron-3-super-120b-a12b through Meterless Nightshift unless MODEL_NAME is set. On 22 Oct 2026 Nightshift rerouted that request and meterless/auto to nvidia/nemotron-3-ultra-550b-a55b. A served model outside nvidia/nemotron-* is flagged MODEL_MISMATCH and is not relabelled. nemotron-3.5-super-vl-120b was reported flaky. NVIDIA_MODEL is only for the direct fallback."
-    },
-    "cursor": {
-      "role": "Coding tool. Optional for the hackathon as of the 22 Oct 2026 organiser update. A Cursor cloud agent (Grok 4.7) wrote this build-window core, including the real-data snapshot, the live LLM judge, and the deterministic hygen revival PRD. Cursor is not the product runtime. CI does not call Nightshift."
+    "ai_assistance": {
+      "tools": "Cursor cloud coding agents and Claude (Anthropic), working under the author's direction. The author set the design and rules, reviewed and merged the changes, and ran the live checks.",
+      "product_runtime": "The product calls models through Meterless Nightshift, and through NVIDIA's API only under fallback-nvidia. CI never calls a live model or a live Zetaris."
     }
   },
   "pre_existing": {
-    "declared": "Everything on main before 22 Oct 2026 00:00 UTC. The git history shows that work on 8 Oct 2026, through commit 62a1540.",
+    "declared": "Everything committed up to and including 62a1540 (chore: complete pre-opening foundation audit, 2026-10-08 18:27:02 +0000). Everything after it was built in the 22 to 27 Oct 2026 build window.",
     "includes": [
       "FastAPI POST /run shape and Docker image",
       "Evidence graph, evidence pack, and integrity hash",
       "State machine and the three terminal state names",
-      "Audit trail",
-      "Foundation orchestrator, which still stops at EVIDENCE_COMPLETE and is not the scored path"
+      "Audit trail and secret redaction",
+      "Foundation orchestrator, which stops at EVIDENCE_COMPLETE and is not the scored path"
     ]
   },
-  "sample_mode": "SAMPLE_MODE=true runs the investigation logic on the labelled cache, and on data/real when present, with a deterministic stand-in for the LLM. It does not call the live LLM judge and it does not read output_examples/.",
-  "live_judge": "Live mode asks Nightshift to accept or reject archaeologist and market-judge output. The judge is advisory. A reject can force one retry. When retries are exhausted, or the judge times out, returns 401, or errors, the deterministic policy verdict is still produced. The trace action LLM_JUDGE records the decision or the failure, and metadata.llm.judge copies it into the verdict. The judge does not end the run with 422, 502, or 401. A missing evidence id still overrides an LLM accept. Nightshift lanes are Nightshift-managed (NVIDIA, Google Gemini, OpenRouter including free models, and the local runtime) and may serve a different model than the one requested. Every LLM trace event stores requested_model and served_model inside the hash chain. HTTP 429, HTTP 502, and timeouts retry only while the step budget remains; a lane that fails goes into a 45-second cooldown (not a permanent per-run skip), and when every lane is cooling down the call waits up to 30 seconds and retries once. 401 and 403 do not retry and do not move to the next lane. If the budget or the lanes are exhausted, the deterministic stand-in still returns a verdict. This path does not call the NVIDIA API directly. This call was not executed against Nightshift in CI."
+  "limits": [
+    "No AI-written patch has yet fixed a real repository.",
+    "The scored table is one live run on one machine, not a stored accuracy.",
+    "A full overlap below the maturity bar only warns; a GitHub repository found through web search is not looked up as a repository (README Limits)."
+  ]
 }
