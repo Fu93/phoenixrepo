@@ -1241,6 +1241,23 @@ def test_quote_in_text_ignores_markdown_bold_but_not_word_changes():
     assert not quote_in_text("Rammingen is a cloud file synchronization and backup system.", readme)
 
 
+def test_quote_in_text_folds_dashes_quotes_whitespace_and_nfkc():
+    page = "Publish selected bookmarks - with notes and highlights - straight to your blog"
+    quote = "publish selected bookmarks\u2014with notes and highlights\u2014straight to your blog"
+    assert quote_in_text(quote, page)
+    curly = "Publish selected bookmarks\u00a0\u2013\u00a0with notes and \u201chighlights\u201d \u2013 straight to your blog"
+    assert quote_in_text("publish selected bookmarks—with notes and \"highlights\"—straight to your blog", curly)
+    assert quote_in_text(
+        "\u2026publish selected bookmarks\u2014with notes and highlights\u2014straight to your blog",
+        "...publish selected bookmarks - with notes and highlights - straight to your blog",
+    )
+    assert quote_in_text("straight to your blog", "straight to your \uff42\uff4c\uff4f\uff47")
+    assert not quote_in_text(
+        "publish selected bookmarks—with notes and highlights—straight to your site",
+        page,
+    )
+
+
 _ALTS = [
     {"alternative_id": "a/one", "url": "https://github.com/a/one", "description": "Sync YouTrack articles to markdown files.", "source": "github"},
     {"alternative_id": "web:https://vendor.example/export", "url": "https://vendor.example/export", "description": "Export articles as Markdown files.", "source": "web"},

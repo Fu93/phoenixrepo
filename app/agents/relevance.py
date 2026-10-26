@@ -23,6 +23,7 @@ import re
 import sys
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1323,26 +1324,34 @@ def normalize_whitespace(text: str) -> str:
 
 _MARKUP_TRANS = str.maketrans({
     "*": " ", "_": " ", "`": " ", "#": " ", ">": " ",
-    "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-",
+    "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'",
+    "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"',
+    "\u00ab": '"', "\u00bb": '"',
+    "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-",
+    "\u2014": "-", "\u2015": "-", "\u2212": "-",
+    "\ufe58": "-", "\ufe63": "-", "\uff0d": "-",
+    "\u2026": "...",
 })
+_DASH_GAP = re.compile(r"\s+-\s+")
 
 
 def _normalize_for_quote(text: str) -> str:
-    """Strip Markdown emphasis/heading marks and typographic quotes, then collapse whitespace.
+    """NFKC, then dashes, curly quotes, Markdown marks, and whitespace.
 
-    Deterministic: the words and their order must still match exactly. This only stops
-    "**Rammingen** is ..." in a README from failing against the quote "Rammingen is ...".
+    Deterministic: after that folding the words and their order must still match.
+    Spaces around a dash are removed so "bookmarks—with" and "bookmarks - with"
+    compare equal. A different word still fails.
     """
-    return normalize_whitespace(str(text or "").translate(_MARKUP_TRANS)).casefold()
+    folded = unicodedata.normalize("NFKC", str(text or "")).translate(_MARKUP_TRANS)
+    folded = _DASH_GAP.sub("-", folded)
+    return normalize_whitespace(folded).casefold()
 
 
 def quote_in_text(quote: str, text: str) -> bool:
     """Deterministic quote verification: case-insensitive substring check after normalising
-    whitespace, Markdown emphasis marks and typographic quotes."""
+    NFKC, dash variants, curly quotes, Markdown marks, and whitespace."""
     if not quote or not text:
         return False
-    if normalize_whitespace(quote).casefold() in normalize_whitespace(text).casefold():
-        return True
     nq = _normalize_for_quote(quote)
     return bool(nq) and nq in _normalize_for_quote(text)
 
