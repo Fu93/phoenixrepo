@@ -87,10 +87,17 @@ class SubAgent:
         self.toolbox = toolbox.child_box(allowed_tools=allowed, max_calls=max_calls)
         self.gathered_evidence: list[dict[str, Any]] = []
         self.rate_limited = False
+        self.budget_exhausted = False
 
     def spawn_subagent(self, *args: Any, **kwargs: Any) -> Any:
         """In-rule: sub-agents cannot spawn sub-agents."""
         raise RuntimeError("Sub-agents cannot spawn sub-agents.")
+
+    def _call(self, name: str, args: dict[str, Any]) -> Any:
+        res = self.toolbox.call(name, args)
+        if not res.ok and "BUDGET_EXHAUSTED" in (res.error or ""):
+            self.budget_exhausted = True
+        return res
 
     def investigate(
         self,
@@ -119,7 +126,9 @@ class SubAgent:
                     if repo:
                         queries.append(f"repo:{repo} is:issue")
                 for q in queries:
-                    res = self.toolbox.call("github", {"query": q})
+                    res = self._call("github", {"query": q})
+                    if self.budget_exhausted:
+                        break
                     if not res.ok and "RATE_LIMITED" in (res.error or ""):
                         self.rate_limited = True
                         break
@@ -133,18 +142,18 @@ class SubAgent:
             # 2. Package registries (npm / pypi)
             if package:
                 if "npm" in self.allowed_tools:
-                    res = self.toolbox.call("npm", {"package": package})
+                    res = self._call("npm", {"package": package})
                     if res.ok and res.data:
                         evidence_items.append(res.to_evidence_item(repo_id=self.repo_id))
-                if "pypi" in self.allowed_tools:
-                    res = self.toolbox.call("pypi", {"package": package})
+                if "pypi" in self.allowed_tools and not self.budget_exhausted:
+                    res = self._call("pypi", {"package": package})
                     if res.ok and res.data:
                         evidence_items.append(res.to_evidence_item(repo_id=self.repo_id))
 
             # 3. Web fetch for discussions/articles
-            if url and "web_fetch" in self.allowed_tools:
+            if url and "web_fetch" in self.allowed_tools and not self.budget_exhausted:
                 if not is_candidate_repo_url(url, self.repo_id):
-                    res = self.toolbox.call("web_fetch", {"url": url})
+                    res = self._call("web_fetch", {"url": url})
                     if res.ok and res.data:
                         item = res.to_evidence_item(repo_id=self.repo_id)
                         if not contains_candidate_stars_demand(item["text"], self.repo_id):

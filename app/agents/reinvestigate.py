@@ -192,6 +192,9 @@ def reinvestigate(
     if any(getattr(sub, "rate_limited", False) for sub in manager.subagents):
         if "RATE_LIMITED" not in flags:
             flags.append("RATE_LIMITED")
+    if any(getattr(sub, "budget_exhausted", False) for sub in manager.subagents):
+        if "BUDGET_EXHAUSTED" not in flags:
+            flags.append("BUDGET_EXHAUSTED")
 
     return ReinvestigationResult(
         scorecard=scorecard,

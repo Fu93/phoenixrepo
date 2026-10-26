@@ -179,3 +179,18 @@ def test_demand_issue_search_skips_non_github_alternative_ids():
     assert "web%3A" not in blob and "web:" not in blob
     assert "npm%3A" not in blob and "npm:" not in blob
     assert "example.com" not in blob
+
+
+def test_demand_tool_budget_exhausted_is_recorded_on_the_subagent():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": [{"title": "External demand", "comments": 1}]})
+
+    tools = {"github": GitHubTool(transport=httpx.MockTransport(handler))}
+    sub = SubAgent(
+        criterion="demand_evidence",
+        repo_id="candidate/repo",
+        toolbox=ToolBox(tools=tools, budget=Budget(max_calls=10)),
+        max_calls=1,
+    )
+    sub.investigate(alternative_repos=["other/notes-alt", "another/repo"])
+    assert sub.budget_exhausted is True

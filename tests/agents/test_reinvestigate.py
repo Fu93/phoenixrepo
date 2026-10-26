@@ -142,6 +142,32 @@ def test_reinvestigate_records_llm_fallback_when_rounds_exhausted():
     assert result.scorecard.demand_evidence.status == "UNSUPPORTED"
 
 
+def test_demand_budget_exhausted_is_a_flag_and_the_verdict_stays():
+    card = Scorecard(
+        repo_id="goodreasonai/ScrapeServ",
+        verdict="CANDIDATE",
+        metadata={"alternative_repos": [f"org/alt-{i}" for i in range(6)]},
+        problem_severity=Criterion(score=2, evidence_ids=["ev1"], rationale="Pain"),
+        demand_evidence=Criterion(score=1, evidence_ids=[], rationale="Demand was not cited"),
+        differentiation=Criterion(score=2, evidence_ids=["ev1"], rationale="Diff"),
+        feasibility=Criterion(score=2, evidence_ids=["ev1"], rationale="Feas"),
+        productization_path=Criterion(score=1, evidence_ids=["ev1"], rationale="Prod"),
+        moat=Criterion(score=0, evidence_ids=[], rationale="Moat"),
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"items": [{"title": "Someone asked for this", "comments": 2}]})
+
+    toolbox = ToolBox(
+        tools={"github": GitHubTool(transport=httpx.MockTransport(handler))},
+        budget=Budget(max_calls=40),
+    )
+    result = reinvestigate(scorecard=card, evidence=[{"id": "ev1"}], toolbox=toolbox, max_rounds=1)
+    assert result.scorecard.verdict == "CANDIDATE"
+    assert "BUDGET_EXHAUSTED" in result.flags
+    assert result.status != "BUDGET_EXHAUSTED"
+
+
 def test_reinvestigate_deterministic_guard_always_has_last_word():
     card = Scorecard(
         repo_id="test/repo",
