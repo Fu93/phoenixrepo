@@ -41,8 +41,8 @@ Three rules carry the design:
 | Sponsor | What it does here | Where |
 | --- | --- | --- |
 | **Zetaris** | Gate 1 loads the stored candidate, prior-art and demand rows from the `phoenix.*` views over the REST SQL contract. Each statement is a trace line with its SQL, `query_id` and `content_hash`; a read-only preflight stops the run if Zetaris is down instead of guessing. | `app/adapters/zetaris_evidence.py`, `scripts/zetaris_check.py` |
-| **Meterless Nightshift** | The only model route for gate 1 and gate 2. Every call records `requested_model`, `served_model`, latency and any routing detail Nightshift returns. | `app/agents/relevance.py`, `scripts/nightshift_probe.py` |
-| **NVIDIA Nemotron** | Requested for every judgement: a fast Nemotron for the many overlap checks, a larger one for the verdict with its reasoning kept. `PHOENIX_NEMOTRON_POLICY=require` discards any answer not written by `nvidia/nemotron-*`; the report and `/ui` print how many answers used were Nemotron's. | `app/agents/relevance.py`, `scripts/eval_gate1.py` |
+| **Meterless Nightshift** | Tried first for every gate-1 and gate-2 model call. Every call records `requested_model`, `served_model`, latency and any routing detail Nightshift returns. | `app/agents/relevance.py`, `scripts/nightshift_probe.py` |
+| **NVIDIA Nemotron** | Two requested tiers on gate 1: `MODEL_NAME` plus `PHOENIX_LLM_EXTRA_BODY` for bulk overlap checks, `MODEL_NAME_DEEP` plus `PHOENIX_LLM_DEEP_EXTRA_BODY` for the final verdict. `PHOENIX_NEMOTRON_POLICY` is `label`, `require`, or `fallback-nvidia`. With `fallback-nvidia`, a Nightshift timeout, HTTP 5xx, or non-Nemotron answer is sent again to NVIDIA's API and traced as provider `nvidia-direct`. `/ui` shows the "N of M answers by NVIDIA Nemotron" badge and a Nemotron reasoning card. Measured share: [Why Nemotron](#why-nemotron). | `app/agents/relevance.py`, `scripts/eval_gate1.py` |
 | **Meterless H-MEM, Markovian** | Memory of evidence claims and verdicts, and the bounded multi-step loop, in the evidence-policy track (`POST /run`). | `app/engines/` |
 
 ## Where to look, by judging criterion
@@ -57,6 +57,81 @@ Three rules carry the design:
 | Sponsor | The table above |
 
 The honest limits are in [Limits](#limits). This README then documents the current behaviour in detail. The later sections cover the earlier Zetaris evidence-policy track (`POST /run`), which is still in the repository and still tested. `PRE_EVENT_PLAN.md` and `OPENING_READY.md` are the 8 October 2026 skeleton notes; where they disagree with this file, this file is the current behaviour.
+
+## Results
+
+The scored numbers for this submission are one live gate-1 run. They are filled by pasting the command below. An earlier 30-repository batch, dated 25 Oct 2026, stays under [Current status of the two gates](#current-status-of-the-two-gates-25-oct-2026). That batch is a different run.
+
+<!-- TODO(numbers): eval-summary-table -->
+
+**TBD.** Paste the table here verbatim, including its Source line. Do not retype the cells.
+
+```bash
+PYTHONPATH=. python scripts/eval_summary.py logs/eval-nemotron-v2.json --markdown
+```
+
+A live run on one machine, not a stored accuracy.
+
+```text
+PASTE eval_summary --markdown OUTPUT HERE
+```
+
+### Zetaris scope
+
+Only the 2 repositories in `data/real` went through Zetaris for gate-1 verdicts: `tharani-2006/Invoice-generator-application` and `SergioMendolia/ytkb`. The 16 evaluation repositories are the audit cases in `data/eval/gate1_labels.json`, the set `scripts/eval_gate1.py --audit-only` judges. Those 16 were fetched live from the GitHub API by `scripts/judge_repo.py`, and each verdict records `evidence_source=csv`. A single repository fetched live is not a row in the curated `phoenix.*` views, so that command does not ask Zetaris for it. This submission does not claim that all 16 went through Zetaris.
+
+`scripts/zetaris_check.py` sends only the read-only `SELECT` statements in `app/sql_catalog.py`: a preflight, then `phoenix.discovery_candidates`, `phoenix.prior_art`, and `phoenix.demand_signals`. It prints each `query_id` and `content_hash`, then seals a trace. The seal's `line_hash` is the run hash printed at the end of the command. `scripts/verify_trace.py` recomputes that chain. `--expected-run-hash` fails when the sealed hash differs from the hash you recorded.
+
+### Before and after: CalendarSyncProject
+
+`DSRegoitia/CalendarSyncProject` was rejected by the older Phoenix because FullCalendar "displays public Google Calendar events". The human label in `data/eval/gate1_labels.json` calls that a WRONG over-rejection: the candidate pushes events the other way, from FullCalendar into Google Calendar. `ALREADY_EXISTS` is outside the acceptable set. The acceptable set is `CANDIDATE` or `NEEDS_REVIEW`.
+
+The current gate 1 returns `CANDIDATE` or `NEEDS_REVIEW` for this repository. Both sit inside that acceptable set. `NEEDS_REVIEW` on this case is a partial overlap: a verbatim quote is handed to a human. Two independent runs, with different generated queries, returned `CANDIDATE` and `NEEDS_REVIEW`.
+
+The run recorded for the submission is still open.
+
+<!-- TODO(numbers): calendarsync-final-verdict -->
+
+Final verdict on the recorded run: **TBD** (`CANDIDATE` or `NEEDS_REVIEW`).
+
+<!-- TODO(numbers): calendarsync-final-run-hash -->
+
+Final run hash (`RUN_SEAL` `line_hash`, the value `scripts/verify_trace.py --expected-run-hash` checks): **TBD**.
+
+### What a passing verdict is allowed to mean
+
+A blocker needs a verified verbatim quote plus a mature or official alternative. Infrastructure failures are recorded as `NEEDS_REVIEW` or `UNJUDGED`, never a silent pass. A prior-art search cut short by the tool budget marks each unfinished source `BUDGET_EXHAUSTED`. `judge_discovery` then records `NEEDS_REVIEW` with the reason "tool budget exhausted" where the model had said `CANDIDATE`. `BUDGET_EXHAUSTED` can never produce `CANDIDATE`. A verified full overlap that already passes the maturity checks can still be `ALREADY_EXISTS`. An alternatives phase that stops with chunks unjudged follows the same rule in `judge_partial_alternatives`: unjudged chunks never produce `CANDIDATE`.
+
+## Why Nemotron
+
+Target prize: Best use of NVIDIA Nemotron.
+
+Gate 1 asks NVIDIA Nemotron in two requested tiers. Nightshift is tried first. The served id on each trace line is the id that actually answered.
+
+- Bulk alternative-overlap checks (`problem`, `alternative`, `coverage`, `demand`) use `MODEL_NAME`, the small model, with thinking off. `PHOENIX_LLM_EXTRA_BODY` is the JSON object merged into that request. The usual value turns thinking off: `{"chat_template_kwargs": {"enable_thinking": false}}`.
+- The final verdict uses `MODEL_NAME_DEEP` (equivalently `PHOENIX_DEEP_MODEL`). The default deep step is `discovery`, set by `PHOENIX_DEEP_STEPS`. That tier is the larger reasoning model. Its body is `PHOENIX_LLM_DEEP_EXTRA_BODY`. A `reasoning_content` field or a `<think>` block is stored, head and tail, on that deep-tier `LLM_CALL` line.
+
+`PHOENIX_NEMOTRON_POLICY` has three labels.
+
+| Policy | What happens when Nightshift does not answer with `nvidia/nemotron-*` |
+| --- | --- |
+| `label` (default) | The answer is used and the line is flagged `MODEL_MISMATCH`. |
+| `require` | The answer is discarded, the line is flagged `DISCARDED_BY_POLICY`, and Nightshift is asked again. |
+| `fallback-nvidia` | Nightshift is tried first. On a timeout, an HTTP 5xx, or a non-Nemotron answer, the same request goes to NVIDIA's official API (`https://integrate.api.nvidia.com/v1`, key `NVIDIA_API_KEY`). The trace records provider `nvidia-direct`. A direct reply that is still outside `nvidia/nemotron-*` is rejected and does not inform the verdict. |
+
+`served_model` is stored as the provider returned it. The requested id is not copied over it. The field is inside the hashed body of the `LLM_CALL` line, so a later edit fails `scripts/verify_trace.py`. That script recomputes `prev_hash` and `line_hash`, requires the last line to be `RUN_SEAL`, and with `--expected-run-hash` checks the run hash. It checks the chain that contains `served_model`. It does not pattern-match the prefix `nvidia/nemotron-*`. The family check is the policy above. The `/ui` badge and `scripts/eval_summary.py` count used answers whose `served_model` starts with `nvidia/nemotron-*` (`config.settings.is_nemotron_family`). A discarded or rejected line is not an answer used.
+
+`/ui` shows an "N of M answers by NVIDIA Nemotron" badge, built from `answers_by_nemotron` and `answers_used`. The verdict card includes a Nemotron reasoning card: the heading is "Nemotron's reasoning" when the used final-verdict answer is in the Nemotron family, and the page says that text is the model's account. The verdict still stands only when its quotes are found verbatim and the alternative passes the maturity checks.
+
+<!-- TODO(numbers): nemotron-answer-share -->
+
+Answers by NVIDIA Nemotron on the scored run: **TBD** of **TBD**. The same share is the Nemotron row of the table in [Results](#results).
+
+<!-- TODO(numbers): provider-split -->
+
+Provider split on that run, Nightshift answers used / lines traced `nvidia-direct`: **TBD** / **TBD**.
+
+The same page, with no install, is the static demo at <https://fu93.github.io/phoenixrepo/>. Replays shipped in this repository stay labelled SAMPLE until `scripts/import_replay.py` copies a real trace byte for byte and labels it RECORDED.
 
 ## What it does now: two gates
 
@@ -78,7 +153,7 @@ What it does:
 
 Gate 1 loads three Zetaris views before that search: the candidate row (`phoenix.discovery_candidates`), recorded prior art (`phoenix.prior_art`), and demand signals (`phoenix.demand_signals`). The SQL is the single-statement `SELECT` in `app/sql_catalog.py`, the same text `scripts/zetaris/04_phoenix_views.sql` defines. `EVIDENCE_SOURCE` is `zetaris` or `csv`. When `ZETARIS_URL` or `ZETARIS_REST_URL` is set and `EVIDENCE_SOURCE` is unset, the source is Zetaris. `ZETARIS_URL` is the REST base, the same value as `ZETARIS_REST_URL` (the prefix before `/sql-editor/sqls/run`). `EVIDENCE_SOURCE=csv` is how a run reads the local snapshot instead. That choice is an `evidence_source` trace line and a field on every verdict row, `evidence_source=csv`.
 
-Zetaris mode sends those statements through `ZetarisClient` (`POST {url}/sql-editor/sqls/run`). The snapshot CSV names which `repo_id` values the run asks for. The row bodies come back from Zetaris. Each statement is a `zetaris_query` line in the hash-chained trace: `evidence_source`, the exact SQL, the row count, `query_id`, and `content_hash`. The HTML evidence report shows the same fields. Before any repository is judged, one read-only `SELECT` (the first cohort id's `discovery_candidates` statement) checks that Zetaris answers. If it does not, the run stops with one error that names the URL and the two ways forward (start Zetaris, or `EVIDENCE_SOURCE=csv`), the failed check is a `ZETARIS_PREFLIGHT` line in the sealed trace, and no verdict is written; `scripts/rerun_unjudged.py` runs the same check once. If Zetaris answered the check and then fails for one repository, or the candidate view returns no row, that repository is `NEEDS_REVIEW` with reason `infra: zetaris`. It is not `CANDIDATE`, and the CSV body is not used. `scripts/judge_repo.py` (and `POST /judge`) judges one repository fetched live from the GitHub API; that row is not in the curated views, so it is read from the one-row snapshot the command writes and recorded as `evidence_source=csv`. The tests drive this with a fake HTTP transport. They do not start Zetaris, and CI does not call a live Zetaris.
+Zetaris mode sends those statements through `ZetarisClient` (`POST {url}/sql-editor/sqls/run`). The snapshot CSV names which `repo_id` values the run asks for. The row bodies come back from Zetaris. Each statement is a `zetaris_query` line in the hash-chained trace: `evidence_source`, the exact SQL, the row count, `query_id`, and `content_hash`. The HTML evidence report shows the same fields. Before any repository is judged, one read-only `SELECT` (the first cohort id's `discovery_candidates` statement) checks that Zetaris answers. If it does not, the run stops with one error that names the URL and the two ways forward (start Zetaris, or `EVIDENCE_SOURCE=csv`), the failed check is a `ZETARIS_PREFLIGHT` line in the sealed trace, and no verdict is written; `scripts/rerun_unjudged.py` runs the same check once. If Zetaris answered the check and then fails for one repository, or the candidate view returns no row, that repository is `NEEDS_REVIEW` with reason `infra: zetaris`. It is not `CANDIDATE`, and the CSV body is not used. `scripts/judge_repo.py` (and `POST /judge`) judges one repository fetched live from the GitHub API; that row is not in the curated views, so it is read from the one-row snapshot the command writes and recorded as `evidence_source=csv`. The 16 evaluation repositories took that path. The only gate-1 verdicts that used Zetaris are the two `data/real` discovery rows named in [Zetaris scope](#zetaris-scope). The tests drive this with a fake HTTP transport. They do not start Zetaris, and CI does not call a live Zetaris.
 
 | Gate 1 verdict | Meaning |
 | --- | --- |
@@ -156,7 +231,9 @@ python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scor
 
 ### Current status of the two gates (25 Oct 2026)
 
-Gate 1 asks whether the idea is worth rescuing. Gate 2, the revive loop, runs only when gate 1 returns `CANDIDATE`.
+Gate 1 asks whether the idea is worth rescuing. Gate 2, the revive loop, runs only when gate 1 returns `CANDIDATE`. The numbers in this subsection are the 25 Oct 2026 batch. The submission table is the paste slot in [Results](#results), which is still **TBD**.
+
+The CalendarSyncProject before/after slot, including the two runs that returned `CANDIDATE` and `NEEDS_REVIEW` and the **TBD** final run hash, is in [Before and after: CalendarSyncProject](#before-and-after-calendarsyncproject).
 
 On the author's Windows machine, one batch of 30 curated repositories returned 0 `CANDIDATE`: 16 `ALREADY_EXISTS`, 10 `NEEDS_REVIEW`, 3 `NO_GO`, and 1 `UNJUDGED`. That is one run's tally. It is not an accuracy score.
 
