@@ -82,6 +82,12 @@ def events_for_repo(events: list[dict[str, Any]], repo_id: str) -> dict[str, Any
             if not isinstance(o, dict):
                 out["alternatives_unreadable"] = True
             out["searched"] = inp.get("searched")
+        elif act == "LLM_CALL" and inp.get("step") in {"discovery"} and isinstance(o, dict) and o.get("reasoning"):
+            out["reasoning"] = {
+                "text": str(o.get("reasoning")),
+                "served_model": str(o.get("served_model") or e.get("served_model") or ""),
+                "provider": str(o.get("provider") or "nightshift"),
+            }
         elif act == "DISCOVERY_FILTER":
             out["filter"] = o
             out["file"] = e.get("_file")
@@ -189,14 +195,31 @@ def served_model_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         served = event.get("served_model")
         label = served.strip() if isinstance(served, str) and served.strip() else "(missing)"
-        row = counts.setdefault(label, {"calls": 0, "mismatches": 0})
+        row = counts.setdefault(label, {"calls": 0, "mismatches": 0, "discarded": 0})
         row["calls"] += 1
-        if "MODEL_MISMATCH" in (event.get("flags") or []):
+        flags = event.get("flags") or []
+        if "DISCARDED_BY_POLICY" in flags:
+            row["discarded"] += 1
+        elif "MODEL_MISMATCH" in flags:
             row["mismatches"] += 1
     return [
-        {"served_model": name, "calls": info["calls"], "mismatches": info["mismatches"]}
+        {"served_model": name, "calls": info["calls"], "mismatches": info["mismatches"], "discarded": info["discarded"]}
         for name, info in sorted(counts.items())
     ]
+
+
+def nemotron_share(rows: list[dict[str, Any]] | None) -> tuple[int, int]:
+    """(answers used, answers used that Nemotron wrote). Discarded and failed calls are not answers."""
+    used = nemotron = 0
+    for row in rows or []:
+        name = str(row.get("served_model") or "")
+        kept = int(row.get("calls") or 0) - int(row.get("discarded") or 0)
+        if name == "(missing)" or kept <= 0:
+            continue
+        used += kept
+        if name.startswith("nvidia/nemotron-"):
+            nemotron += kept
+    return used, nemotron
 
 
 def render_evidence_source(ev: dict[str, Any]) -> str:
@@ -233,17 +256,21 @@ def render_served_model_table(rows: list[dict[str, Any]] | None) -> str:
     if rows is None:
         return ""
     mismatches = sum(int(row.get("mismatches") or 0) for row in rows)
-    parts = ["<h2>Served models</h2>", f"<p>MODEL_MISMATCH: {mismatches}</p>"]
+    discarded = sum(int(row.get("discarded") or 0) for row in rows)
+    used, nemotron = nemotron_share(rows)
+    share = f"{nemotron} of {used} answers used were written by Nemotron" + (f" ({100 * nemotron // used}%)" if used else "")
+    parts = ["<h2>Served models</h2>", f"<p>{_e(share)}. MODEL_MISMATCH: {mismatches}. Discarded by the Nemotron policy: {discarded}.</p>"]
     if not rows:
         parts.append('<p class="muted">No LLM calls were recorded for this run.</p>')
         return "\n".join(parts)
-    parts.append("<table><tr><th>Served model</th><th>Calls</th><th>MODEL_MISMATCH</th></tr>")
+    parts.append("<table><tr><th>Served model</th><th>Calls</th><th>MODEL_MISMATCH</th><th>Discarded by policy</th></tr>")
     for row in rows:
         parts.append(
             "<tr>"
             f"<td><code>{_e(row.get('served_model'))}</code></td>"
             f"<td>{_e(row.get('calls'))}</td>"
             f"<td>{_e(row.get('mismatches'))}</td>"
+            f"<td>{_e(row.get('discarded', 0))}</td>"
             "</tr>"
         )
     parts.append("</table>")
@@ -282,6 +309,14 @@ def render_repo_html(
                 "</tr>"
             )
         parts.append("</table>")
+    thought = ev.get("reasoning") if isinstance(ev.get("reasoning"), dict) else None
+    if thought and thought.get("text"):
+        parts.append("<h2>Model reasoning for the verdict</h2>")
+        parts.append(
+            f'<p class="muted">Written by <code>{_e(thought.get("served_model") or "(missing)")}</code>'
+            f' via {_e(thought.get("provider"))}. Shown as the model\'s account; the verdict above stands only on the verified quotes and the maturity checks.</p>'
+        )
+        parts.append(f"<pre>{_e(thought.get('text'))}</pre>")
     notes = ev.get("must_beat") if isinstance(ev.get("must_beat"), list) else []
     if notes:
         parts.append("<h2>Alternatives that did not block</h2>")
@@ -440,7 +475,7 @@ if __name__ == "__main__":
     _root = str(Path(__file__).resolve().parents[1])
     if _root not in _sys.path:
         _sys.path.insert(0, _root)
-    from app.console import ensure_utf8_stdio
+    from app.console import prepare_cli
 
-    ensure_utf8_stdio()
+    prepare_cli()
     raise SystemExit(main())

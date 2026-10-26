@@ -67,7 +67,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from app.console import ensure_utf8_stdio
+    from app.console import prepare_cli
 
-    ensure_utf8_stdio()
+    prepare_cli()
     raise SystemExit(main())

@@ -180,7 +180,25 @@ def live_judge(repo_id: str) -> dict[str, Any]:
 def evaluate(
     path: Path = LABELS,
     runner: Callable[[str], dict[str, Any]] | None = None,
+    *,
+    deadline_s: float | None = None,
+    only: list[str] | None = None,
+    audit_only: bool = False,
+    resume: dict[str, Any] | None = None,
+    on_progress: Callable[[dict[str, Any]], None] | None = None,
+    clock: Callable[[], float] | None = None,
 ) -> dict[str, Any]:
+    """Validate the labels and, with a token, judge each case live.
+
+    deadline_s stops starting cases after that many seconds (the running one finishes);
+    cases not started are listed in ``not_started`` and are not counted. only / audit_only
+    choose the cases. resume is an earlier report: cases it already judged are reused, so a
+    run cut short by Nightshift can continue. on_progress receives the report after each case.
+    """
+    import time as _time
+
+    tick = clock or _time.monotonic
+    started_at = tick()
     payload = json.loads(path.read_text(encoding="utf-8"))
     errors = validate_labels(payload)
     report: dict[str, Any] = {
@@ -207,10 +225,36 @@ def evaluate(
     compared = 0
     agreed = 0
     not_compared = 0
-    for case in payload["cases"]:
+    report["not_started"] = []
+    report["models"] = {"answers_used": 0, "answers_by_nemotron": 0, "served_models": {}}
+    from scripts.rerun_unjudged import is_infra_review
+
+    # Reuse finished judgements only. UNJUDGED and infrastructure NEEDS_REVIEW are asked again.
+    previous = {
+        row.get("repo_id"): row
+        for row in ((resume or {}).get("results") or [])
+        if isinstance(row, dict) and row.get("verdict")
+        and not is_infra_review({"verdict": row.get("verdict"), "reason": row.get("reason") or ""})
+    }
+    cases = list(payload["cases"])
+    if audit_only:
+        cases = [case for case in cases if case.get("audit")]
+    if only:
+        wanted = {item.strip() for item in only if item.strip()}
+        cases = [case for case in cases if case["repo_id"] in wanted]
+    for position, case in enumerate(cases):
         repo_id = case["repo_id"]
+        if repo_id in previous:
+            result = dict(previous[repo_id])
+            result.setdefault("reused", True)
+        elif deadline_s is not None and tick() - started_at >= deadline_s:
+            report["not_started"] = [c["repo_id"] for c in cases[position:] if c["repo_id"] not in previous]
+            break
+        else:
+            result = None
         try:
-            result = judge(repo_id)
+            if result is None:
+                result = judge(repo_id)
         except Exception as exc:  # noqa: BLE001 — record the failure, do not invent a verdict
             report["results"].append({
                 "repo_id": repo_id,
@@ -220,6 +264,8 @@ def evaluate(
                 "error": str(exc),
             })
             not_compared += 1
+            if on_progress is not None:
+                on_progress(report)
             continue
         verdict = result.get("verdict") if isinstance(result, dict) else None
         if not verdict:
@@ -231,17 +277,31 @@ def evaluate(
                 "error": "the judge returned no verdict",
             })
             not_compared += 1
+            if on_progress is not None:
+                on_progress(report)
             continue
         ok = verdict in case["acceptable"]
         compared += 1
         agreed += int(ok)
+        served = result.get("served_models") if isinstance(result.get("served_models"), dict) else {}
         report["results"].append({
             "repo_id": repo_id,
             "acceptable": case["acceptable"],
             "verdict": verdict,
             "agreed": ok,
             "reason": result.get("reason") if isinstance(result, dict) else "",
+            "served_models": served,
+            "answers_used": int(result.get("answers_used") or 0),
+            "answers_by_nemotron": int(result.get("answers_by_nemotron") or 0),
+            "run_id": result.get("run_id"),
         })
+        models = report["models"]
+        models["answers_used"] += int(result.get("answers_used") or 0)
+        models["answers_by_nemotron"] += int(result.get("answers_by_nemotron") or 0)
+        for name, calls in served.items():
+            models["served_models"][name] = models["served_models"].get(name, 0) + int(calls or 0)
+        if on_progress is not None:
+            on_progress(report)
     report["live_ran"] = True
     report["agreement"] = {"compared": compared, "agreed": agreed, "not_compared": not_compared}
     by_id = {case["repo_id"]: case for case in payload["cases"]}
@@ -277,19 +337,31 @@ def evaluate(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--labels", type=Path, default=LABELS)
-    parser.add_argument("--out", type=Path, default=None, help="Write the report JSON here. Also printed.")
+    parser.add_argument("--out", type=Path, default=None, help="Write the report JSON here (after every case). Also printed.")
+    parser.add_argument("--deadline", type=float, default=None, help="Stop starting cases after this many seconds.")
+    parser.add_argument("--audit-only", action="store_true", help="Only the audited ALREADY_EXISTS cases.")
+    parser.add_argument("--repo", action="append", default=[], help="Only this repo id (repeatable).")
+    parser.add_argument("--resume", type=Path, default=None, help="An earlier --out report; its judged cases are reused.")
     args = parser.parse_args()
-    report = evaluate(args.labels)
+
+    def write(report: dict[str, Any]) -> None:
+        if args.out is not None:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    resume = json.loads(args.resume.read_text(encoding="utf-8")) if args.resume and args.resume.is_file() else None
+    report = evaluate(
+        args.labels, deadline_s=args.deadline, only=args.repo or None, audit_only=args.audit_only,
+        resume=resume, on_progress=write,
+    )
     text = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
-    if args.out is not None:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(text, encoding="utf-8")
+    write(report)
     sys.stdout.write(text)
     return 0 if report["labels_valid"] else 1
 
 
 if __name__ == "__main__":
-    from app.console import ensure_utf8_stdio
+    from app.console import prepare_cli
 
-    ensure_utf8_stdio()
+    prepare_cli()
     raise SystemExit(main())

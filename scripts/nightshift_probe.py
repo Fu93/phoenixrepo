@@ -31,7 +31,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.agents.relevance import routing_meta  # noqa: E402
-from app.console import ensure_utf8_stdio  # noqa: E402
+from app.console import prepare_cli  # noqa: E402
 from config.settings import NEMOTRON_FAMILY_PREFIX, model_mismatch  # noqa: E402
 
 # Preferred order when several Nemotron ids are listed: small and fast first. Gate 1 makes
@@ -154,17 +154,23 @@ def recommend(attempts: list[Attempt]) -> dict[str, str] | None:
         return None
     best = min(good, key=lambda a: a.seconds)
     slowest_good = max(a.seconds for a in good if a.requested_model == best.requested_model and a.variant == best.variant)
-    # A real gate-1 prompt is far longer than the probe, so leave generous headroom: at least
-    # 60 s per attempt, 6x the probe latency, and room for one retry in the total.
-    attempt_s = int(max(60, 6 * slowest_good))
-    env = {
-        "MODEL_NAME": best.requested_model,
-        "PHOENIX_LLM_ATTEMPT_TIMEOUT_S": str(attempt_s),
-        "PHOENIX_LLM_TOTAL_TIMEOUT_S": str(attempt_s * 2 + 30),
-    }
+    env = {"MODEL_NAME": best.requested_model}
     extra = VARIANTS[best.variant]
     if extra:
         env["PHOENIX_LLM_EXTRA_BODY"] = json.dumps(extra, separators=(",", ":"))
+    # Deep tier: the largest Nemotron that answered with its reasoning left on (the default
+    # variant), when it is a different model from the fast one. It writes the final verdict.
+    rank = {mid: i for i, mid in enumerate(PREFERENCE)}
+    deep_pool = [a for a in good if a.variant == "default" and a.requested_model != best.requested_model]
+    if deep_pool:
+        deep = max(deep_pool, key=lambda a: (rank.get(a.requested_model, -1), -a.seconds))
+        env["MODEL_NAME_DEEP"] = deep.requested_model
+        slowest_good = max(slowest_good, max(a.seconds for a in deep_pool if a.requested_model == deep.requested_model))
+    # A real gate-1 prompt is far longer than the probe, so leave generous headroom: at least
+    # 60 s per attempt, 6x the slowest probe latency, and room for one retry in the total.
+    attempt_s = int(max(60, 6 * slowest_good))
+    env["PHOENIX_LLM_ATTEMPT_TIMEOUT_S"] = str(attempt_s)
+    env["PHOENIX_LLM_TOTAL_TIMEOUT_S"] = str(attempt_s * 2 + 30)
     return env
 
 
@@ -176,7 +182,7 @@ def _row(a: Attempt) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ensure_utf8_stdio()
+    prepare_cli()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", nargs="*", help="Model ids to probe. Default: every nvidia/nemotron-* id GET /models lists.")
     ap.add_argument("--variants", nargs="*", choices=sorted(VARIANTS), help="Request variants to try (default: all).")
@@ -250,6 +256,10 @@ def main(argv: list[str] | None = None) -> int:
     print("\nAdd to .env (fastest variant that Nightshift actually served with Nemotron):")
     for key, value in env.items():
         print(f"{key}={value}")
+    if "MODEL_NAME_DEEP" not in env:
+        print("# Only one Nemotron model answered; every step uses it. Leave MODEL_NAME_DEEP unset.")
+    print("# Optional: PHOENIX_NEMOTRON_POLICY=require discards any non-Nemotron answer;")
+    print("# PHOENIX_NEMOTRON_POLICY=fallback-nvidia replaces it with the same model at the NVIDIA API (needs NVIDIA_API_KEY).")
     return 0
 
 

@@ -131,3 +131,49 @@ def test_invalid_labels_skip_the_runner(tmp_path: Path, monkeypatch: pytest.Monk
     assert report["live_ran"] is False
     assert report["agreement"] is None
     assert any("not a substring" in err for err in report["label_errors"])
+
+
+def test_eval_deadline_resume_and_nemotron_share(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("METERLESS_RUNTIME_TOKEN", "test-token-not-used-for-network")
+    now = {"t": 0.0}
+    seen: list[str] = []
+    progress: list[int] = []
+
+    def runner(repo_id: str) -> dict:
+        seen.append(repo_id)
+        now["t"] += 600.0
+        return {
+            "verdict": "ALREADY_EXISTS",
+            "reason": "injected",
+            "served_models": {"nvidia/nemotron-3.5-lightning-30b-a3b": 3, "gemini-3.1-flash-lite": 1},
+            "answers_used": 4,
+            "answers_by_nemotron": 3,
+        }
+
+    first = eg.evaluate(
+        runner=runner, audit_only=True, deadline_s=1000, clock=lambda: now["t"],
+        on_progress=lambda report: progress.append(len(report["results"])),
+    )
+    assert len(seen) == 2 and progress == [1, 2]
+    assert len(first["not_started"]) == 14
+    assert first["models"]["answers_used"] == 8 and first["models"]["answers_by_nemotron"] == 6
+    assert first["agreement"]["compared"] == 2
+
+    seen.clear()
+    second = eg.evaluate(runner=runner, audit_only=True, resume=first, clock=lambda: now["t"])
+    assert len(seen) == 14  # the two finished cases were reused, not asked again
+    assert second["agreement"]["compared"] == 16
+    assert second["not_started"] == []
+
+
+def test_eval_resume_asks_again_for_infrastructure_rows(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("METERLESS_RUNTIME_TOKEN", "test-token-not-used-for-network")
+    earlier = {"results": [{"repo_id": "Fu93/hygen", "verdict": "UNJUDGED", "reason": "HTTP 502"}]}
+    seen: list[str] = []
+
+    def runner(repo_id: str) -> dict:
+        seen.append(repo_id)
+        return {"verdict": "ALREADY_EXISTS", "reason": "injected"}
+
+    eg.evaluate(runner=runner, only=["Fu93/hygen"], resume=earlier)
+    assert seen == ["Fu93/hygen"]

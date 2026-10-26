@@ -30,16 +30,16 @@ from app.adapters.zetaris_evidence import (  # noqa: E402
     preflight,
 )
 try:  # app.console arrives with the Nightshift PR; either merge order works.
-    from app.console import ensure_utf8_stdio  # noqa: E402
+    from app.console import prepare_cli  # noqa: E402
 except ImportError:  # pragma: no cover
-    def ensure_utf8_stdio() -> None:
+    def prepare_cli() -> None:
         return None
 from app.trace_log import HackathonTrace  # noqa: E402
 from config.settings import trace_secrets  # noqa: E402
 
 
 def main(argv: list[str] | None = None, *, client=None) -> int:
-    ensure_utf8_stdio()
+    prepare_cli()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--snapshot", type=Path, default=ROOT / "data" / "real", help="Snapshot whose discovery_candidates.csv names the repo ids.")
     ap.add_argument("--repo", action="append", default=[], help="Only these repo ids (repeatable).")

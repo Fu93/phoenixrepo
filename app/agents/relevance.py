@@ -100,20 +100,89 @@ def _env_positive(name: str) -> float | None:
     return value if value > 0 else None
 
 
-def extra_body_from_env() -> dict[str, Any]:
-    """PHOENIX_LLM_EXTRA_BODY as a dict. Invalid JSON or a non-object is ignored with a warning."""
-    raw = os.environ.get("PHOENIX_LLM_EXTRA_BODY", "").strip()
+def extra_body_from_env(name: str = "PHOENIX_LLM_EXTRA_BODY") -> dict[str, Any]:
+    """A JSON-object env var as a dict. Invalid JSON or a non-object is ignored with a warning."""
+    raw = os.environ.get(name, "").strip()
     if not raw:
         return {}
     try:
         value = json.loads(raw)
     except ValueError:
-        sys.stderr.write("warning: PHOENIX_LLM_EXTRA_BODY is not valid JSON; ignored\n")
+        sys.stderr.write(f"warning: {name} is not valid JSON; ignored\n")
         return {}
     if not isinstance(value, dict):
-        sys.stderr.write("warning: PHOENIX_LLM_EXTRA_BODY must be a JSON object; ignored\n")
+        sys.stderr.write(f"warning: {name} must be a JSON object; ignored\n")
         return {}
     return {key: item for key, item in value.items() if key not in _PROTECTED_BODY_KEYS}
+
+
+# Two Nemotron tiers. Many short overlap judgements go to the fast model (MODEL_NAME, usually
+# a small Nemotron with thinking off). The steps in PHOENIX_DEEP_STEPS (default: the final
+# discovery verdict) go to PHOENIX_DEEP_MODEL with its own body, so a larger Nemotron can reason
+# where the verdict is made. Unset PHOENIX_DEEP_MODEL keeps one model for every step.
+DEFAULT_DEEP_STEPS = ("discovery",)
+NEMOTRON_POLICIES = ("label", "require", "fallback-nvidia")
+DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+REASONING_EXCERPT_CHARS = 1200
+_THINK_RE = re.compile(r"<think>(.*?)</think>", re.S | re.I)
+
+
+def _env_text(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def nemotron_policy_from_env() -> str:
+    """PHOENIX_NEMOTRON_POLICY: label (default), require, or fallback-nvidia.
+
+    label            a non-Nemotron answer is used and flagged MODEL_MISMATCH (honest default)
+    require          a non-Nemotron answer is discarded and the attempt is retried through Nightshift
+    fallback-nvidia  a non-Nemotron answer, a timeout or a 5xx is replaced by the same Nemotron model
+                     called directly at the NVIDIA API (NVIDIA_API_KEY); the trace says nvidia-direct
+    """
+    value = os.environ.get("PHOENIX_NEMOTRON_POLICY", "").strip().lower() or "label"
+    if value not in NEMOTRON_POLICIES:
+        sys.stderr.write(f"warning: PHOENIX_NEMOTRON_POLICY={value!r} is not one of {', '.join(NEMOTRON_POLICIES)}; using label\n")
+        return "label"
+    return value
+
+
+def reasoning_excerpt(message: Any, text: str) -> str:
+    """The model's own reasoning when the reply carries it: a reasoning field or a <think> block.
+
+    Kept short (head and tail) for the trace. It is shown as the model's account; the verdict
+    still stands or falls on the verbatim quote checks, not on this text.
+    """
+    raw = ""
+    if isinstance(message, dict):
+        for key in ("reasoning_content", "reasoning"):
+            value = message.get(key)
+            if isinstance(value, str) and value.strip():
+                raw = value
+                break
+    if not raw and text:
+        match = _THINK_RE.search(text)
+        if match:
+            raw = match.group(1)
+    raw = raw.strip()
+    if len(raw) <= REASONING_EXCERPT_CHARS:
+        return raw
+    half = REASONING_EXCERPT_CHARS // 2
+    return raw[:half].rstrip() + "\n...\n" + raw[-half:].lstrip()
+
+
+def _message_text(data: Any) -> tuple[Any, str]:
+    choices = data.get("choices") if isinstance(data, dict) else None
+    if not (isinstance(choices, list) and choices and isinstance(choices[0], dict)):
+        return {}, ""
+    msg = choices[0].get("message") or {}
+    content = msg.get("content") or "" if isinstance(msg, dict) else ""
+    if isinstance(content, list):
+        return msg, "".join(part.get("text", "") for part in content if isinstance(part, dict))
+    return msg, str(content)
 
 
 def routing_meta(data: Any, headers: Any = None) -> dict[str, str]:
@@ -462,6 +531,14 @@ class RelevanceClient:
     max_tokens: int = DEFAULT_MAX_TOKENS
     extra_body: dict[str, Any] | None = None
     last_routing: dict[str, str] = field(default_factory=dict)
+    deep_model: str | None = None
+    deep_steps: tuple[str, ...] | None = None
+    deep_extra_body: dict[str, Any] | None = None
+    nemotron_policy: str | None = None
+    nvidia_api_key: str | None = None
+    nvidia_base_url: str | None = None
+    nvidia_model: str | None = None
+    nvidia_transport: httpx.BaseTransport | None = None
 
     def __post_init__(self) -> None:
         self.base_url = self.base_url.rstrip("/")
@@ -483,6 +560,34 @@ class RelevanceClient:
             self.extra_body = extra_body_from_env()
         else:
             self.extra_body = {key: item for key, item in self.extra_body.items() if key not in _PROTECTED_BODY_KEYS}
+        if self.deep_model is None:
+            self.deep_model = _env_text("PHOENIX_DEEP_MODEL", "MODEL_NAME_DEEP") or None
+        if self.deep_steps is None:
+            raw_steps = _env_text("PHOENIX_DEEP_STEPS")
+            self.deep_steps = tuple(part.strip() for part in raw_steps.split(",") if part.strip()) if raw_steps else DEFAULT_DEEP_STEPS
+        if self.deep_extra_body is None:
+            self.deep_extra_body = extra_body_from_env("PHOENIX_LLM_DEEP_EXTRA_BODY")
+        else:
+            self.deep_extra_body = {key: item for key, item in self.deep_extra_body.items() if key not in _PROTECTED_BODY_KEYS}
+        if self.nemotron_policy is None:
+            self.nemotron_policy = nemotron_policy_from_env()
+        elif self.nemotron_policy not in NEMOTRON_POLICIES:
+            raise ValueError(f"nemotron_policy must be one of {NEMOTRON_POLICIES}")
+        if self.nemotron_policy == "fallback-nvidia":
+            if self.nvidia_api_key is None:
+                self.nvidia_api_key = _env_text("NVIDIA_API_KEY") or None
+                if self.nvidia_api_key is None:
+                    try:
+                        from config.settings import Settings
+
+                        self.nvidia_api_key = Settings().nvidia_api_key
+                    except Exception:  # noqa: BLE001 — a malformed .env leaves the key unset
+                        self.nvidia_api_key = None
+            self.nvidia_base_url = (self.nvidia_base_url or _env_text("NVIDIA_BASE_URL") or DEFAULT_NVIDIA_BASE_URL).rstrip("/")
+            self.nvidia_model = self.nvidia_model or _env_text("NVIDIA_MODEL") or None
+        self.rejected_serves: int = 0
+        self.direct_calls: int = 0
+        self.last_reasoning: str = ""
         if self.token is None:
             self.token = os.environ.get("METERLESS_RUNTIME_TOKEN") or ""
         if self.cache_dir is None and os.environ.get("PHOENIX_LLM_CACHE_DIR"):
@@ -501,6 +606,12 @@ class RelevanceClient:
     def _call_label(self, served: str) -> str:
         return served if served else "(missing)"
 
+    def route(self, step: str) -> tuple[str, dict[str, Any], str]:
+        """(model, extra body, tier) for one step. tier is "deep" or "fast"."""
+        if self.deep_model and (step or "") in (self.deep_steps or ()):
+            return self.deep_model, dict(self.deep_extra_body or {}), "deep"
+        return self.model, dict(self.extra_body or {}), "fast"
+
     def _observe(
         self,
         requested: str,
@@ -509,30 +620,48 @@ class RelevanceClient:
         step: str,
         status: str = "ok",
         routing: dict[str, str] | None = None,
+        *,
+        provider: str = "nightshift",
+        tier: str = "",
+        reasoning: str = "",
     ) -> None:
         """Count one model reply and, when a trace is attached, write one LLM_CALL line.
 
-        served is stored as Nightshift returned it. A missing model stays empty and is
-        counted under "(missing)". It is not replaced with the requested id.
+        served is stored as the provider returned it. A missing model stays empty and is
+        counted under "(missing)". It is not replaced with the requested id. A reply that the
+        Nemotron policy discarded (status "rejected") is traced but not counted as used.
         """
 
         self._call_noted = True
-        label = self._call_label(served)
-        self.served_models.add(label)
-        self.model_calls[label] = self.model_calls.get(label, 0) + 1
-        if model_mismatch(served):
-            self.mismatch_count += 1
-            if repo_id:
-                self.repo_mismatches.add(repo_id)
+        if status == "rejected":
+            self.rejected_serves += 1
+        else:
+            label = self._call_label(served)
+            self.served_models.add(label)
+            self.model_calls[label] = self.model_calls.get(label, 0) + 1
+            if model_mismatch(served):
+                self.mismatch_count += 1
+                if repo_id:
+                    self.repo_mismatches.add(repo_id)
         if self.trace is None:
             return
+        summary: dict[str, Any] = {"requested_model": requested, "served_model": served}
+        if provider != "nightshift":
+            summary["provider"] = provider
+        if tier:
+            summary["tier"] = tier
+        if routing:
+            summary["routing"] = routing
+        if reasoning:
+            summary["reasoning"] = reasoning
         self.trace.event(
             agent_name="orchestrator",
             action="LLM_CALL",
             input_summary={"repo_id": repo_id, "step": step or ""},
-            output_summary={"requested_model": requested, "served_model": served, **({"routing": routing} if routing else {})},
+            output_summary=summary,
             llm={"requested_model": requested, "served_model": served},
             status=status,
+            summary_limit=4000 if reasoning else 500,
         )
 
     def _log_served(self, repo_id: str, step: str, served: str, elapsed: float, cache_hit: bool) -> None:
@@ -600,7 +729,7 @@ class RelevanceClient:
             if not self._call_noted:
                 # The join already gave up. Record the requested id and an empty serve.
                 # Do not copy a model id from a response that arrived after the cap.
-                self._observe(self.model, "", repo_id, step, status="error")
+                self._observe(self.route(step)[0], "", repo_id, step, status="error")
             raise
 
     def _complete(
@@ -612,11 +741,14 @@ class RelevanceClient:
         call_budget_s: float | None = None,
     ) -> tuple[str, str, str]:
         call_start = time.monotonic()
+        model, body_extra, tier = self.route(step)
+        tier_label = tier if self.deep_model else ""
         total_cap = self.total_timeout if call_budget_s is None else min(self.total_timeout, max(0.0, call_budget_s))
         prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
         input_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-        cache_key = hashlib.sha256(f"{self.model}\n---\n{prompt_hash}\n---\n{input_hash}".encode("utf-8")).hexdigest()
+        cache_key = hashlib.sha256(f"{model}\n---\n{prompt_hash}\n---\n{input_hash}".encode("utf-8")).hexdigest()
         cache_file = self.cache_dir / f"{cache_key}.json"
+        self.last_reasoning = ""
 
         if cache_file.exists():
             try:
@@ -624,15 +756,24 @@ class RelevanceClient:
                 raw_served = cached.get("served_model")
                 served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
-                    self._observe(self.model, served, repo_id, step, status="error")
+                    self._observe(model, served, repo_id, step, status="error")
                     raise RelevanceLLMError(
                         f"Nightshift served local model {served}; refusing to score with a small local model"
                     )
+                if self.nemotron_policy != "label" and model_mismatch(served):
+                    # Written under the label policy. Under require / fallback-nvidia a
+                    # non-Nemotron answer is not reused; it is asked again below.
+                    raise ValueError("cached non-Nemotron answer under a Nemotron-only policy")
                 req_raw = cached.get("requested_model")
-                req_m = req_raw.strip() if isinstance(req_raw, str) and req_raw.strip() else self.model
+                req_m = req_raw.strip() if isinstance(req_raw, str) and req_raw.strip() else model
                 cached_routing = cached.get("routing") if isinstance(cached.get("routing"), dict) else {}
                 self.last_routing = dict(cached_routing)
-                self._observe(req_m, served, repo_id, step, routing=cached_routing or None)
+                self.last_reasoning = str(cached.get("reasoning") or "")
+                self._observe(
+                    req_m, served, repo_id, step, routing=cached_routing or None,
+                    provider=str(cached.get("provider") or "nightshift"), tier=tier_label,
+                    reasoning=self.last_reasoning if tier == "deep" else "",
+                )
                 self.last_cache_hit = True
                 self.last_cache_file = cache_file
                 self._log_served(repo_id, step, served, time.monotonic() - call_start, cache_hit=True)
@@ -642,32 +783,42 @@ class RelevanceClient:
             except Exception:
                 pass
 
+        def _store(text: str, served: str, routing: dict[str, str], provider: str, reasoning: str) -> tuple[str, str, str]:
+            record = {
+                "cache_key": cache_key,
+                "model": model,
+                "prompt_sha256": prompt_hash,
+                "input_sha256": input_hash,
+                "requested_model": model,
+                "served_model": served,
+                "provider": provider,
+                "routing": routing,
+                "reasoning": reasoning,
+                "response_text": text,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            cache_file.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            self.last_reasoning = reasoning
+            self._observe(
+                model, served, repo_id, step, routing=routing or None, provider=provider,
+                tier=tier_label, reasoning=reasoning if tier == "deep" else "",
+            )
+            self.last_cache_hit = False
+            self.last_cache_file = cache_file
+            self._log_served(repo_id, step, served, time.monotonic() - call_start, cache_hit=False)
+            return text, model, served
+
         if self.mock_handler is not None:
             # A mock that does not name a served model is declaring that it served the request.
             # An explicit empty string is a missing model field and stays empty.
-            served = self.model if self.mock_served_model is None else self.mock_served_model
+            served = model if self.mock_served_model is None else self.mock_served_model
             if served.startswith("local-runtime/"):
-                self._observe(self.model, served, repo_id, step, status="error")
+                self._observe(model, served, repo_id, step, status="error")
                 raise RelevanceLLMError(
                     f"Nightshift served local model {served}; refusing to score with a small local model"
                 )
             resp_text = self.mock_handler(prompt, system_prompt)
-            record = {
-                "cache_key": cache_key,
-                "model": self.model,
-                "prompt_sha256": prompt_hash,
-                "input_sha256": input_hash,
-                "requested_model": self.model,
-                "served_model": served,
-                "response_text": resp_text,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-            cache_file.write_text(json.dumps(record, indent=2), encoding="utf-8")
-            self._observe(self.model, served, repo_id, step)
-            self.last_cache_hit = False
-            self.last_cache_file = cache_file
-            self._log_served(repo_id, step, served, time.monotonic() - call_start, cache_hit=False)
-            return resp_text, self.model, served
+            return _store(resp_text, served, {}, "nightshift", "")
 
         if not self.token or self.token == "rt-local":
             raise RelevanceLLMError("METERLESS_RUNTIME_TOKEN is missing or invalid.")
@@ -685,13 +836,13 @@ class RelevanceClient:
         messages.append({"role": "user", "content": prompt})
 
         payload: dict[str, Any] = {
-            "model": self.model,
+            "model": model,
             "messages": messages,
             "temperature": 0,
             "stream": False,
             "max_tokens": int(self.max_tokens),
         }
-        payload.update(self.extra_body or {})
+        payload.update(body_extra)
 
         if isinstance(self.timeout, (int, float)):
             configured_read = float(self.timeout)
@@ -707,11 +858,49 @@ class RelevanceClient:
             with httpx.Client(timeout=timeout, transport=self.transport) as client:
                 return client.post(url, headers=headers, json=payload)
 
+        def _direct(reason: str) -> tuple[str, str, str] | None:
+            """Same Nemotron model at the NVIDIA API, only under fallback-nvidia. None = not used or failed."""
+            if self.nemotron_policy != "fallback-nvidia" or not self.nvidia_api_key:
+                return None
+            remaining = total_cap - (time.monotonic() - call_start)
+            if remaining <= 1.0:
+                return None
+            direct_model = self.nvidia_model or model
+            body = {**payload, "model": direct_model}
+            limit = max(1.0, min(self.wall_clock_timeout, remaining))
+            try:
+                with httpx.Client(timeout=httpx.Timeout(connect=10.0, read=limit, write=30.0, pool=10.0), transport=self.nvidia_transport) as client:
+                    resp = client.post(
+                        f"{self.nvidia_base_url}/chat/completions",
+                        headers={"Authorization": f"Bearer {self.nvidia_api_key}", "Content-Type": "application/json"},
+                        json=body,
+                    )
+            except httpx.HTTPError as exc:
+                self._observe(direct_model, "", repo_id, step, status="error", provider="nvidia-direct", tier=tier_label)
+                sys.stderr.write(f"[{repo_id or 'unknown'}] step={step} nvidia-direct failed after {reason}: {type(exc).__name__}\n")
+                return None
+            if resp.status_code != 200:
+                self._observe(direct_model, "", repo_id, step, status="error", provider="nvidia-direct", tier=tier_label)
+                sys.stderr.write(f"[{repo_id or 'unknown'}] step={step} nvidia-direct HTTP {resp.status_code} after {reason}\n")
+                return None
+            try:
+                data = resp.json()
+            except ValueError:
+                return None
+            raw = data.get("model") if isinstance(data, dict) else None
+            served = raw.strip() if isinstance(raw, str) else ""
+            if model_mismatch(served):
+                self._observe(direct_model, served, repo_id, step, status="rejected", provider="nvidia-direct", tier=tier_label)
+                return None
+            msg, text = _message_text(data)
+            self.direct_calls += 1
+            return _store(text, served, {"fallback_reason": reason[:120]}, "nvidia-direct", reasoning_excerpt(msg, text))
+
         last_exc: Exception | None = None
         for delay in RETRY_DELAYS:
             now = time.monotonic()
             if now - call_start + delay > total_cap:
-                raise RelevanceLLMError(
+                raise last_exc if isinstance(last_exc, RelevanceLLMError) and "not Nemotron" in str(last_exc) else RelevanceLLMError(
                     f"Nightshift call exceeded total timeout limit of {total_cap}s across retries."
                 )
             if delay > 0:
@@ -746,6 +935,9 @@ class RelevanceClient:
             worker.start()
             worker.join(time_left)
             if worker.is_alive():
+                rescued = _direct("nightshift timeout")
+                if rescued is not None:
+                    return rescued
                 raise RelevanceLLMError(
                     f"Nightshift request timed out (wall-clock cap of {time_left:.2f}s exceeded)."
                 )
@@ -753,6 +945,9 @@ class RelevanceClient:
                 exc = box["error"]
                 if isinstance(exc, httpx.HTTPError):
                     last_exc = RelevanceLLMError(f"Nightshift request failed: {exc}")
+                    rescued = _direct("nightshift transport error")
+                    if rescued is not None:
+                        return rescued
                     continue
                 if isinstance(exc, RelevanceLLMError):
                     raise
@@ -768,46 +963,34 @@ class RelevanceClient:
                 raw_served = data.get("model") if isinstance(data, dict) else None
                 served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
-                    self._observe(self.model, served, repo_id, step, status="error")
+                    self._observe(model, served, repo_id, step, status="error")
                     raise RelevanceLLMError(
                         f"Nightshift served local model {served}; refusing to score with a small local model"
                     )
                 routing = routing_meta(data, getattr(resp, "headers", None))
                 self.last_routing = routing
-                choices = data.get("choices") or []
-                text = ""
-                if choices and isinstance(choices[0], dict):
-                    msg = choices[0].get("message") or {}
-                    content = msg.get("content") or ""
-                    if isinstance(content, list):
-                        text = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-                    else:
-                        text = str(content)
-
-                record = {
-                    "cache_key": cache_key,
-                    "model": self.model,
-                    "prompt_sha256": prompt_hash,
-                    "input_sha256": input_hash,
-                    "requested_model": self.model,
-                    "served_model": served,
-                    "routing": routing,
-                    "response_text": text,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-                cache_file.write_text(json.dumps(record, indent=2), encoding="utf-8")
-                self._observe(self.model, served, repo_id, step, routing=routing or None)
-                self.last_cache_hit = False
-                self.last_cache_file = cache_file
-                self._log_served(repo_id, step, served, time.monotonic() - call_start, cache_hit=False)
-                return text, self.model, served
+                msg, text = _message_text(data)
+                if self.nemotron_policy != "label" and model_mismatch(served):
+                    # The answer exists but was not written by Nemotron: it is traced and discarded.
+                    self._observe(model, served, repo_id, step, status="rejected", routing=routing or None, tier=tier_label)
+                    rescued = _direct(f"nightshift served {served or '(missing)'}")
+                    if rescued is not None:
+                        return rescued
+                    last_exc = RelevanceLLMError(
+                        f"Nightshift served {served or '(missing)'}, not Nemotron; PHOENIX_NEMOTRON_POLICY={self.nemotron_policy} discarded it"
+                    )
+                    continue
+                return _store(text, served, routing, "nightshift", reasoning_excerpt(msg, text))
 
             if resp.status_code in (401, 403):
                 raise RelevanceLLMError(f"Nightshift returned HTTP {resp.status_code}: Unauthorized")
             last_exc = RelevanceLLMError(f"Nightshift returned HTTP {resp.status_code}")
+            if resp.status_code >= 500:
+                rescued = _direct(f"nightshift HTTP {resp.status_code}")
+                if rescued is not None:
+                    return rescued
 
         raise last_exc or RelevanceLLMError("Nightshift request failed after retries.")
-
 
 def is_valid_demand_signal_url(url: str, candidate_repo_id: str) -> tuple[bool, str]:
     """Validate signal URL: must be issue/discussion/forum, not PR, code file, repo root or candidate repo."""

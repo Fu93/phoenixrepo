@@ -30,6 +30,31 @@ Changing `MODEL_NAME` changes the relevance cache key, so earlier finished calls
 
 Shorter timeouts help only once a faster lane is found. With healthy calls of up to 345 s and 502s at about 330 s, a cap cannot tell them apart. Without a faster lane, keep the defaults and bound each repository instead: `$env:PHOENIX_ALTERNATIVES_BUDGET_S = "900"`.
 
+## 1b. Make every verdict a Nemotron verdict (for the NVIDIA prize)
+
+The goal is a trace where every answer that informed a verdict says `served_model: nvidia/nemotron-*`.
+
+1. Copy the probe's lines into `.env`. When it found a second, larger Nemotron it also prints `MODEL_NAME_DEEP`: the fast model handles the many overlap checks, the deep one writes the final verdict with its reasoning on.
+2. Choose the policy in `.env`:
+   - `PHOENIX_NEMOTRON_POLICY=require`: a non-Nemotron answer is discarded and asked again through Nightshift. Use it when the probe shows Nemotron is served most of the time.
+   - `PHOENIX_NEMOTRON_POLICY=fallback-nvidia`: a non-Nemotron answer, a timeout or a 5xx is replaced by the same Nemotron model at the NVIDIA API. Needs `NVIDIA_API_KEY` in `.env` (the key you added to Nightshift's Providers tab). This line is marked `provider: nvidia-direct` in the trace, so it is visible that it bypassed Meterless.
+3. Judge one repository and check the share:
+
+```powershell
+py -3 scripts/judge_repo.py https://github.com/<owner>/pagerbeauty
+```
+
+The JSON it prints ends with `answers_used` and `answers_by_nemotron`; the report page shows the same line.
+
+4. Measure accuracy on the human labels, capped and resumable:
+
+```powershell
+py -3 scripts/eval_gate1.py --audit-only --deadline 7200 --out logs/eval-nemotron.json
+py -3 scripts/eval_gate1.py --audit-only --deadline 7200 --resume logs/eval-nemotron.json --out logs/eval-nemotron.json
+```
+
+The report is written after every case. `agreement`, `live_error_rates` and `models` (answers by Nemotron) are the numbers for the README and the video. A rerun with `--resume` asks again only for cases that are missing or ended in an infrastructure error.
+
 ## 2. Zetaris read-only check (5 minutes, sends only SELECT)
 
 Start Docker and Zetaris first. Then:
