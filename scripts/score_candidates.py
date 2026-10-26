@@ -28,6 +28,7 @@ except OverflowError:
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from app.adapters.zetaris_evidence import ZetarisPreflightError, load_zetaris_cohort, resolve_evidence_source  # noqa: E402
 from app.agents.equivalence import evidence_from_rows  # noqa: E402
 from app.agents.market_filter import (  # noqa: E402
     is_boilerplate,
@@ -84,6 +85,8 @@ from config.settings import trace_secrets  # noqa: E402
 
 # Events that carry verified quotes must not be cut mid-JSON (the default trace summary limit is 500).
 EVIDENCE_SUMMARY_LIMIT = 20000
+# zetaris_query stores the exact SQL text. A 500-character cut would drop the statement.
+ZETARIS_QUERY_LIMIT = 20000
 
 def _read_csv(path: Path, expected_columns: tuple[str, ...]) -> list[dict[str, str]]:
     if not path.exists():
@@ -776,6 +779,8 @@ def score_all(
     snapshot: Path | None = None,
     relevance_client: RelevanceClient | None = None,
     facts_client: Any | None = None,
+    evidence_source: str | None = None,
+    zetaris_client: Any | None = None,
 ) -> dict[str, Any]:
     """Main execution pipeline for candidate scoring and protagonist selection."""
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -803,6 +808,8 @@ def score_all(
             trace=trace,
             now_iso=now_iso,
             facts_client=facts_client,
+            evidence_source=evidence_source,
+            zetaris_client=zetaris_client,
         )
     except RelevanceLLMError as exc:
         trace.event(
@@ -841,6 +848,8 @@ def _do_score_candidates(
     trace: HackathonTrace,
     now_iso: str,
     facts_client: Any | None = None,
+    evidence_source: str | None = None,
+    zetaris_client: Any | None = None,
 ) -> dict[str, Any]:
     require_llm = use_llm and ("--llm" in (command_str or "").split())
     llm_bound = None
@@ -904,10 +913,64 @@ def _do_score_candidates(
     if relevance_client is not None and getattr(relevance_client, "trace", None) is None:
         relevance_client.trace = trace
 
-    # 1. Read discovery CSVs
-    candidates_raw = _read_csv(active_data_dir / "discovery_candidates.csv", DISCOVERY_COLUMNS)
-    prior_raw = _read_csv(active_data_dir / "prior_art.csv", PRIOR_ART_COLUMNS)
-    demand_raw = _read_csv(active_data_dir / "demand_signals.csv", DEMAND_COLUMNS)
+    # 1. Gate 1 evidence. csv is explicit. zetaris does not fall back to these files.
+    evidence_mode = _evidence_mode(evidence_source)
+    if evidence_mode == "csv":
+        candidates_raw = _read_csv(active_data_dir / "discovery_candidates.csv", DISCOVERY_COLUMNS)
+        prior_raw = _read_csv(active_data_dir / "prior_art.csv", PRIOR_ART_COLUMNS)
+        demand_raw = _read_csv(active_data_dir / "demand_signals.csv", DEMAND_COLUMNS)
+        zetaris_queries: list[Any] = []
+        zetaris_blocked: list[dict[str, str]] = []
+    else:
+        try:
+            candidates_raw, prior_raw, demand_raw, zetaris_queries, zetaris_blocked = load_zetaris_cohort(
+                active_data_dir,
+                client=zetaris_client,
+            )
+        except ZetarisPreflightError as exc:
+            trace.event(
+                agent_name="gate1",
+                action="ZETARIS_PREFLIGHT",
+                input_summary={"evidence_source": evidence_mode},
+                output_summary=str(exc),
+                status="failed",
+                summary_limit=ZETARIS_QUERY_LIMIT,
+            )
+            trace.seal()
+            raise
+    trace.event(
+        agent_name="gate1",
+        action="evidence_source",
+        input_summary={"evidence_source": evidence_mode},
+        output_summary={
+            "evidence_source": evidence_mode,
+            "candidate_rows": len(candidates_raw),
+            "prior_rows": len(prior_raw),
+            "demand_rows": len(demand_raw),
+        },
+        status="ok",
+        summary_limit=ZETARIS_QUERY_LIMIT,
+    )
+    for query in zetaris_queries:
+        trace.event(
+            agent_name="gate1",
+            action="zetaris_query",
+            input_summary={
+                "repo_id": query.repo_id,
+                "evidence_source": query.evidence_source,
+                "sql": query.sql,
+            },
+            output_summary={
+                "evidence_source": query.evidence_source,
+                "sql": query.sql,
+                "row_count": query.row_count,
+                "query_id": query.query_id,
+                "content_hash": query.content_hash,
+                "error": query.error,
+            },
+            status=query.status,
+            summary_limit=ZETARIS_QUERY_LIMIT,
+        )
 
     # Proportionally scale tool budget (e.g. 8 tool calls per candidate capped)
     per_candidate_calls = 8
@@ -922,6 +985,28 @@ def _do_score_candidates(
     eligible_candidates: list[dict[str, Any]] = []
     ineligible_repos: list[dict[str, Any]] = []
     rescue_by_repo: dict[str, dict[str, Any]] = {}
+
+    for blocked in zetaris_blocked:
+        repo_id = blocked["repo_id"]
+        reason = blocked["reason"]
+        sys.stderr.write(f"gate 1: {repo_id} is NEEDS_REVIEW (infra: zetaris). CSV was not used.\n")
+        trace.event(
+            agent_name="orchestrator",
+            action="DISCOVERY_FILTER",
+            input_summary={"repo_id": repo_id},
+            output_summary=_discovery_output("NEEDS_REVIEW", reason, evidence_mode),
+            status="ok",
+            summary_limit=ZETARIS_QUERY_LIMIT,
+        )
+        ineligible_repos.append(
+            {
+                "repo_id": repo_id,
+                "verdict": "NEEDS_REVIEW",
+                "reason": reason,
+                "eligibility": False,
+                "evidence_source": evidence_mode,
+            }
+        )
 
     for candidate in candidates_raw:
         repo_id = candidate["repo_id"]
@@ -972,7 +1057,7 @@ def _do_score_candidates(
                     agent_name="orchestrator",
                     action="DISCOVERY_FILTER",
                     input_summary={"repo_id": repo_id},
-                    output_summary={"verdict": verdict, "reason": reason},
+                    output_summary=_discovery_output(verdict, reason, evidence_mode),
                     status="ok",
                 )
                 ineligible_repos.append(
@@ -1091,7 +1176,7 @@ def _do_score_candidates(
                         agent_name="orchestrator",
                         action="DISCOVERY_FILTER",
                         input_summary={"repo_id": repo_id},
-                        output_summary={"verdict": verdict, "reason": reason},
+                        output_summary=_discovery_output(verdict, reason, evidence_mode),
                         status="ok",
                     )
                     candidate.pop("_manifest_texts", None)
@@ -1180,7 +1265,7 @@ def _do_score_candidates(
                         agent_name="orchestrator",
                         action="DISCOVERY_FILTER",
                         input_summary={"repo_id": repo_id},
-                        output_summary={"verdict": verdict, "reason": reason},
+                        output_summary=_discovery_output(verdict, reason, evidence_mode),
                         status="ok",
                     )
                     candidate.pop("_manifest_texts", None)
@@ -1214,7 +1299,9 @@ def _do_score_candidates(
             agent_name="orchestrator",
             action="DISCOVERY_FILTER",
             input_summary={"repo_id": repo_id},
-            output_summary={"verdict": verdict, "reason": reason, "evidence": judgement_evidence, "must_beat": must_beat},
+            output_summary=_discovery_output(
+                verdict, reason, evidence_mode, evidence=judgement_evidence, must_beat=must_beat
+            ),
             status="ok",
             summary_limit=EVIDENCE_SUMMARY_LIMIT,
         )
@@ -1546,8 +1633,10 @@ def _do_score_candidates(
     run_hash = trace.seal()
 
     for row in ineligible_repos:
+        row["evidence_source"] = evidence_mode
         row["rescue_potential"] = rescue_by_repo.get(str(row.get("repo_id") or ""))
     for row in candidates_output:
+        row["evidence_source"] = evidence_mode
         row["rescue_potential"] = rescue_by_repo.get(str(row.get("repo_id") or ""))
 
     # 7. Render JSON and Markdown
@@ -1558,6 +1647,7 @@ def _do_score_candidates(
         "command": command_str or " ".join(sys.argv),
         "llm_used": bool(relevance_client and len(relevance_client.served_models) > 0),
         "model_calls": relevance_client.model_calls if relevance_client else {},
+        "evidence_source": evidence_mode,
         "model_mismatch_count": trace.model_mismatch_count(),
         "warnings": warnings,
         "duplicated_vectors": duplicated_vectors,
@@ -1588,6 +1678,7 @@ def _render_markdown(data: dict[str, Any]) -> str:
     lines.append(f"- **Date**: {data['date']}")
     lines.append(f"- **Run Hash**: `{data['run_hash']}`")
     lines.append(f"- **Command**: `{data['command']}`")
+    lines.append(f"- **Evidence source**: `{data.get('evidence_source') or ''}`")
     lines.append(f"- **LLM Evaluator**: {'Live Nightshift' if data.get('llm_used') else 'Deterministic Baseline Analyst'}")
     lines.append("")
 
@@ -1741,6 +1832,30 @@ def _render_markdown(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _evidence_mode(explicit: str | None) -> str:
+    if explicit is None or not str(explicit).strip():
+        return resolve_evidence_source()
+    mode = str(explicit).strip().lower()
+    if mode not in {"zetaris", "csv"}:
+        raise ValueError("EVIDENCE_SOURCE must be zetaris or csv.")
+    return mode
+
+
+def _discovery_output(
+    verdict: str,
+    reason: str,
+    evidence_mode: str,
+    evidence: list[dict[str, Any]] | None = None,
+    must_beat: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"verdict": verdict, "reason": reason, "evidence_source": evidence_mode}
+    if evidence is not None:
+        payload["evidence"] = evidence
+    if must_beat is not None:
+        payload["must_beat"] = must_beat
+    return payload
+
+
 def _is_infra_failure(err: str) -> bool:
     """True when an LLM failure is infrastructure (5xx, 429, timeout, invalid JSON), not evidence."""
     low = str(err or "").lower()
@@ -1779,6 +1894,9 @@ def main() -> int:
         )
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 2
+    except ZetarisPreflightError as exc:
+        sys.stderr.write(f"Scoring not started: {exc}\n")
+        return 2
     except RelevanceLLMError as exc:
         sys.stderr.write(f"Scoring aborted: {exc}\n")
         return 1

@@ -87,8 +87,10 @@ def _fake_getter(url, token, accept="application/vnd.github+json"):
 def test_judge_end_to_end_with_fake_scorer(tmp_path):
     seen = {}
 
-    def scorer(snapshot, output_json, output_md, use_llm, run_id, log_dir, command_str):
+    def scorer(snapshot, output_json, output_md, use_llm, run_id, log_dir, command_str, evidence_source=None):
         import csv
+
+        seen["evidence_source"] = evidence_source
 
         rows = list(csv.DictReader((Path(snapshot) / "discovery_candidates.csv").open(encoding="utf-8")))
         seen["rows"] = rows
@@ -98,6 +100,9 @@ def test_judge_end_to_end_with_fake_scorer(tmp_path):
     res = jr.judge("https://github.com/a/b", out_dir=tmp_path / "o", run_id="jt", log_dir=tmp_path, getter=_fake_getter, scorer=scorer)
     assert res["verdict"] == "ALREADY_EXISTS" and res["run_hash"] == "RH"
     assert seen["rows"][0]["repo_id"] == "a/b" and "prior_art.csv" in seen["files"]
+    # A repository fetched live is not a row in the curated Zetaris views; asking Zetaris for it
+    # would turn every single-repo judgement into NEEDS_REVIEW.
+    assert seen["evidence_source"] == "csv"
     assert Path(res["report"]).read_text(encoding="utf-8").count("ALREADY_EXISTS") >= 1
 
 

@@ -46,6 +46,7 @@ _INFRA_MARKERS = (
     "unjudged",
     "source_error",
     "source error",
+    "infra: zetaris",
 )
 # A human-review reason that already names an overlap is a finished judgement.
 _JUDGEMENT_MARKERS = (
@@ -198,6 +199,33 @@ def make_relevance_client(snapshot: Path):
     )
 
 
+def zetaris_preflight_error(snapshot: Path, client: Any | None = None) -> str:
+    """One read-only SELECT before any repository when Zetaris is the evidence source.
+
+    Without it a stopped Zetaris stack would fail every repository, each after its retries
+    and backoff. Returns "" when the source is csv or Zetaris answered.
+    """
+    from app.adapters.zetaris_evidence import (
+        ZetarisPreflightError,
+        build_live_client,
+        cohort_repo_ids,
+        preflight,
+        resolve_evidence_source,
+    )
+
+    if resolve_evidence_source() != "zetaris":
+        return ""
+    try:
+        if client is None:
+            client = build_live_client()
+        preflight(client, cohort_repo_ids(snapshot))
+    except ZetarisPreflightError as exc:
+        return str(exc)
+    except Exception as exc:  # noqa: BLE001 — building the client failed
+        return f"Zetaris client could not be built: {type(exc).__name__}: {exc}"
+    return ""
+
+
 def default_runner(snapshot: Path, client, log_dir: Path) -> Callable[[str], dict[str, Any]]:
     from app.agents.repo_facts import RepoFactsClient
     from scripts.score_candidates import score_all
@@ -299,6 +327,10 @@ def main() -> int:
                 "METERLESS_RUNTIME_TOKEN is missing. Refusing to rewrite verdicts without Nightshift. "
                 "Finished calls would not be reused and the phrase fallback is not a rerun.\n"
             )
+            return 2
+        error = zetaris_preflight_error(args.snapshot)
+        if error:
+            sys.stderr.write(f"Rerun not started: {error}\n")
             return 2
         args.log_dir.mkdir(parents=True, exist_ok=True)
         runner = default_runner(args.snapshot, client, args.log_dir)

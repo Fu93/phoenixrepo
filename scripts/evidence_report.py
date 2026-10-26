@@ -89,6 +89,22 @@ def events_for_repo(events: list[dict[str, Any]], repo_id: str) -> dict[str, Any
                 out["decision_evidence"] = o.get("evidence")
             if isinstance(o, dict) and isinstance(o.get("must_beat"), list):
                 out["must_beat"] = o.get("must_beat")
+            if isinstance(o, dict) and o.get("evidence_source"):
+                out["evidence_source"] = o.get("evidence_source")
+        elif act == "zetaris_query":
+            item = {
+                "sql": str(inp.get("sql") or (o.get("sql") if isinstance(o, dict) else "") or ""),
+                "evidence_source": str(
+                    inp.get("evidence_source") or (o.get("evidence_source") if isinstance(o, dict) else "") or ""
+                ),
+                "row_count": o.get("row_count") if isinstance(o, dict) else None,
+                "query_id": str(o.get("query_id") or "") if isinstance(o, dict) else "",
+                "content_hash": str(o.get("content_hash") or "") if isinstance(o, dict) else "",
+                "status": e.get("status"),
+            }
+            out.setdefault("zetaris_queries", []).append(item)
+            if item["evidence_source"]:
+                out["evidence_source"] = item["evidence_source"]
         elif act == "RESCUE_POTENTIAL" and isinstance(o, dict):
             out["rescue"] = o
     seals = {}
@@ -181,6 +197,36 @@ def served_model_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         {"served_model": name, "calls": info["calls"], "mismatches": info["mismatches"]}
         for name, info in sorted(counts.items())
     ]
+
+
+def render_evidence_source(ev: dict[str, Any]) -> str:
+    """Show whether gate 1 read Zetaris or an explicit CSV snapshot, and the SQL when it did."""
+
+    queries = ev.get("zetaris_queries") if isinstance(ev.get("zetaris_queries"), list) else []
+    source = str(ev.get("evidence_source") or "")
+    if not source and queries:
+        source = str((queries[0] or {}).get("evidence_source") or "")
+    if not source and not queries:
+        return ""
+    parts = ["<h2>Evidence source</h2>", f"<p>evidence_source: <code>{_e(source)}</code></p>"]
+    if queries:
+        parts.append("<table><tr><th>SQL</th><th>Rows</th><th>Query id</th><th>Content hash</th></tr>")
+        for query in queries:
+            if not isinstance(query, dict):
+                continue
+            count = query.get("row_count")
+            parts.append(
+                "<tr>"
+                f"<td><code>{_e(query.get('sql'))}</code></td>"
+                f"<td>{_e('' if count is None else count)}</td>"
+                f"<td><code>{_e(query.get('query_id'))}</code></td>"
+                f"<td><code>{_e(query.get('content_hash'))}</code></td>"
+                "</tr>"
+            )
+        parts.append("</table>")
+    elif source == "csv":
+        parts.append("<p>Local CSV snapshot. Zetaris was not queried.</p>")
+    return "\n".join(parts)
 
 
 def render_served_model_table(rows: list[dict[str, Any]] | None) -> str:
@@ -302,6 +348,7 @@ def render_repo_html(
         )
         parts.append(f"<table><tr><th>Source</th><th>Results</th><th>Status</th></tr>{rows}</table>")
 
+    parts.append(render_evidence_source(ev))
     parts.append(render_served_model_table(model_rows))
     parts.append("<h2>Evidence trail</h2>")
     meta = []
