@@ -20,6 +20,17 @@ CRITERION_TOOL_ALLOWLIST: dict[str, frozenset[str]] = {
 
 DEFAULT_SUBAGENT_CALL_BUDGET = 5
 DEFAULT_MAX_SUBAGENTS = 6
+_GITHUB_REPO_ID = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+def github_issue_repo(alternative_id: str) -> str | None:
+    """owner/name when this alternative can be a GitHub issue search. Web and registry ids cannot."""
+    text = str(alternative_id or "").strip()
+    if not text or ":" in text or "\\" in text:
+        return None
+    if _GITHUB_REPO_ID.fullmatch(text):
+        return text
+    return None
 
 
 def is_candidate_repo_url(url: str, candidate_repo: str) -> bool:
@@ -104,7 +115,9 @@ class SubAgent:
                 if query:
                     queries.append(query)
                 for alt in alternative_repos or []:
-                    queries.append(f"repo:{alt} is:issue")
+                    repo = github_issue_repo(alt)
+                    if repo:
+                        queries.append(f"repo:{repo} is:issue")
                 for q in queries:
                     res = self.toolbox.call("github", {"query": q})
                     if not res.ok and "RATE_LIMITED" in (res.error or ""):

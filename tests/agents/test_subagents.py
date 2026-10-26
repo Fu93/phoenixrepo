@@ -152,3 +152,30 @@ def test_subagent_cannot_use_candidate_repo_stars_as_demand():
     # Must NOT include candidate repo as demand evidence
     for item in items_candidate:
         assert "candidate/repo" not in item["url"]
+
+
+def test_demand_issue_search_skips_non_github_alternative_ids():
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, json={"items": [{"title": "External demand on alternative", "comments": 1}]})
+
+    tools = {"github": GitHubTool(transport=httpx.MockTransport(handler))}
+    sub = SubAgent(
+        criterion="demand_evidence",
+        repo_id="candidate/repo",
+        toolbox=ToolBox(tools=tools, budget=Budget(max_calls=10)),
+    )
+    sub.investigate(alternative_repos=[
+        "web:https://appwrite.io/docs",
+        "npm:appwrite",
+        "https://example.com/post",
+        "other/notes-alt",
+    ])
+    blob = " ".join(seen)
+    assert "notes-alt" in blob
+    assert "appwrite.io" not in blob
+    assert "web%3A" not in blob and "web:" not in blob
+    assert "npm%3A" not in blob and "npm:" not in blob
+    assert "example.com" not in blob
