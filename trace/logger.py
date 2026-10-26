@@ -1,4 +1,5 @@
 import json
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,7 +30,7 @@ class TraceLogger:
         try:
             self.path.write_text(body, encoding="utf-8")
         except OSError:
-            fallback = Path("/tmp/phoenixrepo-logs")
+            fallback = Path(tempfile.gettempdir()) / "phoenixrepo-logs"
             fallback.mkdir(parents=True, exist_ok=True)
             self.path = fallback / f"trace-{self.run_id}.jsonl"
             self.path.write_text(body, encoding="utf-8")

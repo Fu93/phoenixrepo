@@ -1,3 +1,5 @@
+import os
+
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -102,3 +104,21 @@ class Settings(BaseSettings):
             self.nvidia_api_key,
         ]
         return [value for value in values if value]
+
+
+ENV_TOKEN_NAMES = ("GITHUB_TOKEN", "GH_TOKEN")
+
+
+def env_token_values() -> list[str]:
+    """GitHub tokens the tools read straight from the process environment (not from Settings)."""
+    return [value for value in (usable_secret(os.environ.get(name)) for name in ENV_TOKEN_NAMES) if value]
+
+
+def trace_secrets(settings: "Settings | None" = None) -> list[str]:
+    """Every value a trace must redact: the Settings credentials plus the env GitHub tokens."""
+    values: list[str] = []
+    try:
+        values = (settings or Settings()).secret_values()
+    except Exception:  # noqa: BLE001 — a malformed .env must not stop redaction of the env token
+        values = []
+    return [*values, *(value for value in env_token_values() if value not in values)]

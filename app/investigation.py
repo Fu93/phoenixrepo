@@ -45,7 +45,6 @@ from app.llm.parsing import parse_model_json
 from app.llm.provider import BoundLLM, build_llm
 from app.llm.standin import SampleStandIn
 from app.prompts import load_prompt
-from app.paths import repo_root
 from app.sql_catalog import (
     attempts_sql,
     demand_sql,
@@ -59,7 +58,7 @@ from app.sql_catalog import (
 from app.trace_log import HackathonTrace
 from artifacts.store import ArtifactStore
 from audit.trail import AuditTrail
-from config.settings import Settings
+from config.settings import Settings, trace_secrets
 from config.versions import INVESTIGATION_VERSION, PIPELINE_VERSION
 from evidence.factory import create_evidence
 from evidence.graph import EvidenceGraphEngine
@@ -106,7 +105,7 @@ class InvestigationOrchestrator:
         self.context = RunContext.create(self.repository, mode, max_repair_iterations)
         self.context.foundation_only = False
         self.run_id = self.context.run_id
-        self.trace = HackathonTrace(self.run_id, settings.log_dir, settings.secret_values())
+        self.trace = HackathonTrace(self.run_id, settings.log_dir, trace_secrets(settings))
         self.audit = AuditTrail(self.run_id)
         self.graph = EvidenceGraphEngine(self.run_id)
         self.state = StateMachine(PhoenixState.INGESTED, audit_trail=self.audit)

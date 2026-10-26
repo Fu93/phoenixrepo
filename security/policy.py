@@ -6,6 +6,8 @@ FORBIDDEN_FIELDS = {
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "XAI_API_KEY",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
     "api_key",
     "authorization",
     "token",

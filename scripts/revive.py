@@ -25,6 +25,7 @@ from app import revive_loop  # noqa: E402
 from app.agents.relevance import RelevanceClient  # noqa: E402
 from app.revive_prd import write_reports  # noqa: E402
 from app.trace_log import HackathonTrace  # noqa: E402
+from config.settings import trace_secrets  # noqa: E402
 from scripts import judge_repo  # noqa: E402
 
 REUSED_GATE_REASON = "reused from --gate-verdict; not a new gate-1 judgement"
@@ -134,7 +135,7 @@ def run_job(args: argparse.Namespace, job: dict, index: int) -> int:
         rid = f"{rid}-{index}"
     out = ROOT / "reports" / rid
     out.mkdir(parents=True, exist_ok=True)
-    trace = HackathonTrace(rid, ROOT / "logs")
+    trace = HackathonTrace(rid, ROOT / "logs", trace_secrets())
 
     supplied = _job_value(job, "gate_verdict", args.gate_verdict)
     supplied_reason = str(_job_value(job, "gate_reason", None) or _job_value(job, "reason", None) or args.gate_reason or "")
