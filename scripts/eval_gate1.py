@@ -280,15 +280,22 @@ def evaluate(
             if on_progress is not None:
                 on_progress(report)
             continue
-        ok = verdict in case["acceptable"]
-        compared += 1
-        agreed += int(ok)
+        # UNJUDGED and an infrastructure NEEDS_REVIEW (502, timeout, source error) are not a
+        # judgement: they are recorded but not compared, so they neither agree nor disagree.
+        infra = is_infra_review({"verdict": verdict, "reason": result.get("reason") or ""})
+        ok = (not infra) and verdict in case["acceptable"]
+        if infra:
+            not_compared += 1
+        else:
+            compared += 1
+            agreed += int(ok)
         served = result.get("served_models") if isinstance(result.get("served_models"), dict) else {}
         report["results"].append({
             "repo_id": repo_id,
             "acceptable": case["acceptable"],
             "verdict": verdict,
             "agreed": ok,
+            "compared": not infra,
             "reason": result.get("reason") if isinstance(result, dict) else "",
             "served_models": served,
             "answers_used": int(result.get("answers_used") or 0),
@@ -312,7 +319,7 @@ def evaluate(
         case = by_id.get(row["repo_id"]) or {}
         if not case.get("audit"):
             continue
-        if not row.get("verdict"):
+        if not row.get("verdict") or row.get("compared") is False:
             continue
         live_n += 1
         acceptable = set(case.get("acceptable") or [])
