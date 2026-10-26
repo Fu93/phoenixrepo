@@ -133,6 +133,14 @@ A blocker needs a verified verbatim quote plus a mature or official alternative.
 
 Target prize: Best use of NVIDIA Nemotron.
 
+**Eligibility at a glance (rule 15.2).**
+
+| Requirement | Where it is met |
+| --- | --- |
+| At least one Nemotron model, through Meterless Nightshift | Every gate-1 call requests `nvidia/nemotron-*` from Nightshift first; the provider split below counts the Nightshift answers. The Zetaris-backed run: 21 of its 27 answers came through Nightshift. |
+| In a working feature | The gate-1 judge (problem extraction, every overlap check, the verdict) and gate 2's rescue plan. |
+| Shows which model handled the request | `served_model` on every `LLM_CALL` trace line, the served-model table and badge in `/ui`, the evidence report, and `python scripts/verify_trace.py <trace> --require-nemotron`. |
+
 Nemotron is used through Meterless Nightshift, in the working gate-1 judge, and the model that handled each request is shown on every trace line, in `/ui` and in the evidence report. NVIDIA's own API is a fallback for calls Nightshift fails; the provider split below counts both. The same facts are in `metadata.json`.
 
 Track 02 asks for an agent that can explain why. Gate 1 keeps Nemotron's reasoning in the trace next to the verbatim quote it rests on, and Nemotron 3 is an open model family, so the judgement can be checked and rerun outside any one vendor's service.
@@ -175,6 +183,10 @@ How Nemotron was used on the scored run, counted from the same verified traces: 
 <!-- BEGIN numbers: nemotron-evidence -->
 **TBD**
 <!-- END numbers: nemotron-evidence -->
+
+**Sampling.** Requests are sent with `temperature: 0`, so a verdict is reproducible and an answer can be cached and replayed. NVIDIA's guidance for Nemotron's reasoning mode is `temperature` 0.6 and `top_p` 0.95; `PHOENIX_LLM_DEEP_EXTRA_BODY='{"temperature": 0.6, "top_p": 0.95}'` applies it to the verdict tier only. The trade-off is deliberate: a verdict must be repeatable, and its claims are checked by code either way. The setting a run used is in that run's `.env`.
+
+**Running the judge on your own Nemotron.** Both model routes are OpenAI-compatible base URLs. Pointing `METERLESS_BASE_URL` (or, for the fallback, `NVIDIA_BASE_URL`) at a local server that serves Nemotron, for example an NVIDIA NIM container on a DGX Spark, runs the same judge with the same trace and the same `--require-nemotron` check; `served_model` records whatever the local server reports. Nemotron 3 is an open model family, so a verdict can then be rerun with no external service. This path is configuration only and was not tested in this submission.
 
 The same page, with no install, is the static demo at <https://fu93.github.io/phoenixrepo/>. Replays shipped in this repository stay labelled SAMPLE until `scripts/import_replay.py` copies a real trace byte for byte and labels it RECORDED.
 
