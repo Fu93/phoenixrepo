@@ -87,6 +87,10 @@ def events_for_repo(events: list[dict[str, Any]], repo_id: str) -> dict[str, Any
             out["file"] = e.get("_file")
             if isinstance(o, dict) and isinstance(o.get("evidence"), list):
                 out["decision_evidence"] = o.get("evidence")
+            if isinstance(o, dict) and isinstance(o.get("must_beat"), list):
+                out["must_beat"] = o.get("must_beat")
+        elif act == "RESCUE_POTENTIAL" and isinstance(o, dict):
+            out["rescue"] = o
     seals = {}
     for e in events:
         if e.get("action") == "RUN_SEAL":
@@ -180,6 +184,33 @@ def render_repo_html(repo_id: str, verdict: str, reason: str, ev: dict[str, Any]
                 "</tr>"
             )
         parts.append("</table>")
+    notes = ev.get("must_beat") if isinstance(ev.get("must_beat"), list) else []
+    if notes:
+        parts.append("<h2>Alternatives that did not block</h2>")
+        parts.append("<table><tr><th>Alternative</th><th>Overlap</th><th>Verified quote</th><th>Why it did not block</th></tr>")
+        for note in notes:
+            parts.append(
+                "<tr>"
+                f"<td>{_e(note.get('alternative'))}</td>"
+                f"<td>{_e(note.get('overlap'))}</td>"
+                f"<td>{_e(note.get('quote'))}</td>"
+                f"<td>{_e(note.get('reason'))}</td>"
+                "</tr>"
+            )
+        parts.append("</table>")
+    rescue = ev.get("rescue") if isinstance(ev.get("rescue"), dict) else None
+    if rescue:
+        comp = rescue.get("components") or {}
+        parts.append("<h2>Rescue potential</h2>")
+        parts.append("<p>This score does not change the verdict.</p>")
+        parts.append(
+            "<table><tr><th>Score</th><th>Stars</th><th>Forks</th><th>Stale days</th><th>Stars vs staleness</th>"
+            "<th>CI</th><th>External breakage</th><th>Dependabot</th><th>Renovate</th></tr>"
+            f"<tr><td>{_e(rescue.get('score'))}</td><td>{_e(comp.get('stars'))}</td><td>{_e(comp.get('forks'))}</td>"
+            f"<td>{_e(comp.get('staleness_days'))}</td><td>{_e(comp.get('stars_vs_staleness'))}</td>"
+            f"<td>{_e(comp.get('ci_state'))}</td><td>{_e(comp.get('external_breakage'))}</td>"
+            f"<td>{_e(comp.get('dependabot_open'))}</td><td>{_e(comp.get('renovate_open'))}</td></tr></table>"
+        )
 
     prob = ev.get("problem")
     if isinstance(prob, dict):

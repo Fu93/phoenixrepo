@@ -100,6 +100,16 @@ def render_md(m: dict) -> str:
     if not shown:
         lines.append("No ALREADY_EXISTS or NEEDS_REVIEW row was recorded.")
         lines.append("")
+    lines += ["", "## Rescue potential", "", "This score does not change the verdict.", ""]
+    lines += ["| Repository | Verdict | Score | Stars | Stale days | CI |", "| :--- | :---: | :---: | :---: | :---: | :--- |"]
+    ranked = list(m.get("candidates") or []) + list(m.get("ineligible") or [])
+    ranked.sort(key=lambda row: -float(((row.get("rescue_potential") or {}).get("score") or 0)))
+    for row in ranked:
+        rescue = row.get("rescue_potential") or {}
+        comp = rescue.get("components") or {}
+        lines.append(
+            f"| `{row.get('repo_id')}` | `{row.get('verdict')}` | {rescue.get('score', '')} | {comp.get('stars', '')} | {comp.get('staleness_days', '')} | {comp.get('ci_state', '')} |"
+        )
     lines += ["", m["protagonist_note"], ""]
     return "\n".join(lines)
 

@@ -977,9 +977,16 @@ class DiscoveryDecision(tuple):
     overlap, the quote that was checked, and the reason.
     """
 
-    def __new__(cls, verdict: str, reason: str, evidence: list[dict[str, str]] | None = None):
+    def __new__(
+        cls,
+        verdict: str,
+        reason: str,
+        evidence: list[dict[str, str]] | None = None,
+        must_beat: list[dict[str, str]] | None = None,
+    ):
         self = super().__new__(cls, (verdict, reason))
         self.evidence = list(evidence or [])
+        self.must_beat = list(must_beat or [])
         return self
 
 
@@ -1018,7 +1025,10 @@ def judge_discovery(
 ) -> tuple[str, str]:
     """Judge whether candidate is CANDIDATE, ALREADY_EXISTS, or NO_GO using LLM with deterministic quote verification.
 
-    Never uses repository stars or forks.
+    A verified full overlap refuses the repository only when the alternative also passes the
+    maturity rule (maintained, mature or official, matching access). Stars are used for that
+    rule, not as demand. An alternative that fails it is recorded on ``must_beat`` and does
+    not refuse the repository.
     Verifies alternative_repo against the union of prior_rows and problem_alternatives.
     Falls back to phrase/keyword decide_discovery when no RelevanceClient is configured.
     Enforces that absence is not evidence: insufficient coverage blocks CANDIDATE verdict.
@@ -1155,17 +1165,42 @@ def judge_discovery(
 
     # Deterministic verification. `picked` is what the report shows for a refusal or a review.
     picked: list[dict[str, Any]] = []
+    from datetime import date as _date
+
+    from app.agents.blocker import evaluate_blocker
+
+    must_beat: list[dict[str, str]] = []
+
+    def _blocker(row: dict[str, Any]) -> dict[str, Any]:
+        return evaluate_blocker(candidate, row, as_of=_date.today())
+
+    def _must(row: dict[str, Any], decision: dict[str, Any]) -> dict[str, str]:
+        quotes = [str(q).strip() for q in (row.get("quotes") or []) if str(q).strip()]
+        return {
+            "alternative": str(row.get("alternative_id") or row.get("url") or ""),
+            "overlap": str(row.get("overlap") or ""),
+            "quote": quotes[0] if quotes else "",
+            "reason": "did not block: " + "; ".join(decision.get("reasons") or []),
+        }
+
+    blocking_full: list[dict[str, Any]] = []
+    for row in full_overlap_rows:
+        decision = _blocker(row)
+        if decision["blocks"]:
+            blocking_full.append(row)
+        else:
+            must_beat.append(_must(row, decision))
+
     if has_source_error and raw_verdict != "ALREADY_EXISTS":
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
     elif zero_results:
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
-    elif raw_verdict == "CANDIDATE" and full_overlap_rows:
-        # The LLM called it novel, but a web alternative with a verified quote (checked against that
-        # alternative's own text) already solves the same core problem in full. A unique feature
-        # mix does not outweigh verified prior art, so the LLM's CANDIDATE is overridden.
-        m = full_overlap_rows[0]
+    elif raw_verdict == "CANDIDATE" and blocking_full:
+        # The LLM called it novel, but a verified full-overlap alternative also passes the
+        # maturity rule. A quote is still required: it was checked when the alternative was judged.
+        m = blocking_full[0]
         quotes = [str(q) for q in (m.get("quotes") or []) if str(q).strip()]
         verdict = "ALREADY_EXISTS"
         reason = (
@@ -1180,7 +1215,7 @@ def judge_discovery(
         elif not problem_quote or not quote_in_text(problem_quote, cand_text):
             verdict = "NEEDS_REVIEW"
             reason = f"unverified LLM quote: problem_quote '{problem_quote}' not found in candidate README or description"
-        elif github_partial_rows and not mainstream_overlap:
+        elif github_partial_rows and not mainstream_overlap and _blocker(github_partial_rows[0])["role"] == "mature_partial":
             m = github_partial_rows[0]
             verdict = "NEEDS_REVIEW"
             reason = (
@@ -1188,10 +1223,8 @@ def judge_discovery(
                 f"(overlap partial); a human must confirm the remaining gap before CANDIDATE"
             )
             picked = [{**m, "reason": reason}]
-        elif mainstream_overlap:
-            # An official feature, doc page or commercial product on the web solves the
-            # same problem. A unique feature mix is not proof of novelty: a human must
-            # confirm the remaining gap before this repo can be a CANDIDATE.
+        elif mainstream_overlap and _blocker(mainstream_overlap[0])["role"] == "mature_partial":
+            # A maintained official or mature product on the web solves the same problem in part.
             m = mainstream_overlap[0]
             verdict = "NEEDS_REVIEW"
             reason = (
@@ -1200,6 +1233,10 @@ def judge_discovery(
             )
             picked = [{**m, "reason": reason}]
         else:
+            for row in list(github_partial_rows) + list(mainstream_overlap):
+                decision = _blocker(row)
+                if decision["role"] != "mature_partial":
+                    must_beat.append(_must(row, decision))
             verdict = "CANDIDATE"
     elif raw_verdict == "ALREADY_EXISTS":
         # Check alternative repo matches one in combined_priors
@@ -1238,13 +1275,38 @@ def judge_discovery(
                 reason = "unverified ALREADY_EXISTS: requires at least one verified full-overlap alternative"
                 picked = [{**matched_row, "quotes": [alt_quote] if alt_quote else [], "reason": reason}]
             else:
-                verdict = "ALREADY_EXISTS"
-                picked = [{
+                named = {
                     **matched_row,
-                    "quotes": [alt_quote] if alt_quote else list(matched_row.get("quotes") or []),
                     "overlap": matched_row.get("overlap") or "full",
-                    "reason": reason,
-                }]
+                    "same_problem": True if matched_row.get("same_problem") is None else matched_row.get("same_problem"),
+                    "quotes": [alt_quote] if alt_quote else list(matched_row.get("quotes") or []),
+                }
+                # The discovery judge already called this the same product. A-E still have to pass.
+                if named.get("same_job") is None and named.get("overlap") == "full":
+                    named["same_job"] = True
+                decision = _blocker(named)
+                if decision["blocks"]:
+                    verdict = "ALREADY_EXISTS"
+                    picked = [{**named, "reason": reason}]
+                elif blocking_full:
+                    m = blocking_full[0]
+                    quotes = [str(q) for q in (m.get("quotes") or []) if str(q).strip()]
+                    verdict = "ALREADY_EXISTS"
+                    reason = (
+                        f"verified full-overlap alternative {m.get('url') or m.get('alternative_id')} already solves the same problem"
+                        + (f" (quote: '{quotes[0]}')" if quotes else "")
+                    )
+                    picked = [{**m, "quotes": quotes, "overlap": "full", "reason": reason}]
+                else:
+                    must_beat.append(_must(named, decision))
+                    why = "did not block: " + "; ".join(decision.get("reasons") or [])
+                    if problem_quote and quote_in_text(problem_quote, cand_text):
+                        verdict = "CANDIDATE"
+                        reason = f"must beat {named.get('alternative_id')}: {why}"
+                    else:
+                        verdict = "NEEDS_REVIEW"
+                        reason = f"must beat {named.get('alternative_id')}: {why}"
+                        picked = [{**named, "reason": reason}]
     elif raw_verdict == "NO_GO":
         if problem_quote and problem_quote.casefold() not in {"unknown", "none", "null", ""}:
             if not quote_in_text(problem_quote, cand_text):
@@ -1261,7 +1323,19 @@ def judge_discovery(
     clean_reason = reason.rstrip().rstrip(".")
     labeled_reason = f"{clean_reason}. Method: llm+verified quote (requested={req_m}, served={srv_m})."
     show = _evidence_rows(picked) if verdict in {"ALREADY_EXISTS", "NEEDS_REVIEW"} else []
-    return DiscoveryDecision(verdict, labeled_reason, show)
+    blocked_names = {
+        str(p.get("alternative_id") or p.get("alternative") or p.get("url") or "").casefold()
+        for p in picked
+    }
+    deduped: list[dict[str, str]] = []
+    seen_beat: set[str] = set()
+    for item in must_beat:
+        key = str(item.get("alternative") or "").casefold()
+        if not key or key in seen_beat or key in blocked_names:
+            continue
+        seen_beat.add(key)
+        deduped.append(item)
+    return DiscoveryDecision(verdict, labeled_reason, show, deduped)
 
 
 def extract_problem_statement(

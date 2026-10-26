@@ -34,6 +34,21 @@ REQUIRED = {
     "Fu93/hygen": {"ALREADY_EXISTS"},
     "SergioMendolia/ytkb": {"ALREADY_EXISTS"},
     "tharani-2006/Invoice-generator-application": {"ALREADY_EXISTS"},
+    "goodreasonai/ScrapeServ": {"ALREADY_EXISTS"},
+    "Selfdb-io/SelfDB": {"ALREADY_EXISTS"},
+    "rianvdm/raindrop-wordpress-linkblog-sync": {"ALREADY_EXISTS"},
+    "Shabi-x/go-file-sync": {"ALREADY_EXISTS"},
+    "DSRegoitia/CalendarSyncProject": {"CANDIDATE", "NEEDS_REVIEW"},
+    "samuelarogbonlo/knetvis": {"CANDIDATE", "NEEDS_REVIEW"},
+    "Carvenjizaks/gc-sync-webhook": {"CANDIDATE", "NEEDS_REVIEW"},
+    "aa12gq/stack-file-sync-vscode": {"CANDIDATE", "NEEDS_REVIEW"},
+    "ri-char/pwatch": {"CANDIDATE", "NEEDS_REVIEW"},
+    "DayanK/LinkedinSyncContacts": {"CANDIDATE", "NEEDS_REVIEW"},
+    "samwho/spacer": {"CANDIDATE", "NEEDS_REVIEW"},
+    "oleksiiluchnikov/obsidian-localtable": {"CANDIDATE", "NEEDS_REVIEW"},
+    "sealdice/qq-group-files-sync": {"CANDIDATE", "NEEDS_REVIEW"},
+    "Dhaiwat10/x402-sovereign": {"CANDIDATE", "NEEDS_REVIEW"},
+    "0xMH/fichero-printer": {"CANDIDATE", "NEEDS_REVIEW"},
 }
 
 
@@ -101,7 +116,58 @@ def validate_labels(payload: dict[str, Any]) -> list[str]:
             errors.append(f"{repo_id}: acceptable {sorted(got)} does not match the required label {sorted(expected)}")
         if repo_id == "orangekame3/mirrormate" and "ALREADY_EXISTS" in got:
             errors.append("orangekame3/mirrormate must not be labelled ALREADY_EXISTS")
+        audit = case.get("audit")
+        if isinstance(audit, dict):
+            if audit.get("class") not in {"LEGIT", "WEAK", "WRONG"}:
+                errors.append(f"{repo_id}: audit class must be LEGIT, WEAK, or WRONG")
+            if audit.get("date") != "2026-10-25":
+                errors.append(f"{repo_id}: audit date must be 2026-10-25")
+            if "phoenix_overrefusal_audit" not in str(audit.get("source") or ""):
+                errors.append(f"{repo_id}: audit source must name the over-refusal audit")
+            if not isinstance(audit.get("blocker"), dict) or not isinstance(audit.get("candidate"), dict):
+                errors.append(f"{repo_id}: audit needs candidate and blocker facts")
+            if audit.get("class") == "LEGIT" and set(case.get("acceptable") or []) != {"ALREADY_EXISTS"}:
+                errors.append(f"{repo_id}: a LEGIT audit label has to be ALREADY_EXISTS")
+            if audit.get("class") in {"WEAK", "WRONG"} and "ALREADY_EXISTS" in set(case.get("acceptable") or []):
+                errors.append(f"{repo_id}: a WEAK or WRONG audit label must not accept ALREADY_EXISTS")
     return errors
+
+
+def rule_observation(payload: dict[str, Any]) -> dict[str, Any]:
+    """Apply the maturity rule to the audit fixtures. This is not a live Nightshift score."""
+    from datetime import date
+
+    from app.agents.blocker import evaluate_blocker
+
+    over: list[str] = []
+    false: list[str] = []
+    compared = 0
+    for case in payload.get("cases") or []:
+        audit = case.get("audit") if isinstance(case, dict) else None
+        if not isinstance(audit, dict):
+            continue
+        compared += 1
+        decision = evaluate_blocker(audit.get("candidate") or {}, audit.get("blocker") or {}, as_of=date(2026, 10, 25))
+        blocked = bool(decision.get("blocks"))
+        should_block = audit.get("class") == "LEGIT"
+        repo_id = str(case.get("repo_id") or "")
+        if blocked and not should_block:
+            over.append(repo_id)
+        if should_block and not blocked:
+            false.append(repo_id)
+    return {
+        "set_size": compared,
+        "over_refusal_count": len(over),
+        "over_refusal_rate": (len(over) / compared) if compared else None,
+        "false_pass_count": len(false),
+        "false_pass_rate": (len(false) / compared) if compared else None,
+        "over_refusal": over,
+        "false_pass": false,
+        "note": (
+            "Deterministic maturity rule on the 16-case audit dated 2026-10-25. "
+            "An observation on this small set, not a live Nightshift measurement and not a rate for the other curated repositories."
+        ),
+    }
 
 
 def live_judge(repo_id: str) -> dict[str, Any]:
@@ -123,11 +189,14 @@ def evaluate(
         "live_ran": False,
         "agreement": None,
         "results": [],
+        "rule_observation": None,
+        "live_error_rates": None,
         "note": "",
     }
     if errors:
         report["note"] = "Label file failed validation. The live judge was not run."
         return report
+    report["rule_observation"] = rule_observation(payload)
     if not token_present():
         report["note"] = (
             "No METERLESS_RUNTIME_TOKEN. The label file was validated. "
@@ -175,6 +244,32 @@ def evaluate(
         })
     report["live_ran"] = True
     report["agreement"] = {"compared": compared, "agreed": agreed, "not_compared": not_compared}
+    by_id = {case["repo_id"]: case for case in payload["cases"]}
+    live_over: list[str] = []
+    live_false: list[str] = []
+    live_n = 0
+    for row in report["results"]:
+        case = by_id.get(row["repo_id"]) or {}
+        if not case.get("audit"):
+            continue
+        if not row.get("verdict"):
+            continue
+        live_n += 1
+        acceptable = set(case.get("acceptable") or [])
+        if row["verdict"] == "ALREADY_EXISTS" and "ALREADY_EXISTS" not in acceptable:
+            live_over.append(row["repo_id"])
+        if acceptable == {"ALREADY_EXISTS"} and row["verdict"] != "ALREADY_EXISTS":
+            live_false.append(row["repo_id"])
+    report["live_error_rates"] = {
+        "set_size": live_n,
+        "over_refusal_count": len(live_over),
+        "over_refusal_rate": (len(live_over) / live_n) if live_n else None,
+        "false_pass_count": len(live_false),
+        "false_pass_rate": (len(live_false) / live_n) if live_n else None,
+        "over_refusal": live_over,
+        "false_pass": live_false,
+        "note": "Live Nightshift verdicts on the audit cases in this run. Not a stored accuracy.",
+    }
     report["note"] = "Live judgements are Nightshift verdicts for this run. They are not a stored accuracy."
     return report
 

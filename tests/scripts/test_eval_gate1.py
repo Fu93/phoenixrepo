@@ -43,6 +43,11 @@ def test_without_a_token_the_runner_is_not_called(monkeypatch: pytest.MonkeyPatc
     assert report["live_ran"] is False
     assert report["agreement"] is None
     assert report["results"] == []
+    obs = report["rule_observation"]
+    assert obs["set_size"] == 16
+    assert obs["over_refusal_count"] == 0
+    assert obs["false_pass_count"] == 0
+    assert "small set" in obs["note"]
 
 
 def test_placeholder_token_does_not_count(monkeypatch: pytest.MonkeyPatch):
@@ -70,7 +75,23 @@ def test_a_token_uses_the_injected_runner_and_does_not_invent_agreement(monkeypa
     assert by_id["orangekame3/mirrormate"]["verdict"] == "ALREADY_EXISTS"
     for repo_id in ("Fu93/hygen", "SergioMendolia/ytkb", "tharani-2006/Invoice-generator-application"):
         assert by_id[repo_id]["agreed"] is True
-    assert report["agreement"] == {"compared": 4, "agreed": 3, "not_compared": 0}
+    legit = {
+        "goodreasonai/ScrapeServ",
+        "Selfdb-io/SelfDB",
+        "rianvdm/raindrop-wordpress-linkblog-sync",
+        "Shabi-x/go-file-sync",
+        "tharani-2006/Invoice-generator-application",
+    }
+    for repo_id in legit:
+        assert by_id[repo_id]["agreed"] is True
+    released = [repo_id for repo_id, row in by_id.items() if repo_id not in legit and repo_id not in {"Fu93/hygen", "SergioMendolia/ytkb"}]
+    assert len(released) == 12
+    assert all(by_id[repo_id]["agreed"] is False for repo_id in released)
+    assert report["agreement"] == {"compared": 19, "agreed": 7, "not_compared": 0}
+    live = report["live_error_rates"]
+    assert live["set_size"] == 16
+    assert live["over_refusal_count"] == 11
+    assert live["false_pass_count"] == 0
 
 
 def test_a_judge_that_returns_nothing_is_not_counted_as_agreement(monkeypatch: pytest.MonkeyPatch):
@@ -78,7 +99,7 @@ def test_a_judge_that_returns_nothing_is_not_counted_as_agreement(monkeypatch: p
     report = eg.evaluate(runner=lambda _repo_id: {})
     assert report["agreement"]["compared"] == 0
     assert report["agreement"]["agreed"] == 0
-    assert report["agreement"]["not_compared"] == 4
+    assert report["agreement"]["not_compared"] == 19
     assert all(row["verdict"] is None and row["agreed"] is False for row in report["results"])
 
 

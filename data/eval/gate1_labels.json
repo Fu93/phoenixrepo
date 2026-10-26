@@ -1,11 +1,16 @@
 {
   "fetched_at": "2026-10-25",
-  "note": "Human labels for gate 1. Each quote is a substring of text copied from the cited public page on fetched_at. This file is not a live Nightshift score.",
+  "note": "Human labels for gate 1, including the 16-case over-refusal audit dated 2026-10-25. Each quote is a substring of text stored in this file. The audit sentences quote phoenix_overrefusal_audit.md. This file is not a live Nightshift score.",
   "cases": [
     {
       "repo_id": "orangekame3/mirrormate",
-      "acceptable": ["CANDIDATE", "NEEDS_REVIEW"],
-      "forbidden": ["ALREADY_EXISTS"],
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
       "why": "The repository's own README says the agent lives in a mirror and is not a browser chat UI. A browser voice assistant that does not say it runs in a mirror is not full overlap.",
       "evidence": [
         {
@@ -33,7 +38,9 @@
     },
     {
       "repo_id": "Fu93/hygen",
-      "acceptable": ["ALREADY_EXISTS"],
+      "acceptable": [
+        "ALREADY_EXISTS"
+      ],
       "forbidden": [],
       "why": "Fu93/hygen is a fork of jondot/hygen. Its README describes a code generator that lives in the project and injects into existing files. Plop's README describes a micro-generator framework that generates code or other flat text files.",
       "evidence": [
@@ -62,7 +69,9 @@
     },
     {
       "repo_id": "SergioMendolia/ytkb",
-      "acceptable": ["ALREADY_EXISTS"],
+      "acceptable": [
+        "ALREADY_EXISTS"
+      ],
       "forbidden": [],
       "why": "ytkb syncs YouTrack knowledge-base articles to local markdown and pushes edits back. kd-cli's own description includes an idempotent push from local markdown and a pull as markdown for editing.",
       "evidence": [
@@ -84,7 +93,9 @@
     },
     {
       "repo_id": "tharani-2006/Invoice-generator-application",
-      "acceptable": ["ALREADY_EXISTS"],
+      "acceptable": [
+        "ALREADY_EXISTS"
+      ],
       "forbidden": [],
       "why": "The repository is a web application for creating professional invoices. Invoify's README describes a web-based invoice generator: fill in a form, pick a template, and get a real PDF.",
       "evidence": [
@@ -101,6 +112,852 @@
           "fetched_at": "2026-10-25",
           "quote": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF.",
           "text": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF."
+        },
+        {
+          "role": "alternative",
+          "source_url": "https://github.com/InvoicePlane/InvoicePlane",
+          "fetched_at": "2026-10-25",
+          "quote": "InvoicePlane: 3,258 stars, pushed 2026-10-25, self-hosted. Same job: create, manage and send invoices.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. InvoicePlane: 3,258 stars, pushed 2026-10-25, self-hosted. Same job: create, manage and send invoices.",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ],
+      "audit": {
+        "class": "LEGIT",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 0,
+          "forks": 0,
+          "pushed_at": "2026-02-28",
+          "open_issues": 0,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "InvoicePlane/InvoicePlane",
+          "url": "https://github.com/InvoicePlane/InvoicePlane",
+          "stars": 3258,
+          "forks": 887,
+          "pushed_at": "2026-10-25",
+          "released_at": "2026-08-28",
+          "archived": false,
+          "licence_spdx": "NOASSERTION",
+          "self_hosted": true,
+          "same_job": true,
+          "overlap": "full",
+          "page_kind": "product",
+          "host": "github"
+        }
+      }
+    },
+    {
+      "repo_id": "DSRegoitia/CalendarSyncProject",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WRONG. FullCalendar displays public Google Calendar events. The candidate pushes events the other way.",
+      "audit": {
+        "class": "WRONG",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 0,
+          "forks": 0,
+          "pushed_at": "2023-03-22",
+          "open_issues": 0,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "fullcalendar/fullcalendar",
+          "url": "https://github.com/fullcalendar/fullcalendar",
+          "stars": 20720,
+          "pushed_at": "2026-10-16",
+          "archived": false,
+          "licence_spdx": "MIT",
+          "same_job": false,
+          "overlap": "full",
+          "page_kind": "product",
+          "host": "github",
+          "free_tier": true
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/DSRegoitia/CalendarSyncProject",
+          "fetched_at": "2026-10-25",
+          "quote": "The candidate pushes events from FullCalendar into Google Calendar.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. The candidate pushes events from FullCalendar into Google Calendar.",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://github.com/fullcalendar/fullcalendar",
+          "fetched_at": "2026-10-25",
+          "quote": "The doc page says the plugin displays events from a public Google Calendar inside FullCalendar.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. The doc page says the plugin displays events from a public Google Calendar inside FullCalendar.",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "goodreasonai/ScrapeServ",
+      "acceptable": [
+        "ALREADY_EXISTS"
+      ],
+      "forbidden": [],
+      "why": "LEGIT. Gotenberg is a maintained self-hosted URL screenshot API.",
+      "audit": {
+        "class": "LEGIT",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 1174,
+          "forks": 83,
+          "pushed_at": "2025-03-09",
+          "open_issues": 4,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "gotenberg/gotenberg",
+          "url": "https://github.com/gotenberg/gotenberg",
+          "stars": 13439,
+          "pushed_at": "2026-10-25",
+          "released_at": "2026-10-15",
+          "archived": false,
+          "licence_spdx": "MIT",
+          "same_job": true,
+          "overlap": "full",
+          "page_kind": "product",
+          "host": "github",
+          "self_hosted": true
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/goodreasonai/ScrapeServ",
+          "fetched_at": "2026-10-25",
+          "quote": "self-hosted URL to screenshot API",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. self-hosted URL to screenshot API",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "alternative",
+          "source_url": "https://github.com/gotenberg/gotenberg",
+          "fetched_at": "2026-10-25",
+          "quote": "Gotenberg: 13,439 stars, MIT, pushed 2026-10-25, self-hosted Docker HTTP API",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. Gotenberg: 13,439 stars, MIT, pushed 2026-10-25, self-hosted Docker HTTP API",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "Selfdb-io/SelfDB",
+      "acceptable": [
+        "ALREADY_EXISTS"
+      ],
+      "forbidden": [],
+      "why": "LEGIT. SelfDB describes itself as a self-hosted alternative to Supabase, and Supabase is maintained.",
+      "audit": {
+        "class": "LEGIT",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 164,
+          "forks": 26,
+          "pushed_at": "2025-12-16",
+          "open_issues": 3,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "supabase/supabase",
+          "url": "https://github.com/supabase/supabase",
+          "stars": 113928,
+          "pushed_at": "2026-10-25",
+          "archived": false,
+          "licence_spdx": "Apache-2.0",
+          "same_job": true,
+          "overlap": "full",
+          "page_kind": "product",
+          "host": "github",
+          "self_hosted": true
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/Selfdb-io/SelfDB",
+          "fetched_at": "2026-10-25",
+          "quote": "SelfDB describes itself as a self-hosted, open-source alternative to Supabase and Firebase",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. SelfDB describes itself as a self-hosted, open-source alternative to Supabase and Firebase",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "alternative",
+          "source_url": "https://github.com/supabase/supabase",
+          "fetched_at": "2026-10-25",
+          "quote": "Supabase: 113,928 stars, Apache-2.0, pushed 2026-10-25",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. Supabase: 113,928 stars, Apache-2.0, pushed 2026-10-25",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "samuelarogbonlo/knetvis",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WEAK. network-policy-viewer has 34 stars and was last pushed 2024-11-28.",
+      "audit": {
+        "class": "WEAK",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 122,
+          "forks": 48,
+          "pushed_at": "2025-02-18",
+          "open_issues": 7,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "artturik/network-policy-viewer",
+          "url": "https://github.com/artturik/network-policy-viewer",
+          "stars": 34,
+          "forks": 17,
+          "pushed_at": "2024-11-28",
+          "archived": false,
+          "licence_spdx": "MIT",
+          "same_job": false,
+          "overlap": "partial",
+          "page_kind": "product",
+          "host": "github",
+          "free_tier": true
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/samuelarogbonlo/knetvis",
+          "fetched_at": "2026-10-25",
+          "quote": "knetvis is a pip-installed CLI that also tests pod connectivity and validates policies",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. knetvis is a pip-installed CLI that also tests pod connectivity and validates policies",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://github.com/artturik/network-policy-viewer",
+          "fetched_at": "2026-10-25",
+          "quote": "network-policy-viewer is 34 stars and last pushed 2024-11-28 (696 days)",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. network-policy-viewer is 34 stars and last pushed 2024-11-28 (696 days)",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "rianvdm/raindrop-wordpress-linkblog-sync",
+      "acceptable": [
+        "ALREADY_EXISTS"
+      ],
+      "forbidden": [],
+      "why": "LEGIT. IFTTT's Raindrop.io to WordPress applet is a commercial product with a free tier.",
+      "audit": {
+        "class": "LEGIT",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 3,
+          "forks": 0,
+          "pushed_at": "2025-08-29",
+          "open_issues": 0,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "ifttt-raindrop-wordpress",
+          "url": "https://ifttt.com/connect/raindrop/wordpress",
+          "same_job": true,
+          "overlap": "full",
+          "page_kind": "product",
+          "host": "web",
+          "official": true,
+          "commercial": true,
+          "free_tier": true,
+          "pricing_page": true,
+          "page_checked_at": "2026-10-25",
+          "archived": false
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/rianvdm/raindrop-wordpress-linkblog-sync",
+          "fetched_at": "2026-10-25",
+          "quote": "bookmark to WordPress post, filtered by tag",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. bookmark to WordPress post, filtered by tag",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "alternative",
+          "source_url": "https://ifttt.com/connect/raindrop/wordpress",
+          "fetched_at": "2026-10-25",
+          "quote": "IFTTT Raindrop.io to WordPress page: commercial SaaS, free tier polls hourly",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. IFTTT Raindrop.io to WordPress page: commercial SaaS, free tier polls hourly",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "Carvenjizaks/gc-sync-webhook",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WEAK. The Zapier page is a generic category page and does not name Global Control.",
+      "audit": {
+        "class": "WEAK",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 0,
+          "forks": 0,
+          "pushed_at": "2026-04-22",
+          "open_issues": 0,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "zapier-contact-form-submissions",
+          "url": "https://zapier.com/apps/categories/contact-form",
+          "page_kind": "category",
+          "same_job": false,
+          "overlap": "none",
+          "host": "web",
+          "commercial": true,
+          "page_checked_at": "2026-10-25"
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/Carvenjizaks/gc-sync-webhook",
+          "fetched_at": "2026-10-25",
+          "quote": "I could not find a real \"Global Control\" CRM with a Zapier app.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. I could not find a real \"Global Control\" CRM with a Zapier app.",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://github.com/Carvenjizaks/gc-sync-webhook",
+          "fetched_at": "2026-10-25",
+          "quote": "Zapier Contact Form Submissions category page. It does not mention Global Control.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. Zapier Contact Form Submissions category page. It does not mention Global Control.",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "aa12gq/stack-file-sync-vscode",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WEAK. Saturn is 3 stars on Codeberg and opens pull requests. The candidate is a VS Code pull-sync.",
+      "audit": {
+        "class": "WEAK",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 3,
+          "forks": 0,
+          "pushed_at": "2025-02-06",
+          "open_issues": 0,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "saturn-sync/saturn",
+          "url": "https://codeberg.org/saturn-sync/saturn",
+          "stars": 3,
+          "pushed_at": "2026-10-18",
+          "released_at": "2026-09-09",
+          "archived": false,
+          "licence_spdx": "",
+          "same_job": false,
+          "overlap": "partial",
+          "page_kind": "product",
+          "host": "codeberg"
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/aa12gq/stack-file-sync-vscode",
+          "fetched_at": "2026-10-25",
+          "quote": "The candidate is a VS Code extension that pulls glob-matched files from several repos into the workspace",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. The candidate is a VS Code extension that pulls glob-matched files from several repos into the workspace",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://codeberg.org/saturn-sync/saturn",
+          "fetched_at": "2026-10-25",
+          "quote": "Saturn is 3 stars on Codeberg. It opens PRs from a CLI.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. Saturn is 3 stars on Codeberg. It opens PRs from a CLI.",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "ri-char/pwatch",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WEAK. perf_event_open is a kernel syscall, not a product.",
+      "audit": {
+        "class": "WEAK",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 265,
+          "forks": 64,
+          "pushed_at": "2024-07-06",
+          "open_issues": 4,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "perf_event_open",
+          "url": "https://man7.org/linux/man-pages/man2/perf_event_open.2.html",
+          "page_kind": "syscall",
+          "same_job": false,
+          "overlap": "none",
+          "host": "other"
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/ri-char/pwatch",
+          "fetched_at": "2026-10-25",
+          "quote": "pwatch is a thin CLI over it",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. pwatch is a thin CLI over it",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://github.com/ri-char/pwatch",
+          "fetched_at": "2026-10-25",
+          "quote": "perf_event_open is a kernel syscall that pwatch wraps, not a product.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. perf_event_open is a kernel syscall that pwatch wraps, not a product.",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "DayanK/LinkedinSyncContacts",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WEAK. The blocker is a vendor listicle, not a product page.",
+      "audit": {
+        "class": "WEAK",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 0,
+          "forks": 0,
+          "pushed_at": "2025-12-15",
+          "open_issues": 0,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "connectsafely-listicle",
+          "url": "https://connectsafely.ai/articles/best-linkedin-sales-navigator-extensions",
+          "page_kind": "listicle",
+          "same_job": false,
+          "overlap": "none",
+          "host": "web",
+          "commercial": true,
+          "page_checked_at": "2026-10-25"
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/DayanK/LinkedinSyncContacts",
+          "fetched_at": "2026-10-25",
+          "quote": "The listed tools serve sales prospecting.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. The listed tools serve sales prospecting.",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://github.com/DayanK/LinkedinSyncContacts",
+          "fetched_at": "2026-10-25",
+          "quote": "ConnectSafely article 7 Best LinkedIn Sales Navigator Extensions. A vendor listicle, not a product.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. ConnectSafely article 7 Best LinkedIn Sales Navigator Extensions. A vendor listicle, not a product.",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "Shabi-x/go-file-sync",
+      "acceptable": [
+        "ALREADY_EXISTS"
+      ],
+      "forbidden": [],
+      "why": "LEGIT. qrcp sends files between a computer and a phone over the LAN via a QR code.",
+      "audit": {
+        "class": "LEGIT",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 2,
+          "forks": 0,
+          "pushed_at": "2025-10-05",
+          "open_issues": 0,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "claudiodangelis/qrcp",
+          "url": "https://github.com/claudiodangelis/qrcp",
+          "stars": 10526,
+          "forks": 551,
+          "pushed_at": "2026-10-01",
+          "released_at": "2026-09-30",
+          "archived": false,
+          "licence_spdx": "MIT",
+          "same_job": true,
+          "overlap": "full",
+          "page_kind": "product",
+          "host": "github",
+          "free_tier": true
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/Shabi-x/go-file-sync",
+          "fetched_at": "2026-10-25",
+          "quote": "Same job: send files between computer and phone over the LAN via a QR code.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. Same job: send files between computer and phone over the LAN via a QR code.",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "alternative",
+          "source_url": "https://github.com/claudiodangelis/qrcp",
+          "fetched_at": "2026-10-25",
+          "quote": "claudiodangelis/qrcp: 10,526 stars, MIT, pushed 2026-10-01",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. claudiodangelis/qrcp: 10,526 stars, MIT, pushed 2026-10-01",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "samwho/spacer",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WEAK. tailer is a clone with 126 stars, last pushed 2023-07-01.",
+      "audit": {
+        "class": "WEAK",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 1818,
+          "forks": 24,
+          "pushed_at": "2025-08-30",
+          "open_issues": 0,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "hionay/tailer",
+          "url": "https://github.com/hionay/tailer",
+          "stars": 126,
+          "forks": 3,
+          "pushed_at": "2023-07-01",
+          "archived": false,
+          "licence_spdx": "MIT",
+          "same_job": true,
+          "overlap": "full",
+          "page_kind": "product",
+          "host": "github",
+          "free_tier": true
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/samwho/spacer",
+          "fetched_at": "2026-10-25",
+          "quote": "spacer itself is healthy: 7 contributors, on Homebrew and crates.io.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. spacer itself is healthy: 7 contributors, on Homebrew and crates.io.",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://github.com/samwho/spacer",
+          "fetched_at": "2026-10-25",
+          "quote": "tailer is a Go clone of spacer: 126 stars versus 1,818 stars, last push 2023-07-01 (1212 days).",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. tailer is a Go clone of spacer: 126 stars versus 1,818 stars, last push 2023-07-01 (1212 days).",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "oleksiiluchnikov/obsidian-localtable",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WEAK. Auto Note Importer has 18 stars and only partial overlap.",
+      "audit": {
+        "class": "WEAK",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 0,
+          "forks": 0,
+          "pushed_at": "2026-04-15",
+          "open_issues": 0,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "uppinote20/obsidian-auto-note-importer",
+          "url": "https://github.com/uppinote20/obsidian-auto-note-importer",
+          "stars": 18,
+          "forks": 2,
+          "pushed_at": "2026-10-04",
+          "released_at": "2026-10-04",
+          "archived": false,
+          "licence_spdx": "MIT",
+          "same_job": false,
+          "overlap": "partial",
+          "same_problem": true,
+          "page_kind": "product",
+          "host": "github",
+          "free_tier": true
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/oleksiiluchnikov/obsidian-localtable",
+          "fetched_at": "2026-10-25",
+          "quote": "localtable's headline feature is browsing linked records from existing notes plus syncing note links.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. localtable's headline feature is browsing linked records from existing notes plus syncing note links.",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://github.com/oleksiiluchnikov/obsidian-localtable",
+          "fetched_at": "2026-10-25",
+          "quote": "Auto Note Importer is 18 stars, pushed 2026-10-04, and overlaps only partly with what localtable does.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. Auto Note Importer is 18 stars, pushed 2026-10-04, and overlaps only partly with what localtable does.",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "sealdice/qq-group-files-sync",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WEAK. The Python port has 5 stars and credits the candidate as its source.",
+      "audit": {
+        "class": "WEAK",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 5,
+          "forks": 2,
+          "pushed_at": "2025-09-27",
+          "open_issues": 1,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "lyjjl/qq-group-files-sync-python",
+          "url": "https://github.com/lyjjl/qq-group-files-sync-python",
+          "stars": 5,
+          "forks": 1,
+          "pushed_at": "2026-02-19",
+          "archived": false,
+          "licence_spdx": "MIT",
+          "same_job": true,
+          "overlap": "full",
+          "page_kind": "product",
+          "host": "github",
+          "free_tier": true
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/sealdice/qq-group-files-sync",
+          "fetched_at": "2026-10-25",
+          "quote": "credits the candidate (5★, pushed 2025-09-27) as its source.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. credits the candidate (5★, pushed 2025-09-27) as its source.",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://github.com/sealdice/qq-group-files-sync",
+          "fetched_at": "2026-10-25",
+          "quote": "lyjjl's port is 5 stars (pushed 2026-02-19) and credits the candidate as its source.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. lyjjl's port is 5 stars (pushed 2026-02-19) and credits the candidate as its source.",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "Dhaiwat10/x402-sovereign",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WRONG. The docs page is for sellers using a hosted facilitator. The candidate is a self-hosted facilitator.",
+      "audit": {
+        "class": "WRONG",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 62,
+          "forks": 16,
+          "pushed_at": "2025-10-25",
+          "open_issues": 1,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "docs.x402.org/quickstart-sellers",
+          "url": "https://docs.x402.org/getting-started/quickstart-sellers",
+          "page_kind": "docs_other_mode",
+          "same_job": false,
+          "overlap": "none",
+          "host": "web",
+          "official": true,
+          "page_checked_at": "2026-10-25"
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/Dhaiwat10/x402-sovereign",
+          "fetched_at": "2026-10-25",
+          "quote": "The candidate is a self-hosted facilitator.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. The candidate is a self-hosted facilitator.",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://docs.x402.org/getting-started/quickstart-sellers",
+          "fetched_at": "2026-10-25",
+          "quote": "The docs page integrates with hosted facilitators.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. The docs page integrates with hosted facilitators.",
+          "source": "phoenix_overrefusal_audit.md"
+        }
+      ]
+    },
+    {
+      "repo_id": "0xMH/fichero-printer",
+      "acceptable": [
+        "CANDIDATE",
+        "NEEDS_REVIEW"
+      ],
+      "forbidden": [
+        "ALREADY_EXISTS"
+      ],
+      "why": "WRONG. mx11-printer drives a different printer model and has 1 star.",
+      "audit": {
+        "class": "WRONG",
+        "date": "2026-10-25",
+        "source": "phoenix_overrefusal_audit.md",
+        "candidate": {
+          "stars": 305,
+          "forks": 74,
+          "pushed_at": "2026-03-02",
+          "open_issues": 17,
+          "free": true,
+          "self_hostable": true
+        },
+        "blocker": {
+          "alternative_id": "Adano89859/mx11-printer",
+          "url": "https://github.com/Adano89859/mx11-printer",
+          "stars": 1,
+          "forks": 0,
+          "pushed_at": "2026-07-22",
+          "archived": false,
+          "licence_spdx": "MIT",
+          "same_job": false,
+          "overlap": "none",
+          "page_kind": "product",
+          "host": "github",
+          "free_tier": true
+        }
+      },
+      "evidence": [
+        {
+          "role": "candidate",
+          "source_url": "https://github.com/0xMH/fichero-printer",
+          "fetched_at": "2026-10-25",
+          "quote": "fichero-printer targets the Fichero D11s (AiYin D11s).",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. fichero-printer targets the Fichero D11s (AiYin D11s).",
+          "source": "phoenix_overrefusal_audit.md"
+        },
+        {
+          "role": "counterexample",
+          "source_url": "https://github.com/Adano89859/mx11-printer",
+          "fetched_at": "2026-10-25",
+          "quote": "mx11-printer (1 star, created 2026-07-21) supports a different printer model.",
+          "text": "phoenix_overrefusal_audit.md, scan date 2026-10-25. mx11-printer (1 star, created 2026-07-21) supports a different printer model.",
+          "source": "phoenix_overrefusal_audit.md"
         }
       ]
     }

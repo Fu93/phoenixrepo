@@ -403,6 +403,10 @@ def test_full_overlap_verified_alternative_leads_to_already_exists(tmp_path: Pat
             "excerpt": "Free open-source web app to generate PDF invoices directly from your browser.",
             "overlap": "full",
             "same_problem": True,
+            "stars": 800,
+            "pushed_at": "2026-09-01T00:00:00Z",
+            "archived": False,
+            "page_kind": "product",
         }
     ]
 
@@ -577,6 +581,10 @@ def test_judge_discovery_verifies_against_union_of_prior_art_csv_and_problem_sea
             "url": "https://github.com/al1abb/invoify",
             "licence_spdx": "MIT",
             "excerpt": "Invoify is a free, web-based invoice generator built with Next.js",
+            "stars": 6376,
+            "pushed_at": "2026-08-24T02:55:34Z",
+            "archived": False,
+            "page_kind": "product",
         }
     ]
     # (b) alternative from problem-based search
@@ -685,7 +693,11 @@ def test_mocked_live_call_with_latency_is_not_cache_hit_until_second_call(tmp_pa
 
 
 def test_ytkb_regression_with_fixtures_becomes_already_exists(tmp_path: Path):
-    """Task 6: ytkb regression: fixtures containing yt-cli snippet -> ytkb must become ALREADY_EXISTS."""
+    """A zero-star docs hit with a verified quote does not refuse the repository.
+
+    The quote is still checked. Without maintenance and maturity facts the alternative
+    is recorded as something to beat, not as ALREADY_EXISTS.
+    """
     fixtures_dir = Path(__file__).resolve().parent.parent / "fixtures" / "prior_art"
     ddg_html = (fixtures_dir / "ddg_search_results.html").read_text(encoding="utf-8")
     npm_json = (fixtures_dir / "npm_search_results.json").read_text(encoding="utf-8")
@@ -767,7 +779,7 @@ def test_ytkb_regression_with_fixtures_becomes_already_exists(tmp_path: Path):
     )
     assert len(problem_alts) > 0
 
-    verdict, reason = judge_discovery(
+    judged = judge_discovery(
         candidate=candidate,
         prior_rows=[],
         demand_rows=[],
@@ -777,8 +789,11 @@ def test_ytkb_regression_with_fixtures_becomes_already_exists(tmp_path: Path):
         source_counts=search_results.source_counts,
         insufficient_coverage=search_results.insufficient_coverage,
     )
-    assert verdict == "ALREADY_EXISTS"
-    assert "yt-cli" in reason
+    verdict, reason = judged
+    assert verdict != "ALREADY_EXISTS"
+    assert judged.must_beat
+    assert any("yt-cli" in str(item.get("alternative")) for item in judged.must_beat)
+    assert "did not block" in reason or "did not block" in judged.must_beat[0]["reason"]
 
 
 def test_zero_results_across_all_sources_yields_needs_review_insufficient_coverage(tmp_path: Path):
@@ -930,6 +945,13 @@ def test_verified_already_exists_survives_one_source_error(tmp_path: Path):
             "readme": "Fetch an article's content from YouTrack and save it to a local markdown file.",
             "overlap": "full",
             "same_problem": True,
+            "stars": 400,
+            "pushed_at": "2026-08-01T00:00:00Z",
+            "archived": False,
+            "licence_spdx": "MIT",
+            "free_tier": True,
+            "page_kind": "product",
+            "host": "other",
         }
     ]
 
@@ -1035,6 +1057,15 @@ def test_web_same_problem_partial_overlap_blocks_candidate(tmp_path: Path):
         "same_problem": True,
         "overlap": "partial",
         "excerpt": "Built-in invoice automation.",
+        "official": True,
+        "commercial": True,
+        "pricing_page": True,
+        "free_tier": True,
+        "released_at": "2026-09-01",
+        "page_checked_at": "2026-10-01",
+        "page_kind": "product",
+        "archived": False,
+        "host": "web",
     }
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
     verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[web_alt])
@@ -1331,6 +1362,15 @@ def test_web_full_overlap_with_quote_overrides_llm_candidate(tmp_path: Path):
         "overlap": "full",
         "quotes": ["Built-in invoice automation"],
         "excerpt": "Built-in invoice automation.",
+        "official": True,
+        "commercial": True,
+        "pricing_page": True,
+        "free_tier": True,
+        "released_at": "2026-09-01",
+        "page_checked_at": "2026-10-01",
+        "page_kind": "product",
+        "archived": False,
+        "host": "web",
     }
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
     verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[web_alt])
@@ -1345,6 +1385,11 @@ def test_github_full_overlap_with_quote_overrides_llm_candidate(tmp_path: Path):
         "same_problem": True,
         "overlap": "full",
         "quotes": ["sync local Markdown files with YouTrack Knowledge Base articles"],
+        "stars": 250,
+        "pushed_at": "2026-09-15T00:00:00Z",
+        "archived": False,
+        "licence_spdx": "MIT",
+        "page_kind": "product",
     }
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
     verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[gh_alt])
@@ -1353,7 +1398,17 @@ def test_github_full_overlap_with_quote_overrides_llm_candidate(tmp_path: Path):
 
 
 def test_github_partial_overlap_blocks_candidate(tmp_path: Path):
-    gh_alt = {"alternative_id": "someone/tool", "url": "https://github.com/someone/tool", "same_problem": True, "overlap": "partial"}
+    gh_alt = {
+        "alternative_id": "someone/tool",
+        "url": "https://github.com/someone/tool",
+        "same_problem": True,
+        "overlap": "partial",
+        "stars": 250,
+        "pushed_at": "2026-09-15T00:00:00Z",
+        "archived": False,
+        "licence_spdx": "MIT",
+        "page_kind": "product",
+    }
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
     verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[gh_alt])
     assert verdict == "NEEDS_REVIEW"

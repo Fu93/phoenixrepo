@@ -198,7 +198,10 @@ def make_relevance_client(snapshot: Path):
 
 
 def default_runner(snapshot: Path, client, log_dir: Path) -> Callable[[str], dict[str, Any]]:
+    from app.agents.repo_facts import RepoFactsClient
     from scripts.score_candidates import score_all
+
+    facts = RepoFactsClient(cache_dir=snapshot / ".cache" / "repo_facts")
 
     def run(repo_id: str) -> dict[str, Any]:
         dest = log_dir / "rerun-snaps" / repo_id.replace("/", "__")
@@ -212,6 +215,7 @@ def default_runner(snapshot: Path, client, log_dir: Path) -> Callable[[str], dic
             run_id=f"rerun-{safe}",
             log_dir=log_dir,
             relevance_client=client,
+            facts_client=facts,
             command_str="scripts/rerun_unjudged.py",
         )
 
