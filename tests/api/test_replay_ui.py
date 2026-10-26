@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from api.run import app
 from app.agents.rescue import from_candidate_row
-from app.replay_ui import step_from_event
+from app.replay_ui import step_from_event, verdict_reasoning
 
 ROOT = Path(__file__).resolve().parents[2]
 CLIENT = TestClient(app)
@@ -36,6 +36,7 @@ def test_ui_is_static_html_without_a_cdn():
 def test_replay_catalog_lists_recorded_cases_and_the_gaps():
     body = CLIENT.get("/api/replays").json()
     ids = [row["id"] for row in body["replays"]]
+    assert ids[0] == "nemotron-ui-fixture"
     assert "invoice-already-exists" in ids
     assert "invoice-gate2-sample" in ids
     assert "hygen-already-exists-quote" in ids
@@ -371,3 +372,21 @@ def test_verdict_card_carries_the_nemotron_reasoning_and_share(tmp_path, monkeyp
     assert body["models"]["discarded_by_policy"] == 1
     page = CLIENT.get("/ui").text
     assert "Nemotron's reasoning" in page and "answers by NVIDIA Nemotron" in page
+
+
+def test_standin_reasoning_is_not_labelled_as_nemotron():
+    found = verdict_reasoning(
+        [
+            {
+                "action": "LLM_CALL",
+                "status": "ok",
+                "served_model": "deterministic-rule-standin",
+                "input_summary": {"step": "discovery", "repo_id": "sample/x"},
+                "output_summary": {"reasoning": "stand-in text", "served_model": "deterministic-rule-standin"},
+            }
+        ],
+        "sample/x",
+    )
+    assert found is not None
+    assert found["nemotron"] is False
+    assert found["text"] == "stand-in text"

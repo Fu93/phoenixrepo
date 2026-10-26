@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>PhoenixRepo replay</title>
 <style>
   :root {
@@ -34,6 +35,7 @@
   .missing { background: var(--card); border: 1px solid var(--line); padding: 12px 14px; margin: 16px 0; }
   .missing li { margin: 0 0 6px; }
   .replay-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 18px; }
+  .replay-list button { max-width: 100%; white-space: normal; text-align: left; }
   button, input {
     font: inherit;
     color: var(--ink);
@@ -59,7 +61,7 @@
     padding: 8px;
     resize: none;
   }
-  .controls { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
   .step {
     display: grid;
     grid-template-columns: 2.2rem 1fr;
@@ -96,20 +98,23 @@
   input[type="url"], input[type="text"] { width: min(100%, 520px); padding: 8px; border: 1px solid var(--ink); background: white; }
   @media (max-width: 800px) {
     .layout { grid-template-columns: 1fr; }
+    header, main { padding: 16px 12px; }
     h1 { font-size: 26px; }
+    .step { grid-template-columns: 1.6rem 1fr; }
   }
   blockquote.reasoning { white-space: pre-wrap; max-height: 16rem; overflow: auto; font-size: 0.92em; }
   /* Hashes, URLs and model ids are long unbroken strings; let them wrap on a phone. */
-  .panel, .banner, .step, #verdict-body, #served-models, #chain-result { overflow-wrap: anywhere; }
+  .panel, .banner, .step, #verdict-body, #served-models, #chain-result, #chain-status, #play-status, #missing { overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
 <header>
   <h1>PhoenixRepo gate 1, replayed</h1>
-  <p class="lede">A full recorded refusal, with no Nightshift token, no network, and no Docker. The timeline walks a committed file. The verdict card reads the same files.</p>
+  <p class="lede">Committed replays, with no Nightshift token, no network, and no Docker. The first card is a SAMPLE UI fixture for the Nemotron answer count and reasoning. The other cards are SAMPLE seals over files already in this repository, not Nightshift logs.</p>
   <div class="banner sample-hero" id="sample-explainer">
-    <strong>SAMPLE.</strong> Every replay shipped in this repository is a SAMPLE hash chain sealed here over copies of committed files. It is not a Nightshift log. The label stays on the timeline and on the verdict card. A trace you import with the command below is labelled RECORDED: the JSONL is copied unchanged.
+    <strong>SAMPLE.</strong> Every replay shipped in this repository is a SAMPLE hash chain sealed here over copies of committed files. It is not a Nightshift log. The label stays on the timeline and on the verdict card. The Nemotron model ids on the fixture card were written by <span>scripts/build_replays.py</span> so the badge renders offline. They are not a measured Nightshift serve. A trace you import with the command below is labelled RECORDED: the JSONL is copied unchanged.
   </div>
+  <noscript><p class="banner">This page needs JavaScript to load the replays. It does not call a model API.</p></noscript>
   <h2>Swap in a real trace</h2>
   <p>No JSON editing. The script checks the hash chain, copies <span>logs/trace-*.jsonl</span> byte for byte, writes the verdict row, and adds the replay to <span>data/replays/manifest.json</span>. When the verdict file lists more than one repository, pass <span>--repo owner/name</span>. Running it again for the same id replaces that replay.</p>
   <textarea class="command" id="import-command" readonly rows="2">python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scores.json</textarea>
@@ -143,7 +148,7 @@
   </div>
   <section class="panel chain" id="chain">
     <h2>Hash chain</h2>
-    <p class="muted">Verification uses the same check as <span>scripts/verify_trace.py</span>. The chain shows the file was not edited after it was sealed. It does not show the words are true. Flip one character changes a server copy only.</p>
+    <p class="muted">The PASS line is the hash check inside <span>scripts/verify_trace.py</span>. It shows the file was not edited after it was sealed. It does not show the words are true. The command also exits 1 when a served model is outside nvidia/nemotron-*; this page does not. Flip one character changes a server copy only.</p>
     <p id="chain-status">No replay loaded.</p>
     <button type="button" id="tamper">Flip one character and verify the copy</button>
     <pre id="chain-result"></pre>
@@ -183,6 +188,14 @@
 
   function modelLabel(value) {
     return value ? value : "not recorded";
+  }
+
+  function linkOrText(url, label) {
+    var text = label || url || "";
+    if (/^https?:\/\//i.test(String(url || ""))) {
+      return "<a href=\"" + esc(url) + "\">" + esc(text) + "</a>";
+    }
+    return esc(text);
   }
 
   function renderMissing(rows) {
@@ -275,7 +288,7 @@
     var refuse = name === "ALREADY_EXISTS" || name === "NO_GO" || gate.state === "NOT_ATTEMPTED_GATE1";
     var alts = (card.alternatives || []).map(function (alt) {
       return "<li><strong>" + esc(alt.name) + "</strong> " +
-        (alt.url ? "<a href=\"" + esc(alt.url) + "\">" + esc(alt.url) + "</a>" : "") +
+        (alt.url ? linkOrText(alt.url) : "") +
         (alt.origin ? "<br><small>source " + esc(alt.origin) + "</small>" : "") +
         (alt.stars != null && alt.stars !== "" ? "<br><small>stars " + esc(alt.stars) + "</small>" : "") +
         (alt.overlap ? "<br><small>overlap " + esc(alt.overlap) + "</small>" : "") +
@@ -302,29 +315,37 @@
     var usedAnswers = models.answers_used || 0;
     var nemotronBadge = usedAnswers
       ? "<p><span class=\"flag" + (models.answers_by_nemotron === usedAnswers ? " quiet" : "") + "\">" +
-        esc(models.answers_by_nemotron || 0) + " of " + esc(usedAnswers) + " answers by NVIDIA Nemotron</span></p>"
+        esc(models.answers_by_nemotron || 0) + " of " + esc(usedAnswers) + " answers by NVIDIA Nemotron</span></p>" +
+        (replay.trace_class === "SAMPLE"
+          ? "<p class=\"muted\">SAMPLE trace. This count is read from the sealed file. It is not a live Nightshift measurement.</p>"
+          : "")
       : "";
     var thought = replay.verdict_reasoning;
     var thoughtHtml = "";
     if (thought && thought.text) {
+      var via = "";
+      if (thought.provider && thought.provider !== "nightshift") {
+        via = " via " + esc(thought.provider);
+      } else if (replay.trace_class !== "SAMPLE") {
+        via = " via Meterless Nightshift";
+      }
       thoughtHtml =
         "<h2>" + (thought.nemotron ? "Nemotron's reasoning" : "Model reasoning") + "</h2>" +
-        "<p class=\"muted\">Written by " + esc(thought.served_model || "an unrecorded model") +
-        (thought.provider && thought.provider !== "nightshift" ? " via " + esc(thought.provider) : " via Meterless Nightshift") +
+        "<p class=\"muted\">Written by " + esc(thought.served_model || "an unrecorded model") + via +
         " (step " + esc(thought.step_index) + "). It is the model's account; the verdict stands only on the verbatim quote below.</p>" +
         "<blockquote class=\"reasoning\">" + esc(thought.text) + "</blockquote>";
     }
     node.innerHTML =
       "<p class=\"verdict-name" + (refuse ? " refuse" : "") + "\">" + esc(name) + "</p>" +
       nemotronBadge +
-      "<p><span class=\"flag quiet\">" + esc(replay.data_class) + "</span> <span class=\"" + (replay.trace_class === "SAMPLE" ? "flag" : "flag quiet") + "\">" + esc(replay.trace_class) + "</span></p>" +
-      "<p>" + (replay.repo_url ? "<a href=\"" + esc(replay.repo_url) + "\">" + esc(replay.repo_id) + "</a>" : esc(replay.repo_id)) + "</p>" +
+      "<p><span class=\"flag quiet\">data " + esc(replay.data_class) + "</span> <span class=\"" + (replay.trace_class === "SAMPLE" ? "flag" : "flag quiet") + "\">trace " + esc(replay.trace_class) + "</span></p>" +
+      "<p>" + (replay.repo_url ? linkOrText(replay.repo_url, replay.repo_id) : esc(replay.repo_id)) + "</p>" +
       acceptable +
       "<p>" + esc(card.reason || "") + "</p>" +
       thoughtHtml +
       "<h2>Verbatim quote</h2>" +
       "<blockquote>" + esc(card.quote || "") + "</blockquote>" +
-      "<p><a href=\"" + esc(card.quote_source_url || "#") + "\">" + esc(card.quote_source_url || "") + "</a></p>" +
+      "<p>" + (card.quote_source_url ? linkOrText(card.quote_source_url) : "") + "</p>" +
       "<p class=\"muted\">Copied from " + esc(card.quote_source_path || "") + ".</p>" +
       "<h2>Alternatives</h2><ul>" + alts + "</ul>" +
       rescueHtml +
@@ -332,8 +353,9 @@
       "<p>State: " + esc(gate.state || "not recorded") + "</p>" +
       (gate.reason ? "<p>" + esc(gate.reason) + "</p>" : "") +
       "<p>" + esc(gate.why || "") + "</p>" +
-      "<blockquote>" + esc(gate.rule_quote || "") + "</blockquote>" +
-      "<p class=\"muted\">Rule copied from " + esc(gate.rule_source || "") + ". historical_trace " + esc(gate.historical_trace) + ".</p>";
+      (gate.rule_quote ? "<blockquote>" + esc(gate.rule_quote) + "</blockquote>" : "") +
+      "<p class=\"muted\">" + (gate.rule_source ? "Rule copied from " + esc(gate.rule_source) + ". " : "") +
+      "historical_trace " + esc(gate.historical_trace) + ".</p>";
   }
 
   function renderChain() {
@@ -344,9 +366,8 @@
     var line = check.ok ? "PASS" : "FAIL";
     var extra = "";
     if (recorded && recorded.run_hash) {
-      extra = " Recorded run " + recorded.run_id + " hash " + recorded.run_hash +
-        " is in " + recorded.source + ". jsonl_committed " + recorded.jsonl_committed +
-        ". This page's seal is a different hash.";
+      extra = " This file's seal is the hash above. A separate run hash for " + recorded.run_id +
+        " is stored in " + recorded.source + " (jsonl_committed " + recorded.jsonl_committed + ").";
     }
     textOf("chain-status", line + " " + (check.detail || "") + "." + extra);
     document.getElementById("chain-status").className = check.ok ? "ok" : "fail";
@@ -388,11 +409,18 @@
   function loadReplay(id) {
     stop();
     return fetch("/api/replays/" + encodeURIComponent(id)).then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
       return response.json();
     }).then(function (body) {
+      if (!body || body.error) {
+        textOf("play-status", (body && body.error && (body.error.message || body.error)) || "Replay failed to load.");
+        return;
+      }
       state.current = body;
       state.index = 0;
       render();
+    }).catch(function (error) {
+      textOf("play-status", error && error.message ? error.message : "Replay failed to load.");
     });
   }
 
@@ -439,11 +467,18 @@
     var result = document.getElementById("chain-result");
     result.textContent = "Checking a one-character copy…";
     fetch("/api/replays/" + encodeURIComponent(state.current.id) + "/tamper", { method: "POST" })
-      .then(function (response) { return response.json(); })
+      .then(function (response) {
+        if (!response.ok && response.status !== 409) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
       .then(function (body) {
         var line = body.ok ? "PASS" : "FAIL";
-        result.textContent = line + "\n" + (body.detail || body.error && body.error.message || "") +
+        var detail = body.detail || (body.error && (body.error.message || body.error)) || "";
+        result.textContent = line + "\n" + detail +
           "\n" + (body.changed || "") + "\ncommitted file modified: " + body.file_modified;
+      })
+      .catch(function (error) {
+        result.textContent = "FAIL\n" + (error && error.message ? error.message : "Tamper check failed.");
       });
   });
 
@@ -469,16 +504,26 @@
       return response.text().then(function (text) {
         result.textContent = "HTTP " + response.status + "\n" + text;
       });
+    }).catch(function (error) {
+      result.textContent = error && error.message ? error.message : "POST /judge failed.";
     });
   });
 
-  fetch("/api/replays").then(function (response) { return response.json(); }).then(function (body) {
+  fetch("/api/replays").then(function (response) {
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    return response.json();
+  }).then(function (body) {
     state.replays = body.replays || [];
     renderMissing(body.missing || []);
     renderList();
     if (state.replays.length) return loadReplay(state.replays[0].id);
+  }).catch(function (error) {
+    document.getElementById("missing").innerHTML =
+      "<strong>The replay catalog did not load.</strong><p>" + esc(error && error.message ? error.message : error) + "</p>";
   });
-  loadLive();
+  loadLive().catch(function () {
+    textOf("live-reason", "Could not check whether a Nightshift token is configured. Replay mode does not need one.");
+  });
 })();
 </script>
 </body>

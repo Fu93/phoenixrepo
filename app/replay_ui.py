@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agents.rescue import from_candidate_row
-from config.settings import model_mismatch
+from config.settings import is_nemotron_family, model_mismatch
 from scripts.verify_trace import verify
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -125,7 +125,7 @@ def verdict_reasoning(events: list[dict[str, Any]], repo_id: str) -> dict[str, A
             "text": _clip(text, 1500),
             "served_model": str(served or ""),
             "provider": str(output.get("provider") or "nightshift"),
-            "nemotron": not model_mismatch(served),
+            "nemotron": is_nemotron_family(served),
             "step_index": index,
         }
     return found

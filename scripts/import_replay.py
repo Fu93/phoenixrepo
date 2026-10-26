@@ -8,6 +8,11 @@ object. The manifest is updated. Nothing in the catalog is hand-edited.
     python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scores.json
 
 When the verdict file lists more than one repository, pass ``--repo owner/name``.
+A replay ``record.json`` (``verdict`` is an object with a string ``verdict``) is
+accepted too, so a bundled example can be imported without a private scores file:
+
+    python scripts/import_replay.py data/replays/invoice-already-exists/trace.jsonl \\
+        --verdict data/replays/invoice-already-exists/record.json --replays-dir /tmp/replays
 """
 
 from __future__ import annotations
@@ -107,9 +112,68 @@ def _rows(data: Any) -> list[dict[str, Any]]:
     if "ineligible" in data or "candidates" in data:
         rows = list(data.get("candidates") or []) + list(data.get("ineligible") or [])
         return [row for row in rows if isinstance(row, dict) and row.get("repo_id")]
-    if data.get("repo_id") and data.get("verdict"):
+    replay = _row_from_replay_record(data)
+    if replay is not None:
+        return [replay]
+    if data.get("repo_id") and isinstance(data.get("verdict"), str) and data.get("verdict"):
         return [data]
     raise ImportError("verdict file has no repository rows")
+
+
+def _row_from_replay_record(data: dict[str, Any]) -> dict[str, Any] | None:
+    """A bundled ``record.json`` stores the verdict card as an object, not a string."""
+
+    card = data.get("verdict")
+    if not isinstance(card, dict) or not data.get("repo_id"):
+        return None
+    if "verdict_kind" not in card and "quote" not in card and "reason" not in card:
+        return None
+    name = card.get("verdict")
+    if name is not None and not isinstance(name, str):
+        raise ImportError("verdict.verdict must be a string")
+    row: dict[str, Any] = {
+        "repo_id": data["repo_id"],
+        "repo_url": data.get("repo_url") or "",
+        "verdict": name or "",
+        "reason": str(card.get("reason") or ""),
+        "decision_evidence": _evidence_from_replay_card(card),
+    }
+    if isinstance(card.get("gate2"), dict):
+        row["gate2"] = card["gate2"]
+    if isinstance(data.get("rescue_inputs"), dict):
+        row["rescue_inputs"] = data["rescue_inputs"]
+    if isinstance(data.get("rescue_potential"), dict):
+        row["rescue_potential"] = data["rescue_potential"]
+    return row
+
+
+def _evidence_from_replay_card(card: dict[str, Any]) -> list[dict[str, Any]]:
+    stored = card.get("decision_evidence")
+    if isinstance(stored, list) and stored:
+        return [item for item in stored if isinstance(item, dict)]
+    evidence: list[dict[str, Any]] = []
+    for alt in card.get("alternatives") or []:
+        if not isinstance(alt, dict):
+            continue
+        evidence.append(
+            {
+                "alternative": alt.get("name") or alt.get("alternative") or "",
+                "url": alt.get("url") or "",
+                "overlap": alt.get("overlap") or "",
+                "quote": alt.get("quote") or "",
+                "reason": alt.get("note") or alt.get("reason") or "",
+            }
+        )
+    if not evidence and card.get("quote"):
+        evidence.append(
+            {
+                "alternative": "",
+                "url": card.get("quote_source_url") or "",
+                "quote": card.get("quote") or "",
+                "reason": "",
+            }
+        )
+    return evidence
 
 
 def _select(rows: list[dict[str, Any]], repo: str | None) -> dict[str, Any]:
@@ -160,8 +224,13 @@ def _record(replay_id: str, row: dict[str, Any], data: dict[str, Any], verdict: 
         )
         rescue.setdefault("inputs_source", str(verdict))
         card["rescue"] = rescue
+    stored_gate2 = row.get("gate2") if isinstance(row.get("gate2"), dict) else None
+    if stored_gate2 is not None:
+        card["gate2"] = stored_gate2
     run = data if data is not row else {}
-    return {
+    if isinstance(data.get("recorded_run"), dict):
+        run = data["recorded_run"]
+    record = {
         "id": replay_id,
         "title": f"{repo_id} — recorded {verdict_name}",
         "repo_id": repo_id,
@@ -170,7 +239,7 @@ def _record(replay_id: str, row: dict[str, Any], data: dict[str, Any], verdict: 
         "trace_class": "RECORDED",
         "banner": (
             "RECORDED trace. The JSONL was copied unchanged from the source file. "
-            "The hash chain is the original chain, not a SAMPLE seal."
+            "The hash chain is the chain in that file."
         ),
         "summary": f"Copied unchanged from a trace file. Verdict {verdict_name} for {repo_id}.",
         "model_verdict_recorded": bool(verdict_name),
@@ -184,6 +253,9 @@ def _record(replay_id: str, row: dict[str, Any], data: dict[str, Any], verdict: 
         },
         "verdict": card,
     }
+    if isinstance(row.get("rescue_inputs"), dict):
+        record["rescue_inputs"] = row["rescue_inputs"]
+    return record
 
 
 def _alternative(item: dict[str, Any]) -> dict[str, Any]:

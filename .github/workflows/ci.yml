@@ -31,5 +31,7 @@ jobs:
         run: python -m ruff check .
       - name: Tests
         run: python -m pytest -q
+      - name: Smoke — static UI Nemotron badge and served-model trace check
+        run: python -m pytest -q tests/api/test_static_nemotron_smoke.py tests/scripts/test_verify_trace_served_model.py tests/scripts/test_import_replay_bundled.py
       - name: Compliance check
         run: python scripts/compliance_check.py

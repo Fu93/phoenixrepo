@@ -200,9 +200,11 @@ def main() -> int:
         readme_line=readme_line,
         recorded_run=recorded_run,
     )
+    _write_nemotron_fixture()
 
     manifest = {
         "replays": [
+            _summary("nemotron-ui-fixture"),
             _summary("invoice-already-exists"),
             _summary("hygen-already-exists-quote"),
             _summary("mirrormate-human-label"),
@@ -215,7 +217,8 @@ def main() -> int:
                 "reason": (
                     "No committed JSON file contains a model verdict of NEEDS_REVIEW. "
                     "data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score. "
-                    "No trace jsonl is committed on any branch (logs/ is gitignored)."
+                    "No logs/trace-*.jsonl from a Nightshift run is committed (logs/ is gitignored). "
+                    "data/replays holds SAMPLE seals, including the Nemotron UI fixture."
                 ),
             },
             {
@@ -239,6 +242,118 @@ def main() -> int:
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"wrote {OUT}")
     return 0
+
+
+def _write_nemotron_fixture() -> None:
+    """SAMPLE card so /ui can show the Nemotron badge and reasoning with no API key.
+
+    The served model ids and the reasoning text are written here. They are not a
+    Nightshift completion and not a gate-1 verdict. Durations are left unrecorded.
+    """
+
+    replay_id = "nemotron-ui-fixture"
+    repo_id = "sample/nemotron-ui-fixture"
+    fast = "nvidia/nemotron-3.5-lightning-30b-a3b"
+    deep = "nvidia/nemotron-3-ultra-550b-a55b"
+    quote = "The quote check looks for this sentence verbatim in the alternative's own text."
+    reasoning = (
+        "SAMPLE fixture, not a Nightshift completion. A fast Nemotron id is recorded on the overlap "
+        "step and this larger Nemotron id is recorded on the verdict step so the page can show the "
+        "answer count and this reasoning card with no API key. The verdict still stands only when "
+        "the quote is found verbatim. " + quote
+    )
+    directory = OUT / replay_id
+    directory.mkdir(parents=True, exist_ok=True)
+    for stale in directory.glob("trace*.jsonl"):
+        stale.unlink()
+    trace = HackathonTrace(replay_id, log_dir=directory)
+    trace.event(
+        agent_name="orchestrator",
+        action="LLM_CALL",
+        input_summary={"repo_id": repo_id, "step": "alternative", "source": "ui fixture"},
+        output_summary={
+            "served_model": fast,
+            "tier": "fast",
+            "note": "UI fixture overlap check. Not a live model call.",
+        },
+        llm={"requested_model": fast, "served_model": fast},
+        status="ok",
+        summary_limit=4000,
+    )
+    trace.event(
+        agent_name="orchestrator",
+        action="LLM_CALL",
+        input_summary={"repo_id": repo_id, "step": "discovery", "source": "ui fixture"},
+        output_summary={
+            "served_model": deep,
+            "tier": "deep",
+            "provider": "nightshift",
+            "reasoning": reasoning,
+        },
+        llm={"requested_model": deep, "served_model": deep},
+        status="ok",
+        summary_limit=4000,
+    )
+    trace.seal()
+    written = directory / f"trace-{replay_id}.jsonl"
+    target = directory / "trace.jsonl"
+    target.write_text(written.read_text(encoding="utf-8"), encoding="utf-8")
+    written.unlink()
+    ok, detail = verify(target)
+    if not ok:
+        raise SystemExit(f"{replay_id}: {detail}")
+    _dump(
+        directory / "record.json",
+        {
+            "id": replay_id,
+            "title": "Nemotron badge and reasoning — SAMPLE UI fixture",
+            "repo_id": repo_id,
+            "repo_url": "",
+            "data_class": "SAMPLE",
+            "trace_class": "SAMPLE",
+            "banner": (
+                "SAMPLE UI fixture. The served model ids and this reasoning text were written by "
+                "scripts/build_replays.py so the Nemotron badge and reasoning card render with no API key. "
+                "This is not a Nightshift log and not a gate-1 verdict. No duration was invented."
+            ),
+            "summary": (
+                "Offline UI fixture. Two nvidia/nemotron-* ids and a reasoning string are sealed in the "
+                "trace so a judge can see the badge without a token. Not a live judgement."
+            ),
+            "model_verdict_recorded": False,
+            "sources": ["scripts/build_replays.py"],
+            "recorded_run": None,
+            "rescue_inputs": None,
+            "verdict": {
+                "verdict": None,
+                "verdict_kind": "ui_fixture",
+                "reason": (
+                    "No repository was judged. This card exists so the Nemotron answer count and the "
+                    "reasoning block are visible on a fresh clone."
+                ),
+                "quote": quote,
+                "quote_source_url": "",
+                "quote_source_path": f"data/replays/{replay_id}/trace.jsonl",
+                "alternatives": [
+                    {
+                        "name": "fixture alternative",
+                        "url": "",
+                        "quote": quote,
+                        "origin": "scripts/build_replays.py",
+                        "note": "Not a discovered product. The sentence above is the fixture quote.",
+                    }
+                ],
+                "acceptable": None,
+                "gate2": {
+                    "state": None,
+                    "historical_trace": False,
+                    "rule_quote": "",
+                    "rule_source": "",
+                    "why": "No gate-2 trace. This replay is a UI fixture, not a CANDIDATE.",
+                },
+            },
+        },
+    )
 
 
 def _write_human(

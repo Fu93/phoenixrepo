@@ -1,6 +1,14 @@
 {
   "replays": [
     {
+      "id": "nemotron-ui-fixture",
+      "title": "Nemotron badge and reasoning — SAMPLE UI fixture",
+      "repo_id": "sample/nemotron-ui-fixture",
+      "data_class": "SAMPLE",
+      "trace_class": "SAMPLE",
+      "summary": "Offline UI fixture. Two nvidia/nemotron-* ids and a reasoning string are sealed in the trace so a judge can see the badge without a token. Not a live judgement."
+    },
+    {
       "id": "invoice-already-exists",
       "title": "Invoice generator — recorded ALREADY_EXISTS",
       "repo_id": "tharani-2006/Invoice-generator-application",
@@ -37,7 +45,7 @@
     {
       "id": "needs-review-model-trace",
       "title": "No recorded NEEDS_REVIEW model verdict",
-      "reason": "No committed JSON file contains a model verdict of NEEDS_REVIEW. data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score. No trace jsonl is committed on any branch (logs/ is gitignored)."
+        "reason": "No committed JSON file contains a model verdict of NEEDS_REVIEW. data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score. No logs/trace-*.jsonl from a Nightshift run is committed (logs/ is gitignored). data/replays holds SAMPLE seals, including the Nemotron UI fixture."
     },
     {
       "id": "historical-gate2-trace",

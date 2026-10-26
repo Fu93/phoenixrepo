@@ -1,0 +1,41 @@
+{
+  "id": "nemotron-ui-fixture",
+  "title": "Nemotron badge and reasoning — SAMPLE UI fixture",
+  "repo_id": "sample/nemotron-ui-fixture",
+  "repo_url": "",
+  "data_class": "SAMPLE",
+  "trace_class": "SAMPLE",
+  "banner": "SAMPLE UI fixture. The served model ids and this reasoning text were written by scripts/build_replays.py so the Nemotron badge and reasoning card render with no API key. This is not a Nightshift log and not a gate-1 verdict. No duration was invented.",
+  "summary": "Offline UI fixture. Two nvidia/nemotron-* ids and a reasoning string are sealed in the trace so a judge can see the badge without a token. Not a live judgement.",
+  "model_verdict_recorded": false,
+  "sources": [
+    "scripts/build_replays.py"
+  ],
+  "recorded_run": null,
+  "rescue_inputs": null,
+  "verdict": {
+    "verdict": null,
+    "verdict_kind": "ui_fixture",
+    "reason": "No repository was judged. This card exists so the Nemotron answer count and the reasoning block are visible on a fresh clone.",
+    "quote": "The quote check looks for this sentence verbatim in the alternative's own text.",
+    "quote_source_url": "",
+    "quote_source_path": "data/replays/nemotron-ui-fixture/trace.jsonl",
+    "alternatives": [
+      {
+        "name": "fixture alternative",
+        "url": "",
+        "quote": "The quote check looks for this sentence verbatim in the alternative's own text.",
+        "origin": "scripts/build_replays.py",
+        "note": "Not a discovered product. The sentence above is the fixture quote."
+      }
+    ],
+    "acceptable": null,
+    "gate2": {
+      "state": null,
+      "historical_trace": false,
+      "rule_quote": "",
+      "rule_source": "",
+      "why": "No gate-2 trace. This replay is a UI fixture, not a CANDIDATE."
+    }
+  }
+}
