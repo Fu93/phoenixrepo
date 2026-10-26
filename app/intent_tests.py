@@ -194,7 +194,6 @@ def lint_test_source(source: str, *, readme: str, entry_module: str, entry_point
     label = name or "test"
     errors: list[str] = []
     text = str(source or "")
-    sentence = ""
     if len(text) > MAX_SOURCE:
         errors.append(f"{label}: source is too long")
     if not _DEF_TEST.search(text):
