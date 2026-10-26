@@ -1607,7 +1607,7 @@ def revive(
     accepted_checks = before
     stage_a_ok = baseline.ok
     original_tree = snapshot_worktree(repo)
-    if not baseline.ok and not stopped["phase"]:
+    if not baseline.ok and not is_no_tests(baseline.cmd, baseline.output, baseline.code) and not stopped["phase"]:
         for n in range(1, max_iterations + 1):
             if time.monotonic() >= deadline_at:
                 stopped["phase"] = "stage-a"
