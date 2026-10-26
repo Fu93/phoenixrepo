@@ -106,17 +106,8 @@
 <body>
 <header>
   <h1>PhoenixRepo gate 1, replayed</h1>
-  <p class="lede">A full recorded refusal, with no Nightshift token, no network, and no Docker. The timeline walks a committed file. The verdict card reads the same files.</p>
-  <div class="banner sample-hero" id="sample-explainer">
-    <strong>SAMPLE.</strong> Every replay shipped in this repository is a SAMPLE hash chain sealed here over copies of committed files. It is not a Nightshift log. The label stays on the timeline and on the verdict card. A trace you import with the command below is labelled RECORDED: the JSONL is copied unchanged.
-  </div>
-  <h2>Swap in a real trace</h2>
-  <p>No JSON editing. The script checks the hash chain, copies <span>logs/trace-*.jsonl</span> byte for byte, writes the verdict row, and adds the replay to <span>data/replays/manifest.json</span>. When the verdict file lists more than one repository, pass <span>--repo owner/name</span>. Running it again for the same id replaces that replay.</p>
-  <textarea class="command" id="import-command" readonly rows="2">python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scores.json</textarea>
-  <div class="missing" id="missing">
-    <strong>Not in the repository.</strong>
-    <ul><li>Loading the catalog.</li></ul>
-  </div>
+  <p class="lede">Gate 1’s decisions, step by step: which model answered each call, the alternative that blocked the idea, the quote checked word for word, and the hash chain. No token, no network, no Docker.</p>
+  <p class="muted" id="sample-note"><strong>SAMPLE</strong> replays are reconstructions sealed over committed files; <strong>RECORDED</strong> ones are real trace files copied byte for byte. The label is on every timeline and verdict card. <a href="#about-replays">How to add one</a>.</p>
   <div class="replay-list" id="replay-list"></div>
 </header>
 <main>
@@ -148,6 +139,19 @@
     <button type="button" id="tamper">Flip one character and verify the copy</button>
     <pre id="chain-result"></pre>
   </section>
+<details class="panel" id="about-replays">
+  <summary>About these replays: SAMPLE, RECORDED, and how to add a real trace</summary>
+  <div class="banner sample-hero" id="sample-explainer">
+    <strong>SAMPLE.</strong> Every replay shipped in this repository is a SAMPLE hash chain sealed here over copies of committed files. It is not a Nightshift log. The label stays on the timeline and on the verdict card. A trace you import with the command below is labelled RECORDED: the JSONL is copied unchanged.
+  </div>
+  <h3>Swap in a real trace</h3>
+  <p>No JSON editing. The script checks the hash chain, copies <span>logs/trace-*.jsonl</span> byte for byte, writes the verdict row, and adds the replay to <span>data/replays/manifest.json</span>. When the verdict file lists more than one repository, pass <span>--repo owner/name</span>. Running it again for the same id replaces that replay.</p>
+  <textarea class="command" id="import-command" readonly rows="2">python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scores.json</textarea>
+  <div class="missing" id="missing">
+    <strong>Not in the repository.</strong>
+    <ul><li>Loading the catalog.</li></ul>
+  </div>
+</details>
   <fieldset id="live-box" disabled>
     <legend>Live judge</legend>
     <p id="live-reason">Checking whether a Nightshift token is configured.</p>
@@ -476,7 +480,9 @@
     state.replays = body.replays || [];
     renderMissing(body.missing || []);
     renderList();
-    if (state.replays.length) return loadReplay(state.replays[0].id);
+    // Open a real trace first when one has been imported; otherwise the first SAMPLE.
+    var first = state.replays.filter(function (r) { return r.trace_class === "RECORDED"; })[0] || state.replays[0];
+    if (first) return loadReplay(first.id);
   });
   loadLive();
 })();
