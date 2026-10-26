@@ -1120,7 +1120,7 @@ def test_search_prior_art_web_runs_every_query_and_keeps_web_quota():
 
 # --- Batched alternative judging and Markdown-tolerant quotes ---------------
 
-from app.agents.relevance import filter_relevant_alternatives, quote_in_text
+from app.agents.relevance import quote_in_text
 
 
 def test_quote_in_text_ignores_markdown_bold_but_not_word_changes():
