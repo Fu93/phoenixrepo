@@ -1302,6 +1302,7 @@ class InvestigationOrchestrator:
                         "run_hash": run_hash,
                     },
                     "sample_standin": self.llm.sample_standin,
+                    "model_mismatch_count": self.trace.model_mismatch_count(),
                     "degraded": self.provider_degraded,
                     "fallbacks": list(getattr(self.llm, "fallback_log", []) or []),
                     "label": self.llm.label(),

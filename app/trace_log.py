@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from config.settings import model_mismatch
 from security.sanitizer import sanitize_metadata
 
 FIELDS = (
@@ -118,7 +119,11 @@ class HackathonTrace:
         if llm is not None:
             # Top-level so a truncated input_summary cannot drop them, and so the hash covers them.
             record["requested_model"] = str(llm.get("requested_model") or "")
-            record["served_model"] = llm.get("served_model")
+            served = llm.get("served_model")
+            record["served_model"] = served
+            if model_mismatch(served):
+                # Visible on the line. Do not replace served_model with the requested id.
+                record["flags"] = ["MODEL_MISMATCH"]
             if llm.get("prompt_version"):
                 record["prompt_version"] = str(llm["prompt_version"])
         record = sanitize_metadata(record)
@@ -134,6 +139,19 @@ class HackathonTrace:
         self._lines.append(line)
         self._write(line)
         return record
+
+    def model_mismatch_count(self) -> int:
+        """How many LLM lines in this run were flagged MODEL_MISMATCH."""
+
+        count = 0
+        for line in self._lines:
+            try:
+                flags = json.loads(line).get("flags") or []
+            except json.JSONDecodeError:
+                continue
+            if "MODEL_MISMATCH" in flags:
+                count += 1
+        return count
 
     def _write(self, line: str) -> None:
         """Truncate on the first line of this run, append after that.

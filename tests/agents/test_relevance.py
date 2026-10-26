@@ -218,7 +218,7 @@ def test_judge_discovery_accepts_verified_quote(tmp_path: Path):
     verdict, reason = judge_discovery(candidate, prior_rows=[], demand_rows=[], client=client)
     assert verdict == "CANDIDATE"
     assert "Method: llm+verified quote" in reason
-    assert "requested=meterless/auto" in reason
+    assert "requested=nvidia/nemotron-3-super-120b-a12b" in reason
 
 
 def test_judge_discovery_downgrades_fabricated_quote_to_needs_review(tmp_path: Path):

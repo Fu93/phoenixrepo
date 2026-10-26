@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 from app.agents.equivalence import judge_discovery  # noqa: E402
 from app.llm.parsing import parse_model_json  # noqa: E402
 from app.prompts import load_prompt  # noqa: E402
+from config.settings import Settings  # noqa: E402
 
 CASES = ROOT / "data" / "eval" / "cases.json"
 
@@ -65,7 +66,7 @@ def main() -> int:
             response = httpx.post(
                 base + "/chat/completions",
                 headers={**headers, "meterless-scope": "user"},
-                json={"model": os.environ.get("METERLESS_MODEL", "meterless/auto"), "messages": messages, "temperature": 0},
+                json={"model": Settings().requested_model(), "messages": messages, "temperature": 0},
                 timeout=120.0,
             )
         except httpx.HTTPError as exc:
