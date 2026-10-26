@@ -90,6 +90,7 @@ class HackathonTrace:
         retry_count: int = 0,
         status: str = "ok",
         llm: dict[str, Any] | None = None,
+        summary_limit: int = 500,
     ) -> dict[str, Any]:
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -97,7 +98,7 @@ class HackathonTrace:
             "agent_name": agent_name,
             "action": action,
             "input_summary": _summary(input_summary, self.secrets),
-            "output_summary": _summary(output_summary, self.secrets),
+            "output_summary": _summary(output_summary, self.secrets, limit=summary_limit),
             "target_agent": target_agent,
             "confidence": confidence,
             "retry_count": retry_count,
@@ -108,6 +109,8 @@ class HackathonTrace:
             # Top-level so a truncated input_summary cannot drop them, and so the hash covers them.
             record["requested_model"] = str(llm.get("requested_model") or "")
             record["served_model"] = llm.get("served_model")
+            if llm.get("prompt_version"):
+                record["prompt_version"] = str(llm["prompt_version"])
         record = sanitize_metadata(record)
         record["prev_hash"] = self._prev_hash
         missing = [field for field in FIELDS if field not in record]

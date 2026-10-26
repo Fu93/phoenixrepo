@@ -1,0 +1,902 @@
+{
+  "collected_at": "2026-10-22T20:30:00+00:00",
+  "token_used": false,
+  "note": "Labels are human judgements from the linked excerpts. They are not the phrase-method output. hygen stays out of data/real/discovery_candidates.csv. The revival verdict for jondot/hygen is unchanged.",
+  "cases": [
+    {
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "label": "ALREADY_EXISTS",
+      "justification": "https://github.com/al1abb/invoify is MIT and was pushed 2026-08-24. Its stored README says it is a free invoice generator and 'get a real PDF.' That covers the candidate's invoice and PDF capabilities. https://github.com/tharani-2006/Invoice-generator-application has 0 stars.",
+      "links": [
+        "https://github.com/tharani-2006/Invoice-generator-application"
+      ],
+      "candidate": {
+        "repo_id": "tharani-2006/Invoice-generator-application",
+        "html_url": "https://github.com/tharani-2006/Invoice-generator-application",
+        "description": "Full-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.",
+        "readme_excerpt": "![License](https://img.shields.io/badge/license-MIT-green.svg)\nA full-stack web application for creating, managing, and sending professional invoices with multiple customizable templates.\nInvoice Generator is a comprehensive, production-ready application designed for businesses and freelancers to streamline their invoicing process.",
+        "problem_excerpt": "Full-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.",
+        "user_excerpt": "businesses and freelancers",
+        "scope_excerpt": "creating, managing, and sending professional invoices with multiple customizable templates",
+        "code_paths": "client/src/App.jsx|client/src/services/pdfUtils.js|server/src/main/java/tharani/dev/invoicegeneratorApi/service/InvoiceService.java",
+        "created_at": "2025-11-26T00:03:22Z",
+        "pushed_at": "2026-02-28T17:11:12Z",
+        "days_since_push": "236",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "",
+        "core_terms": "invoice|pdf",
+        "cohort": "discovery",
+        "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+        "collected_at": "2026-10-22T19:11:28+00:00"
+      },
+      "prior_art": [
+        {
+          "repo_id": "tharani-2006/Invoice-generator-application",
+          "alternative_id": "al1abb/invoify",
+          "url": "https://github.com/al1abb/invoify",
+          "licence_spdx": "MIT",
+          "stars": "6376",
+          "pushed_at": "2026-08-24T02:55:34Z",
+          "days_since_push": "59",
+          "excerpt": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF.",
+          "candidate_excerpt": "Full-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.",
+          "required_terms": "invoice|pdf",
+          "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+          "collected_at": "2026-10-22T19:11:28+00:00"
+        }
+      ],
+      "demand": [
+        {
+          "repo_id": "tharani-2006/Invoice-generator-application",
+          "signal_id": "invoify-related-repo",
+          "kind": "related_repo",
+          "url": "https://github.com/al1abb/invoify",
+          "excerpt": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF.",
+          "metric_name": "",
+          "metric_value": "",
+          "comments": "",
+          "reactions": "",
+          "stars": "6376",
+          "pushed_at": "2026-08-24T02:55:34Z",
+          "days_since_push": "59",
+          "query": "",
+          "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+          "collected_at": "2026-10-22T19:11:28+00:00"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:tharani-2006/Invoice-generator-application",
+          "url": "https://github.com/tharani-2006/Invoice-generator-application",
+          "text": "Full-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.\n![License](https://img.shields.io/badge/license-MIT-green.svg)\nA full-stack web application for creating, managing, and sending professional invoices with multiple customizable templates.\nInvoice Generator is a comprehensive, production-ready application designed for businesses and freelancers to streamline their invoicing process.",
+          "content_hash": "fe33aaf54d7012e599a510096f21411fdf9dc199e7c198017828596fcbc1ef1a"
+        },
+        {
+          "id": "prior:al1abb/invoify",
+          "url": "https://github.com/al1abb/invoify",
+          "text": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF.",
+          "content_hash": "d0cabee5dc3778240aa7fbfae752cc154ae3bfcc5156181e23e7d7a8dad90c39"
+        }
+      ]
+    },
+    {
+      "repo_id": "SergioMendolia/ytkb",
+      "label": "CANDIDATE",
+      "justification": "No stored alternative covers both 'knowledge base' and 'push changes back'. https://github.com/foliant-docs/foliant/pull/80 is open demand (2 comments, 2 reactions) and does not push edits back. Foliant itself was pushed 2026-03-29, outside 180 days.",
+      "links": [
+        "https://github.com/SergioMendolia/ytkb"
+      ],
+      "candidate": {
+        "repo_id": "SergioMendolia/ytkb",
+        "html_url": "https://github.com/SergioMendolia/ytkb",
+        "description": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+        "readme_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Download**: Download all pages from a YouTrack knowledge base, preserving hierarchy and order\n- **Diff**: Compare local files with server versions to see what's changed\n- **Push**: Push changes back to YouTrack (update only, no creation)\n- **Tree**: Display the article hierarchy as an ASCII tree with star status and article IDs\n- **Star**: Add or remove stars (favorites) on articles, with optional recursive mode for all children\n- [ ] Manage images and attachments\n- [ ] Allow page creation from new md files\ngo build -o ytkb\ngo install",
+        "problem_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+        "user_excerpt": "edit them in your editor of choice",
+        "scope_excerpt": "Push changes back to YouTrack (update only, no creation)",
+        "code_paths": "main.go|cmd/push.go|cmd/download.go|internal/api/client.go|internal/markdown/parser.go|internal/filesystem/files.go",
+        "created_at": "2025-12-03T19:40:58Z",
+        "pushed_at": "2026-03-31T19:56:26Z",
+        "days_since_push": "205",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "",
+        "core_terms": "knowledge base|push changes back",
+        "cohort": "discovery",
+        "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+        "collected_at": "2026-10-22T19:11:28+00:00"
+      },
+      "prior_art": [
+        {
+          "repo_id": "SergioMendolia/ytkb",
+          "alternative_id": "foliant-docs/foliant",
+          "url": "https://github.com/foliant-docs/foliant",
+          "licence_spdx": "MIT",
+          "stars": "177",
+          "pushed_at": "2026-03-29T13:40:56Z",
+          "days_since_push": "207",
+          "excerpt": "Comprehensive markdown-based documentation toolkit Foliant is an all-in-one single-source documentation authoring tool.",
+          "candidate_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Push**: Push changes back to YouTrack (update only, no creation)",
+          "required_terms": "knowledge base|push changes back",
+          "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+          "collected_at": "2026-10-22T19:11:28+00:00"
+        },
+        {
+          "repo_id": "SergioMendolia/ytkb",
+          "alternative_id": "billpeet/yt-cli",
+          "url": "https://github.com/billpeet/yt-cli",
+          "licence_spdx": "",
+          "stars": "0",
+          "pushed_at": "2026-08-17T07:39:14Z",
+          "days_since_push": "66",
+          "excerpt": "YouTrack CLI tool for AI agent and developer use — text/markdown output by default",
+          "candidate_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Push**: Push changes back to YouTrack (update only, no creation)",
+          "required_terms": "knowledge base|push changes back",
+          "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+          "collected_at": "2026-10-22T19:11:28+00:00"
+        },
+        {
+          "repo_id": "SergioMendolia/ytkb",
+          "alternative_id": "NapalmDeath/youtrack-outline-importer",
+          "url": "https://github.com/NapalmDeath/youtrack-outline-importer",
+          "licence_spdx": "",
+          "stars": "0",
+          "pushed_at": "2024-07-07T12:56:57Z",
+          "days_since_push": "837",
+          "excerpt": "Convert Youtrack KnowledgeBase markdown to outline format",
+          "candidate_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Push**: Push changes back to YouTrack (update only, no creation)",
+          "required_terms": "knowledge base|push changes back",
+          "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+          "collected_at": "2026-10-22T19:11:28+00:00"
+        },
+        {
+          "repo_id": "SergioMendolia/ytkb",
+          "alternative_id": "udamir/youtrack-markdown-snippet",
+          "url": "https://github.com/udamir/youtrack-markdown-snippet",
+          "licence_spdx": "MIT",
+          "stars": "4",
+          "pushed_at": "2026-08-05T13:13:10Z",
+          "days_since_push": "78",
+          "excerpt": "Youtrack widget allows to embed article/issue parts into markdown content",
+          "candidate_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Push**: Push changes back to YouTrack (update only, no creation)",
+          "required_terms": "knowledge base|push changes back",
+          "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+          "collected_at": "2026-10-22T19:11:28+00:00"
+        },
+        {
+          "repo_id": "SergioMendolia/ytkb",
+          "alternative_id": "siporoz/youtrack-ai-context-exporter",
+          "url": "https://github.com/siporoz/youtrack-ai-context-exporter",
+          "licence_spdx": "MIT",
+          "stars": "0",
+          "pushed_at": "2026-05-06T04:39:08Z",
+          "days_since_push": "169",
+          "excerpt": "Chrome extension that copies YouTrack issue context as Markdown for LLM workflows",
+          "candidate_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Push**: Push changes back to YouTrack (update only, no creation)",
+          "required_terms": "knowledge base|push changes back",
+          "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+          "collected_at": "2026-10-22T19:11:28+00:00"
+        }
+      ],
+      "demand": [
+        {
+          "repo_id": "SergioMendolia/ytkb",
+          "signal_id": "foliant-pr-80",
+          "kind": "github_issue",
+          "url": "https://github.com/foliant-docs/foliant/pull/80",
+          "excerpt": "Adds a new built-in preprocessor (`youtrack`) that fetches issues and knowledge base articles from a YouTrack instance via the REST API and generates markdown files for inclusion in Foliant projects.",
+          "metric_name": "",
+          "metric_value": "",
+          "comments": "2",
+          "reactions": "2",
+          "stars": "",
+          "pushed_at": "",
+          "days_since_push": "",
+          "query": "",
+          "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+          "collected_at": "2026-10-22T19:11:28+00:00"
+        },
+        {
+          "repo_id": "SergioMendolia/ytkb",
+          "signal_id": "ytkb-issue-search",
+          "kind": "github_search",
+          "url": "https://api.github.com/search/issues?q=%22knowledge%20base%22%20youtrack%20markdown%20is%3Aissue",
+          "excerpt": "",
+          "metric_name": "total_count",
+          "metric_value": "10",
+          "comments": "",
+          "reactions": "",
+          "stars": "",
+          "pushed_at": "",
+          "days_since_push": "",
+          "query": "\"knowledge base\" youtrack markdown is:issue",
+          "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+          "collected_at": "2026-10-22T19:11:28+00:00"
+        },
+        {
+          "repo_id": "SergioMendolia/ytkb",
+          "signal_id": "ytkb-repo-search",
+          "kind": "github_search",
+          "url": "https://api.github.com/search/repositories?q=youtrack%20markdown%20knowledge%20in%3Adescription%20stars%3A%3E20%20pushed%3A%3E2026-04-22",
+          "excerpt": "",
+          "metric_name": "total_count",
+          "metric_value": "0",
+          "comments": "",
+          "reactions": "",
+          "stars": "",
+          "pushed_at": "",
+          "days_since_push": "",
+          "query": "youtrack markdown knowledge in:description stars:>20 pushed:>2026-04-22",
+          "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+          "collected_at": "2026-10-22T19:11:28+00:00"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:SergioMendolia/ytkb",
+          "url": "https://github.com/SergioMendolia/ytkb",
+          "text": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\nA CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.\n- **Download**: Download all pages from a YouTrack knowledge base, preserving hierarchy and order\n- **Diff**: Compare local files with server versions to see what's changed\n- **Push**: Push changes back to YouTrack (update only, no creation)\n- **Tree**: Display the article hierarchy as an ASCII tree with star status and article IDs\n- **Star**: Add or remove stars (favorites) on articles, with optional recursive mode for all children\n- [ ] Manage images and attachments\n- [ ] Allow page creation from new md files\ngo build -o ytkb\ngo install",
+          "content_hash": "f7f24c633583faa00ed6fce17d036ea90bd90980281f6e721d9d51b4335b20b0"
+        },
+        {
+          "id": "prior:foliant-docs/foliant",
+          "url": "https://github.com/foliant-docs/foliant",
+          "text": "Comprehensive markdown-based documentation toolkit Foliant is an all-in-one single-source documentation authoring tool.",
+          "content_hash": "588950d0e31302949473c7ddbe348466fc694297b8536be46e7a3ddfd027415d"
+        },
+        {
+          "id": "prior:billpeet/yt-cli",
+          "url": "https://github.com/billpeet/yt-cli",
+          "text": "YouTrack CLI tool for AI agent and developer use — text/markdown output by default",
+          "content_hash": "2bf53dc59876de1e1655ca8ce1920b6af4b219f890c66382238beb503d1513ab"
+        },
+        {
+          "id": "prior:NapalmDeath/youtrack-outline-importer",
+          "url": "https://github.com/NapalmDeath/youtrack-outline-importer",
+          "text": "Convert Youtrack KnowledgeBase markdown to outline format",
+          "content_hash": "0a771c126576498dfc698320cafe215f73ee79e33a8f12b5cf983d6d1e02a1b3"
+        },
+        {
+          "id": "prior:udamir/youtrack-markdown-snippet",
+          "url": "https://github.com/udamir/youtrack-markdown-snippet",
+          "text": "Youtrack widget allows to embed article/issue parts into markdown content",
+          "content_hash": "a8910364fcf044c7dfb0c0cbd83289c89bbd05787fb20b90f50e73c3f5398263"
+        },
+        {
+          "id": "prior:siporoz/youtrack-ai-context-exporter",
+          "url": "https://github.com/siporoz/youtrack-ai-context-exporter",
+          "text": "Chrome extension that copies YouTrack issue context as Markdown for LLM workflows",
+          "content_hash": "46552dd0593b48893bb57491c5f92245e57a074d033654673cc8028a308c8b60"
+        }
+      ]
+    },
+    {
+      "repo_id": "jondot/hygen",
+      "label": "ALREADY_EXISTS",
+      "justification": "Human label, not the phrase method. plop (MIT, pushed 2026-10-16, https://github.com/plopjs/plop) is an in-project generator ('generate code', 'plopfile.js at the root of your project') and its modify and append actions edit a file at a path. The exact phrase 'injecting into existing files' is not in that excerpt. This case is not a discovery_candidates row. The revival verdict for hygen is unchanged. README sha256 8a08e1add4ca7826889c3ccaf61c0b41e088ef0442a70f0370fcb78141d8602a.",
+      "links": [
+        "https://github.com/jondot/hygen",
+        "https://github.com/plopjs/plop"
+      ],
+      "candidate": {
+        "repo_id": "jondot/hygen",
+        "html_url": "https://github.com/jondot/hygen",
+        "description": "The simple, fast, and scalable code generator that lives in your project.",
+        "readme_excerpt": "`hygen` is the simple, fast, and scalable code generator that lives _in_ your project.\n- ✅ Injecting into existing files\nHygen can be used to supercharge your workflow with Redux, React Native, Express.",
+        "problem_excerpt": "code generator that lives in your project",
+        "user_excerpt": "supercharge your workflow",
+        "scope_excerpt": "Injecting into existing files",
+        "code_paths": "src/bin.ts|src/engine.ts",
+        "created_at": "2017-08-13T07:38:43Z",
+        "pushed_at": "2024-07-09T11:40:47Z",
+        "days_since_push": "835",
+        "stargazers_count": "5927",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "MIT",
+        "core_terms": "code generator|injecting into existing files",
+        "cohort": "eval",
+        "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+        "collected_at": "2026-10-22T20:30:00+00:00"
+      },
+      "prior_art": [
+        {
+          "repo_id": "jondot/hygen",
+          "alternative_id": "plopjs/plop",
+          "url": "https://github.com/plopjs/plop",
+          "licence_spdx": "MIT",
+          "stars": "7686",
+          "pushed_at": "2026-10-16T10:34:37Z",
+          "days_since_push": "6",
+          "excerpt": "Plop is what I like to call a \"micro-generator framework.\" Now, I call it that because it is a small tool that gives you a simple way to generate code or any other type of flat text files in a consistent way. Create a plopfile.js at the root of your project. The `modify` action can be used two ways. You can use a `pattern` property to find/replace text in the file located at the `path` specified, or you can use a `transform` function to transform the file contents. The `append` action is a commonly used subset of `modify`. It is used to append data in a file at a particular location.",
+          "candidate_excerpt": "The simple, fast, and scalable code generator that lives in your project.\n`hygen` is the simple, fast, and scalable code generator that lives _in_ your project.\n- ✅ Injecting into existing files\nHygen can be used to supercharge your workflow with Redux, React Native, Express.",
+          "required_terms": "code generator|injecting into existing files",
+          "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+          "collected_at": "2026-10-22T20:30:00+00:00"
+        }
+      ],
+      "demand": [],
+      "evidence": [
+        {
+          "id": "candidate:jondot/hygen",
+          "url": "https://github.com/jondot/hygen",
+          "text": "The simple, fast, and scalable code generator that lives in your project.\n`hygen` is the simple, fast, and scalable code generator that lives _in_ your project.\n- ✅ Injecting into existing files\nHygen can be used to supercharge your workflow with Redux, React Native, Express.",
+          "content_hash": "8fde942163a919091bf35565239834f888518d97d16b0d36d2b7c6c10dbcfc25"
+        },
+        {
+          "id": "prior:plopjs/plop",
+          "url": "https://github.com/plopjs/plop",
+          "text": "Plop is what I like to call a \"micro-generator framework.\" Now, I call it that because it is a small tool that gives you a simple way to generate code or any other type of flat text files in a consistent way. Create a plopfile.js at the root of your project. The `modify` action can be used two ways. You can use a `pattern` property to find/replace text in the file located at the `path` specified, or you can use a `transform` function to transform the file contents. The `append` action is a commonly used subset of `modify`. It is used to append data in a file at a particular location.",
+          "content_hash": "43c12e95d6aaca50f0e3d61344b79cb6bc0a6c54dd34e3debb3dc21ef8f3d392"
+        },
+        {
+          "id": "readme:plopjs/plop",
+          "url": "https://github.com/plopjs/plop",
+          "text": "Plop is what I like to call a \"micro-generator framework.\" Now, I call it that because it is a small tool that gives you a simple way to generate code or any other type of flat text files in a consistent way. Create a plopfile.js at the root of your project. The `modify` action can be used two ways. You can use a `pattern` property to find/replace text in the file located at the `path` specified, or you can use a `transform` function to transform the file contents. The `append` action is a commonly used subset of `modify`. It is used to append data in a file at a particular location.",
+          "full_sha256": "8284e5541eacf1296aaa5910ed2b1fa6c581c2570604f6f3f9408e3d4fdb0abe",
+          "content_hash": "43c12e95d6aaca50f0e3d61344b79cb6bc0a6c54dd34e3debb3dc21ef8f3d392"
+        }
+      ]
+    },
+    {
+      "repo_id": "matt-dz/wecook",
+      "label": "ALREADY_EXISTS",
+      "justification": "https://github.com/mealie-recipes/mealie is AGPL-3.0 and was pushed 2026-10-22. The stored sentence is 'Mealie is a self hosted recipe manager' and 'add a family recipe with the UI editor.' The candidate README says alternatives already exist and the difference is a dated UI. The hyphenated phrase 'self-hosted' is not in the Mealie sentence. https://github.com/matt-dz/wecook has 0 stars. README sha256 0bd50fd4873e414718de6329ffaa8646b4b5900baf4197c330ec67114d3103d3.",
+      "links": [
+        "https://github.com/matt-dz/wecook",
+        "https://github.com/mealie-recipes/mealie"
+      ],
+      "candidate": {
+        "repo_id": "matt-dz/wecook",
+        "html_url": "https://github.com/matt-dz/wecook",
+        "description": "Self-hosted recipe manager",
+        "readme_excerpt": "A self-hosted recipe manager for organizing and sharing your favorite recipes.\nThere already exists many self-hosted recipe managers. However, I thought their UIs looked dated and I was bored so I built my own!\nCreate, edit, and organize recipes with ingredients, steps, and images",
+        "problem_excerpt": "A self-hosted recipe manager for organizing and sharing your favorite recipes.",
+        "user_excerpt": "your favorite recipes",
+        "scope_excerpt": "Create, edit, and organize recipes with ingredients, steps, and images",
+        "code_paths": "backend/cmd/wecook/main.go|backend/internal/api/api.go",
+        "created_at": "2025-11-27T05:57:22Z",
+        "pushed_at": "2025-12-31T19:48:01Z",
+        "days_since_push": "295",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "MIT",
+        "core_terms": "self-hosted|recipe manager",
+        "cohort": "eval",
+        "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+        "collected_at": "2026-10-22T20:30:00+00:00"
+      },
+      "prior_art": [
+        {
+          "repo_id": "matt-dz/wecook",
+          "alternative_id": "mealie-recipes/mealie",
+          "url": "https://github.com/mealie-recipes/mealie",
+          "licence_spdx": "AGPL-3.0",
+          "stars": "13656",
+          "pushed_at": "2026-10-22T19:23:10Z",
+          "days_since_push": "0",
+          "excerpt": "Mealie is a self hosted recipe manager, meal planner and shopping list with a RestAPI backend and a reactive frontend built in Vue for a pleasant user experience for the whole family. Easily add recipes into your database by providing the URL and Mealie will automatically import the relevant data, or add a family recipe with the UI editor.",
+          "candidate_excerpt": "Self-hosted recipe manager\nA self-hosted recipe manager for organizing and sharing your favorite recipes.\nThere already exists many self-hosted recipe managers. However, I thought their UIs looked dated and I was bored so I built my own!\nCreate, edit, and organize recipes with ingredients, steps, and images",
+          "required_terms": "self-hosted|recipe manager",
+          "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+          "collected_at": "2026-10-22T20:30:00+00:00"
+        }
+      ],
+      "demand": [],
+      "evidence": [
+        {
+          "id": "candidate:matt-dz/wecook",
+          "url": "https://github.com/matt-dz/wecook",
+          "text": "Self-hosted recipe manager\nA self-hosted recipe manager for organizing and sharing your favorite recipes.\nThere already exists many self-hosted recipe managers. However, I thought their UIs looked dated and I was bored so I built my own!\nCreate, edit, and organize recipes with ingredients, steps, and images",
+          "content_hash": "026da674985e76755a7a82893d071c6f6c71d1d0f309f5b521bb3e9a37dd8ad0"
+        },
+        {
+          "id": "prior:mealie-recipes/mealie",
+          "url": "https://github.com/mealie-recipes/mealie",
+          "text": "Mealie is a self hosted recipe manager, meal planner and shopping list with a RestAPI backend and a reactive frontend built in Vue for a pleasant user experience for the whole family. Easily add recipes into your database by providing the URL and Mealie will automatically import the relevant data, or add a family recipe with the UI editor.",
+          "content_hash": "515d6ee201c2a035d3084b5b569d179563f0e1bc93bcb6d34675ba435f269325"
+        }
+      ]
+    },
+    {
+      "repo_id": "bytesbeard/color-palette-generator",
+      "label": "NO_GO",
+      "justification": "https://github.com/royalfig/color-palette-generator is MIT, pushed 2026-10-21, and lists Triadic palettes plus 'Export options: CSS variables, CSS file download, and palette images'. It does not mention TailwindCSS. The candidate's cited export line requires a TailwindCSS config. That capability is a gap, so this is not ALREADY_EXISTS. No demand row with comments or reactions was recorded. https://github.com/bytesbeard/color-palette-generator has 0 stars. The search '\"color palette\" generator license:mit stars:>50 pushed:>2026-04-22' returned total_count 3. That total is not a pass.",
+      "links": [
+        "https://github.com/bytesbeard/color-palette-generator",
+        "https://github.com/royalfig/color-palette-generator"
+      ],
+      "candidate": {
+        "repo_id": "bytesbeard/color-palette-generator",
+        "html_url": "https://github.com/bytesbeard/color-palette-generator",
+        "description": "A visual tool that generates harmonious color palettes from base colors with live preview and export options",
+        "readme_excerpt": "A visual tool that generates harmonious color palettes from base colors with live preview and export options. Helps designers and developers quickly create cohesive color schemes without deep color theory knowledge.\nGenerate complementary, analogous, triadic, and split-complementary palettes\nExport as TailwindCSS config, CSS variables, or JSON format",
+        "problem_excerpt": "generates harmonious color palettes",
+        "user_excerpt": "designers and developers",
+        "scope_excerpt": "Export as TailwindCSS config, CSS variables, or JSON format",
+        "code_paths": "src/generator.ts|src/exporter.ts",
+        "created_at": "2025-12-30T20:05:01Z",
+        "pushed_at": "2025-12-30T20:05:05Z",
+        "days_since_push": "296",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "",
+        "core_terms": "color palette|triadic",
+        "cohort": "eval",
+        "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+        "collected_at": "2026-10-22T20:30:00+00:00"
+      },
+      "prior_art": [
+        {
+          "repo_id": "bytesbeard/color-palette-generator",
+          "alternative_id": "royalfig/color-palette-generator",
+          "url": "https://github.com/royalfig/color-palette-generator",
+          "licence_spdx": "MIT",
+          "stars": "150",
+          "pushed_at": "2026-10-21T11:51:25Z",
+          "days_since_push": "1",
+          "excerpt": "Color Palette Pro generates 6 different color palettes (Analogous, Complementary, Split Complementary, Triadic, Tetradic, and Tints & Shades) in 4 styles across 8 color spaces and formats. Export options: CSS variables, CSS file download, and palette images",
+          "candidate_excerpt": "A visual tool that generates harmonious color palettes from base colors with live preview and export options\nA visual tool that generates harmonious color palettes from base colors with live preview and export options. Helps designers and developers quickly create cohesive color schemes without deep color theory knowledge.\nGenerate complementary, analogous, triadic, and split-complementary palettes\nExport as TailwindCSS config, CSS variables, or JSON format",
+          "required_terms": "color palette|triadic",
+          "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+          "collected_at": "2026-10-22T20:30:00+00:00"
+        }
+      ],
+      "demand": [],
+      "evidence": [
+        {
+          "id": "candidate:bytesbeard/color-palette-generator",
+          "url": "https://github.com/bytesbeard/color-palette-generator",
+          "text": "A visual tool that generates harmonious color palettes from base colors with live preview and export options\nA visual tool that generates harmonious color palettes from base colors with live preview and export options. Helps designers and developers quickly create cohesive color schemes without deep color theory knowledge.\nGenerate complementary, analogous, triadic, and split-complementary palettes\nExport as TailwindCSS config, CSS variables, or JSON format",
+          "content_hash": "b1387d10a011cacd0ac6dd587b73afef722d026eb241f289a8f7014244e251c5"
+        },
+        {
+          "id": "prior:royalfig/color-palette-generator",
+          "url": "https://github.com/royalfig/color-palette-generator",
+          "text": "Color Palette Pro generates 6 different color palettes (Analogous, Complementary, Split Complementary, Triadic, Tetradic, and Tints & Shades) in 4 styles across 8 color spaces and formats. Export options: CSS variables, CSS file download, and palette images",
+          "content_hash": "7e9b09741714ef5d367fc86afa7e32ea1d53db3e7f3669cfd6d412c7d37cbeb7"
+        }
+      ]
+    },
+    {
+      "repo_id": "mbhogal/splitfree",
+      "label": "CANDIDATE",
+      "justification": "https://github.com/mbhogal/splitfree has 0 stars and no README. The description states an expense splitter for friends/roommates. https://github.com/spiral-project/ihatemoney settles shared bills but GitHub licence.spdx_id is NOASSERTION (beerware derivative), so it is not a free OSI alternative. The MIT expense-tracker search (total_count 10) returned personal trackers, not a roommate settlement tool. https://github.com/tombadilo-bombadilo/budgero/issues/3 is open, 2 reactions, and says shared budgets do not yet calculate a settlement for household expenses. The code quote 'See who needs to pay whom' is in pages/5_💰_Settle_Up.py and is not in the description, so it is not a core term.",
+      "links": [
+        "https://github.com/mbhogal/splitfree",
+        "https://github.com/spiral-project/ihatemoney",
+        "https://github.com/tombadilo-bombadilo/budgero/issues/3"
+      ],
+      "candidate": {
+        "repo_id": "mbhogal/splitfree",
+        "html_url": "https://github.com/mbhogal/splitfree",
+        "description": "Free expense splitter for friends/roommates",
+        "readme_excerpt": "",
+        "problem_excerpt": "expense splitter",
+        "user_excerpt": "friends/roommates",
+        "scope_excerpt": "Free expense splitter",
+        "code_paths": "pages/3_➕_Add_Expense.py|pages/5_💰_Settle_Up.py",
+        "created_at": "2025-12-31T04:33:25Z",
+        "pushed_at": "2025-12-31T23:58:40Z",
+        "days_since_push": "295",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "",
+        "core_terms": "expense|friends/roommates",
+        "cohort": "eval",
+        "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+        "collected_at": "2026-10-22T20:30:00+00:00"
+      },
+      "prior_art": [
+        {
+          "repo_id": "mbhogal/splitfree",
+          "alternative_id": "spiral-project/ihatemoney",
+          "url": "https://github.com/spiral-project/ihatemoney",
+          "licence_spdx": "",
+          "stars": "1395",
+          "pushed_at": "2026-08-07T14:10:37Z",
+          "days_since_push": "76",
+          "excerpt": "I hate money is a web application made to ease shared budget management. It keeps track of who bought what, when, and for whom; and helps to settle the bills.",
+          "candidate_excerpt": "Free expense splitter for friends/roommates\n",
+          "required_terms": "expense|friends/roommates",
+          "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+          "collected_at": "2026-10-22T20:30:00+00:00"
+        }
+      ],
+      "demand": [
+        {
+          "repo_id": "mbhogal/splitfree",
+          "signal_id": "budgero-3",
+          "kind": "github_issue",
+          "url": "https://github.com/tombadilo-bombadilo/budgero/issues/3",
+          "excerpt": "Shared budgets do not currently provide a way to calculate a fair settlement when members pay shared household expenses from separate accounts and contribute in different proportions.",
+          "metric_name": "",
+          "metric_value": "",
+          "comments": "1",
+          "reactions": "2",
+          "stars": "",
+          "pushed_at": "",
+          "days_since_push": "",
+          "query": "",
+          "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+          "collected_at": "2026-10-22T20:30:00+00:00"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:mbhogal/splitfree",
+          "url": "https://github.com/mbhogal/splitfree",
+          "text": "Free expense splitter for friends/roommates",
+          "content_hash": "e047fea1bde767d481f30c8f629d85402be6cbb28a4386578dba482862f7dd40"
+        },
+        {
+          "id": "prior:spiral-project/ihatemoney",
+          "url": "https://github.com/spiral-project/ihatemoney",
+          "text": "I hate money is a web application made to ease shared budget management. It keeps track of who bought what, when, and for whom; and helps to settle the bills.",
+          "content_hash": "64e1f69aaf15b6440178493db35f86281cad2b3a2d9291ef700d0c3b19893ba0"
+        },
+        {
+          "id": "code:mbhogal/splitfree:settle",
+          "url": "https://github.com/mbhogal/splitfree/blob/HEAD/pages/5_%F0%9F%92%B0_Settle_Up.py",
+          "text": "See who needs to pay whom to make everything even — based on true equal sharing among all current members.",
+          "content_hash": "26d05a58944e4619e7e204783fd5c83cb4eac389500f1634322bc264824df178"
+        }
+      ]
+    },
+    {
+      "repo_id": "shubhamkarande/VocaPop",
+      "label": "NO_GO",
+      "justification": "https://github.com/ankitects/anki describes a spaced repetition flashcard program and was pushed 2026-10-22. GitHub licence.spdx_id is NOASSERTION. The LICENSE file says 'GNU Affero General Public License, version 3'. The stored Anki text does not say vocabulary or text-to-speech, so those candidate capabilities are gaps. No demand row with comments>=2 or reactions>=1 was recorded. https://github.com/shubhamkarande/VocaPop has 0 stars. README sha256 fa26e49f658afcf9309101d44aab8ca1a55e7a7d08590f379d9a52f59ab1e80f.",
+      "links": [
+        "https://github.com/shubhamkarande/VocaPop",
+        "https://github.com/ankitects/anki"
+      ],
+      "candidate": {
+        "repo_id": "shubhamkarande/VocaPop",
+        "html_url": "https://github.com/shubhamkarande/VocaPop",
+        "description": "VocaPop – Pop a Card. Learn a Word. Get Fluent. A cross-platform spaced-repetition flashcard app with SM-2 algorithm, TTS, offline-first sync & progress tracking.",
+        "readme_excerpt": "VocaPop is a modern, spaced-repetition flashcard app for learning vocabulary in any language.\nSpaced Repetition (SM-2) - Science-backed algorithm for long-term memory retention\nText-to-Speech - Native TTS integration for pronunciation",
+        "problem_excerpt": "spaced-repetition flashcard app",
+        "user_excerpt": "learning vocabulary in any language",
+        "scope_excerpt": "Spaced Repetition (SM-2)",
+        "code_paths": "androidApp/src/main/kotlin/com/vocapop/android/MainActivity.kt|androidApp/src/main/kotlin/com/vocapop/android/ui/decks/DeckManagementScreen.kt",
+        "created_at": "2025-07-22T17:40:39Z",
+        "pushed_at": "2025-12-31T12:12:06Z",
+        "days_since_push": "295",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "MIT",
+        "core_terms": "flashcard|vocabulary",
+        "cohort": "eval",
+        "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+        "collected_at": "2026-10-22T20:30:00+00:00"
+      },
+      "prior_art": [
+        {
+          "repo_id": "shubhamkarande/VocaPop",
+          "alternative_id": "ankitects/anki",
+          "url": "https://github.com/ankitects/anki",
+          "licence_spdx": "",
+          "stars": "32212",
+          "pushed_at": "2026-10-22T17:38:18Z",
+          "days_since_push": "0",
+          "excerpt": "Anki is a smart spaced repetition flashcard program\nAnki is a spaced repetition program.",
+          "candidate_excerpt": "VocaPop – Pop a Card. Learn a Word. Get Fluent. A cross-platform spaced-repetition flashcard app with SM-2 algorithm, TTS, offline-first sync & progress tracking.\nVocaPop is a modern, spaced-repetition flashcard app for learning vocabulary in any language.\nSpaced Repetition (SM-2) - Science-backed algorithm for long-term memory retention\nText-to-Speech - Native TTS integration for pronunciation",
+          "required_terms": "flashcard|vocabulary",
+          "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+          "collected_at": "2026-10-22T20:30:00+00:00",
+          "licence_evidence_id": "licence:ankitects/anki"
+        }
+      ],
+      "demand": [],
+      "evidence": [
+        {
+          "id": "candidate:shubhamkarande/VocaPop",
+          "url": "https://github.com/shubhamkarande/VocaPop",
+          "text": "VocaPop – Pop a Card. Learn a Word. Get Fluent. A cross-platform spaced-repetition flashcard app with SM-2 algorithm, TTS, offline-first sync & progress tracking.\nVocaPop is a modern, spaced-repetition flashcard app for learning vocabulary in any language.\nSpaced Repetition (SM-2) - Science-backed algorithm for long-term memory retention\nText-to-Speech - Native TTS integration for pronunciation",
+          "content_hash": "3e54bc4ebbd26ba8a260656ef48231c836340832bad427972626ac59341c3038"
+        },
+        {
+          "id": "prior:ankitects/anki",
+          "url": "https://github.com/ankitects/anki",
+          "text": "Anki is a smart spaced repetition flashcard program\nAnki is a spaced repetition program.",
+          "content_hash": "02136a7ad54f17504b067f0785dab5e523433e6dc9abe73bfdfe311b485113d5"
+        },
+        {
+          "id": "licence:ankitects/anki",
+          "url": "https://github.com/ankitects/anki/blob/HEAD/LICENSE",
+          "text": "Anki is licensed under the GNU Affero General Public License, version 3 or\nlater, with portions contributed by Anki users licensed under the BSD-3\nlicense (see CONTRIBUTORS).",
+          "full_sha256": "bde7d05790a05f1d1776b77a93ac32765310c8e6e578136183c2560475c500ef",
+          "content_hash": "65ecc33e10d2f518c509a01e308dc90fb0238bb89f0bde07980ffa66b57edfa2"
+        }
+      ]
+    },
+    {
+      "repo_id": "jpequegn/provenance",
+      "label": "NO_GO",
+      "justification": "https://github.com/phodal/adr is MIT, pushed 2026-07-13, and stores architecture decision records. That text does not mention Zoom transcripts. The candidate's ambient-capture capability is a gap. No qualifying external demand row was recorded. https://github.com/jpequegn/provenance has 0 stars. README sha256 6abeab29e8dae2b93b986645657a5b0aa580db783573b806292c83a7a1309748.",
+      "links": [
+        "https://github.com/jpequegn/provenance",
+        "https://github.com/phodal/adr"
+      ],
+      "candidate": {
+        "repo_id": "jpequegn/provenance",
+        "html_url": "https://github.com/jpequegn/provenance",
+        "description": "Personal knowledge base that captures the 'why' behind software decisions. Ambient context capture from chat, meetings, and notes.",
+        "readme_excerpt": "A personal knowledge base that captures the why behind software decisions.\nKnowledge that walks out the door when people leave\nprocessing everything into a queryable graph of decisions, assumptions, and context.\nZoom transcripts",
+        "problem_excerpt": "captures the why behind software decisions",
+        "user_excerpt": "when people leave",
+        "scope_excerpt": "queryable graph of decisions, assumptions, and context",
+        "code_paths": "api/provo/api/routes/decisions.py|api/provo/api/routes/fragments.py",
+        "created_at": "2025-12-27T00:46:10Z",
+        "pushed_at": "2025-12-30T19:17:34Z",
+        "days_since_push": "296",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "",
+        "core_terms": "decisions|transcripts",
+        "cohort": "eval",
+        "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+        "collected_at": "2026-10-22T20:30:00+00:00"
+      },
+      "prior_art": [
+        {
+          "repo_id": "jpequegn/provenance",
+          "alternative_id": "phodal/adr",
+          "url": "https://github.com/phodal/adr",
+          "licence_spdx": "MIT",
+          "stars": "271",
+          "pushed_at": "2026-07-13T00:57:32Z",
+          "days_since_push": "101",
+          "excerpt": "Architecture Decision Records in Node.js with Reporter, supported Windows, GNU/Linux, macOS - 轻量级架构决策记录工具",
+          "candidate_excerpt": "Personal knowledge base that captures the 'why' behind software decisions. Ambient context capture from chat, meetings, and notes.\nA personal knowledge base that captures the why behind software decisions.\nKnowledge that walks out the door when people leave\nprocessing everything into a queryable graph of decisions, assumptions, and context.\nZoom transcripts",
+          "required_terms": "decisions|transcripts",
+          "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+          "collected_at": "2026-10-22T20:30:00+00:00"
+        }
+      ],
+      "demand": [],
+      "evidence": [
+        {
+          "id": "candidate:jpequegn/provenance",
+          "url": "https://github.com/jpequegn/provenance",
+          "text": "Personal knowledge base that captures the 'why' behind software decisions. Ambient context capture from chat, meetings, and notes.\nA personal knowledge base that captures the why behind software decisions.\nKnowledge that walks out the door when people leave\nprocessing everything into a queryable graph of decisions, assumptions, and context.\nZoom transcripts",
+          "content_hash": "6eb5213c075482b315c83053901eec9f5131906394eea40281effd15086a170d"
+        },
+        {
+          "id": "prior:phodal/adr",
+          "url": "https://github.com/phodal/adr",
+          "text": "Architecture Decision Records in Node.js with Reporter, supported Windows, GNU/Linux, macOS - 轻量级架构决策记录工具",
+          "content_hash": "dff1eaaaeae3926a655526f473327296e01c0ca2bb3e03a733d2ef8a632bd80e"
+        }
+      ]
+    },
+    {
+      "repo_id": "toolsvana/regextester",
+      "label": "NO_GO",
+      "justification": "The quoted MIT search for a maintained regex tester returned total_count 0. That is not proof none exists, and a search total does not pass demand. A broader query '\"regex\" tester OR playground license:mit stars:>10 pushed:>2026-04-22' returned total_count 231 and was not treated as a cover, because the result list was not fetched as excerpts. https://github.com/toolsvana/regextester has 0 stars. README sha256 8bbc9ff3e5d8b55e997bd112b4c56b09f0f951b8a2b6acf2a574d44ce1e8ede8.",
+      "links": [
+        "https://github.com/toolsvana/regextester",
+        "https://api.github.com/search/repositories"
+      ],
+      "candidate": {
+        "repo_id": "toolsvana/regextester",
+        "html_url": "https://github.com/toolsvana/regextester",
+        "description": "Regex Tester",
+        "readme_excerpt": "A browser-based regex tester with live matching. Built with Next.js and runs entirely in your browser.\nThis tool tests regular expressions with live matching. Perfect for debugging regex patterns and learning regex syntax.\nTest regex patterns instantly",
+        "problem_excerpt": "A browser-based regex tester with live matching.",
+        "user_excerpt": "debugging regex patterns and learning regex syntax",
+        "scope_excerpt": "Test regex patterns instantly",
+        "code_paths": "app/components/RegexTesterTool.tsx|app/page.tsx",
+        "created_at": "2025-12-31T01:55:06Z",
+        "pushed_at": "2025-12-31T01:58:13Z",
+        "days_since_push": "295",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "",
+        "core_terms": "regex|live matching",
+        "cohort": "eval",
+        "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+        "collected_at": "2026-10-22T20:30:00+00:00"
+      },
+      "prior_art": [],
+      "demand": [
+        {
+          "repo_id": "toolsvana/regextester",
+          "signal_id": "regex-mit-search",
+          "kind": "github_search",
+          "url": "https://api.github.com/search/repositories",
+          "excerpt": "",
+          "metric_name": "total_count",
+          "metric_value": "0",
+          "comments": "",
+          "reactions": "",
+          "stars": "",
+          "pushed_at": "",
+          "days_since_push": "",
+          "query": "\"regex tester\" OR \"test regular expressions\" license:mit stars:>20 pushed:>2026-04-22",
+          "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+          "collected_at": "2026-10-22T20:30:00+00:00"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:toolsvana/regextester",
+          "url": "https://github.com/toolsvana/regextester",
+          "text": "Regex Tester\nA browser-based regex tester with live matching. Built with Next.js and runs entirely in your browser.\nThis tool tests regular expressions with live matching. Perfect for debugging regex patterns and learning regex syntax.\nTest regex patterns instantly",
+          "content_hash": "d3daa70e93c1ae4c0eb05be620c850b19bd0be2c84490e54c353c65f20b0c61c"
+        }
+      ]
+    },
+    {
+      "repo_id": "niittymaa/thomas",
+      "label": "NO_GO",
+      "justification": "The README at https://github.com/niittymaa/thomas says 'Simple pomodoro timer' and does not name a target user. https://github.com/Splode/pomotroid is MIT, pushed 2026-10-09, and says 'simple and configurable Pomodoro timer'. The idea-quality gate stops before that alternative is applied. 0 stars. README sha256 88bafbbe627a4fc132a10dad5e72b06b5c1a96eabfb8c1c1dcc175e0016f92f7.",
+      "links": [
+        "https://github.com/niittymaa/thomas",
+        "https://github.com/Splode/pomotroid"
+      ],
+      "candidate": {
+        "repo_id": "niittymaa/thomas",
+        "html_url": "https://github.com/niittymaa/thomas",
+        "description": "Simple pomodoro timer",
+        "readme_excerpt": "# thomas\n\n> Simple pomodoro timer\n\n* `CommandOrControl+Alt+T` — show application *(global)*\n* `CommandOrControl+Enter` — start/cancel timer",
+        "problem_excerpt": "Simple pomodoro timer",
+        "user_excerpt": "",
+        "scope_excerpt": "start/cancel timer",
+        "code_paths": "app/index.js|modules/timer.js",
+        "created_at": "2017-12-11T00:23:11Z",
+        "pushed_at": "2017-12-11T00:23:11Z",
+        "days_since_push": "3237",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "MIT",
+        "core_terms": "pomodoro|timer",
+        "cohort": "eval",
+        "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+        "collected_at": "2026-10-22T20:30:00+00:00"
+      },
+      "prior_art": [
+        {
+          "repo_id": "niittymaa/thomas",
+          "alternative_id": "Splode/pomotroid",
+          "url": "https://github.com/Splode/pomotroid",
+          "licence_spdx": "MIT",
+          "stars": "5566",
+          "pushed_at": "2026-10-09T22:44:23Z",
+          "days_since_push": "13",
+          "excerpt": "Pomotroid is a simple and configurable Pomodoro timer. It aims to provide a visually-pleasing and reliable way to track productivity using the Pomodoro Technique.",
+          "candidate_excerpt": "Simple pomodoro timer\n# thomas\n\n> Simple pomodoro timer\n\n* `CommandOrControl+Alt+T` — show application *(global)*\n* `CommandOrControl+Enter` — start/cancel timer",
+          "required_terms": "pomodoro|timer",
+          "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+          "collected_at": "2026-10-22T20:30:00+00:00"
+        }
+      ],
+      "demand": [],
+      "evidence": [
+        {
+          "id": "candidate:niittymaa/thomas",
+          "url": "https://github.com/niittymaa/thomas",
+          "text": "Simple pomodoro timer\n# thomas\n\n> Simple pomodoro timer\n\n* `CommandOrControl+Alt+T` — show application *(global)*\n* `CommandOrControl+Enter` — start/cancel timer",
+          "content_hash": "59a194efbbfbdcc40201c2f0977fb71700f402ba0d4e03587d328135802cc56e"
+        },
+        {
+          "id": "prior:Splode/pomotroid",
+          "url": "https://github.com/Splode/pomotroid",
+          "text": "Pomotroid is a simple and configurable Pomodoro timer. It aims to provide a visually-pleasing and reliable way to track productivity using the Pomodoro Technique.",
+          "content_hash": "b3aae95401d6b026a0a067c9f9a17a56ef2692f9a8dc0d02807502842341650f"
+        }
+      ]
+    },
+    {
+      "repo_id": "PratikshaKushwaha/task-board",
+      "label": "NO_GO",
+      "justification": "https://github.com/PratikshaKushwaha/task-board has no README and the description does not name a target user. https://github.com/wekan/wekan is a MIT kanban and was not reached, because idea quality fails first. 0 stars. Three files.",
+      "links": [
+        "https://github.com/PratikshaKushwaha/task-board"
+      ],
+      "candidate": {
+        "repo_id": "PratikshaKushwaha/task-board",
+        "html_url": "https://github.com/PratikshaKushwaha/task-board",
+        "description": "Kanban-style Task Board with drag & drop, CRUD, and localStorage persistence using HTML, CSS & JavaScript",
+        "readme_excerpt": "",
+        "problem_excerpt": "Kanban-style Task Board",
+        "user_excerpt": "",
+        "scope_excerpt": "drag & drop, CRUD, and localStorage persistence",
+        "code_paths": "index.html|script.js",
+        "created_at": "2025-12-31T18:01:54Z",
+        "pushed_at": "2025-12-31T18:17:50Z",
+        "days_since_push": "295",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "",
+        "core_terms": "kanban|drag",
+        "cohort": "eval",
+        "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+        "collected_at": "2026-10-22T20:30:00+00:00"
+      },
+      "prior_art": [],
+      "demand": [],
+      "evidence": [
+        {
+          "id": "candidate:PratikshaKushwaha/task-board",
+          "url": "https://github.com/PratikshaKushwaha/task-board",
+          "text": "Kanban-style Task Board with drag & drop, CRUD, and localStorage persistence using HTML, CSS & JavaScript",
+          "content_hash": "29fba39909e2f9809afa98987e3bb6fea6c74c10bf07abfde09b9e3e1747fcac"
+        }
+      ]
+    },
+    {
+      "repo_id": "tobysauze/feedlyclone",
+      "label": "NO_GO",
+      "justification": "https://github.com/tobysauze/feedlyclone has description 'rss reader' and no README, so no target user. https://github.com/miniflux/v2 is Apache-2.0, pushed 2026-10-21, and is a feed reader with RSS. Idea quality fails first. 0 stars.",
+      "links": [
+        "https://github.com/tobysauze/feedlyclone",
+        "https://github.com/miniflux/v2"
+      ],
+      "candidate": {
+        "repo_id": "tobysauze/feedlyclone",
+        "html_url": "https://github.com/tobysauze/feedlyclone",
+        "description": "rss reader",
+        "readme_excerpt": "",
+        "problem_excerpt": "rss reader",
+        "user_excerpt": "",
+        "scope_excerpt": "rss reader",
+        "code_paths": "apps/api/src/index.ts|apps/web/src/app/layout.tsx",
+        "created_at": "2025-12-31T07:30:17Z",
+        "pushed_at": "2025-12-31T09:23:32Z",
+        "days_since_push": "295",
+        "stargazers_count": "0",
+        "forks_count": "0",
+        "open_issues": "0",
+        "licence_spdx": "",
+        "core_terms": "rss|reader",
+        "cohort": "eval",
+        "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+        "collected_at": "2026-10-22T20:30:00+00:00"
+      },
+      "prior_art": [
+        {
+          "repo_id": "tobysauze/feedlyclone",
+          "alternative_id": "miniflux/v2",
+          "url": "https://github.com/miniflux/v2",
+          "licence_spdx": "Apache-2.0",
+          "stars": "9813",
+          "pushed_at": "2026-10-21T23:27:19Z",
+          "days_since_push": "1",
+          "excerpt": "Miniflux is a minimalist and opinionated feed reader. Supported feed formats: Atom 0.3/1.0, RSS 1.0/2.0, and JSON Feed 1.0/1.1.",
+          "candidate_excerpt": "rss reader\n",
+          "required_terms": "rss|reader",
+          "data_origin": "github_rest_api:2026-10-22T20:30:00Z",
+          "collected_at": "2026-10-22T20:30:00+00:00"
+        }
+      ],
+      "demand": [],
+      "evidence": [
+        {
+          "id": "candidate:tobysauze/feedlyclone",
+          "url": "https://github.com/tobysauze/feedlyclone",
+          "text": "rss reader",
+          "content_hash": "c5794ce486deab4ccaecd87f0f9423d0f1911ed9c5fe08aa5a93520c58053d4c"
+        },
+        {
+          "id": "prior:miniflux/v2",
+          "url": "https://github.com/miniflux/v2",
+          "text": "Miniflux is a minimalist and opinionated feed reader. Supported feed formats: Atom 0.3/1.0, RSS 1.0/2.0, and JSON Feed 1.0/1.1.",
+          "content_hash": "a55d267c0f2d7306fe7cf2c7d4998cdaa15f4714d13735f95e09f65b47d156f1"
+        }
+      ]
+    }
+  ]
+}

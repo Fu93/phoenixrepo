@@ -66,7 +66,11 @@ class Settings(BaseSettings):
 
     def meterless_lanes_list(self) -> tuple[str, ...]:
         lanes = tuple(part.strip() for part in (self.meterless_lanes or "").split(",") if part.strip())
-        return lanes or ("nvidia/nemotron-3-super-120b-a12b", "meterless/auto")
+        default_lanes = lanes or ("nvidia/nemotron-3-super-120b-a12b", "meterless/auto")
+        override = (self.model_override or "").strip()
+        if override:
+            return (override, *(l for l in default_lanes if l != override))
+        return default_lanes
 
     def chat_timeout_seconds(self) -> float:
         """Chat client budget stays inside the chunk budget so a late reply is not then failed."""

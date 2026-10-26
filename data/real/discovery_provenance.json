@@ -1,0 +1,32 @@
+{
+  "collected_at": "2026-10-22T19:11:28+00:00",
+  "data_origin": "github_rest_api:2026-10-22T19:11:28Z",
+  "token_used": false,
+  "token_written": false,
+  "commands": [
+    "gh api repos/<owner>/<name>",
+    "gh api -H Accept:application/vnd.github.raw repos/<owner>/<name>/readme",
+    "gh api repos/<owner>/<name>/git/trees/HEAD?recursive=1",
+    "gh api repos/foliant-docs/foliant/issues/80",
+    "gh api repos/foliant-docs/foliant/pulls/80",
+    "gh api search/issues?q=\"knowledge base\" youtrack markdown is:issue",
+    "gh api search/repositories?q=youtrack markdown knowledge in:description stars:>20 pushed:>2026-04-22",
+    "gh api search/repositories?q=code generator in:description inject template stars:>1000 pushed:>2025-10-01",
+    "gh api repos/Fu93/hygen/actions/runs/39828539248",
+    "gh api repos/Fu93/hygen/actions/runs/39828539248/jobs",
+    "gh api repos/Fu93/hygen/pulls/1",
+    "gh api repos/Fu93/hygen/pulls/1/commits"
+  ],
+  "readme_sha256": {
+    "tharani-2006/Invoice-generator-application": "2dff75f313bc47e883b61f55fa08c453c219dc80b9b4d340e626a32667798cd4",
+    "al1abb/invoify": "259a9dc2d41e42605401a31c37775930dc165cdb83c0b1ea6ebf61e30f8ba88e",
+    "SergioMendolia/ytkb": "32559bf1654b1d9415f00d53ebd5b3c18ead5d47a12d883101b02d079a541fb1",
+    "foliant-docs/foliant": "bdc52b2ec605720d6f49e1d506953b382c7da6e7669d47e7e07f19b3b68db13b",
+    "plopjs/plop": "8284e5541eacf1296aaa5910ed2b1fa6c581c2570604f6f3f9408e3d4fdb0abe",
+    "yeoman/yo": "1b6069e0b58cc0fb36cfa945b580752ae73aa5b3104fce45312afd060b750c59",
+    "cookiecutter/cookiecutter": "6645f3e153b13a68c43131aad90dcdb538bc1b3ed1060d67c54fe1d42316bd2f",
+    "jondot/hygen": "8a08e1add4ca7826889c3ccaf61c0b41e088ef0442a70f0370fcb78141d8602a"
+  },
+  "raw_sha256": "caedbe1accb0c841d86ed62beec2e5a777e58a992e902e88b8869df1c6c0b05c",
+  "note": "Days are the date difference between pushed_at and collected_at. Search total_count values are that query's total, not a census. README excerpts were checked as substrings of the fetched README bodies whose sha256 values are stored here. Those bodies are not committed."
+}

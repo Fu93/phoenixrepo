@@ -11,10 +11,18 @@ from typing import Any
 from app.adapters.zetaris import ZetarisResult, assert_single_statement
 from app.errors import ZetarisError
 from app.paths import repo_root
-from app.sql_catalog import ATTEMPT_COLUMNS, PROFILE_COLUMNS, SIGNAL_COLUMNS, SOURCE_COLUMNS
+from app.sql_catalog import (
+    ATTEMPT_COLUMNS,
+    DEMAND_COLUMNS,
+    DISCOVERY_COLUMNS,
+    PRIOR_ART_COLUMNS,
+    PROFILE_COLUMNS,
+    SIGNAL_COLUMNS,
+    SOURCE_COLUMNS,
+)
 
 _QUERY = re.compile(
-    r"^select\s+(?P<cols>.+?)\s+from\s+phoenix\.(?P<view>repo_evidence|revival_signals|revival_attempts|revival_sources)"
+    r"^select\s+(?P<cols>.+?)\s+from\s+phoenix\.(?P<view>repo_evidence|revival_signals|revival_attempts|revival_sources|discovery_candidates|prior_art|demand_signals)"
     r"\s+where\s+(?P<col>[a-z_]+)\s*=\s*'(?P<literal>(?:[^']|'')*)'\s*$",
     re.IGNORECASE | re.DOTALL,
 )
@@ -24,6 +32,9 @@ _VIEWS = {
     "revival_signals": ("revival_signals.csv", SIGNAL_COLUMNS, False),
     "revival_attempts": ("revival_attempts.csv", ATTEMPT_COLUMNS, True),
     "revival_sources": ("revival_sources.csv", SOURCE_COLUMNS, True),
+    "discovery_candidates": ("discovery_candidates.csv", DISCOVERY_COLUMNS, True),
+    "prior_art": ("prior_art.csv", PRIOR_ART_COLUMNS, True),
+    "demand_signals": ("demand_signals.csv", DEMAND_COLUMNS, True),
 }
 
 
@@ -72,7 +83,8 @@ class SampleZetaris:
         if not match:
             raise ZetarisError(
                 "Sample Zetaris only runs a single SELECT against phoenix.repo_evidence, "
-                "phoenix.revival_signals, phoenix.revival_attempts, or phoenix.revival_sources.",
+                "phoenix.revival_signals, phoenix.revival_attempts, phoenix.revival_sources, "
+                "phoenix.discovery_candidates, phoenix.prior_art, or phoenix.demand_signals.",
                 status_code=400,
             )
         view = match.group("view").lower()

@@ -4,6 +4,7 @@ import os
 
 import uvicorn
 from fastapi import FastAPI, Request
+from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 
 from app.errors import InvestigationError
@@ -73,6 +74,25 @@ def run(request: RunRequest):
             content={"error": {"type": "InvalidRepository", "message": str(exc)}},
         )
     return RunResponse(**result)
+
+
+class JudgeRequest(BaseModel):
+    url: str
+    use_llm: bool = True
+
+
+@app.post("/judge")
+def judge_endpoint(request: JudgeRequest):
+    """Understand a repository, search the whole web, verify quotes, return a verdict and report path."""
+    from scripts import judge_repo
+    from scripts.score_candidates import RelevanceLLMError
+
+    try:
+        return judge_repo.judge(request.url, use_llm=request.use_llm)
+    except judge_repo.JudgeError as exc:
+        return JSONResponse(status_code=422, content={"error": {"type": "CannotJudge", "message": str(exc)}})
+    except RelevanceLLMError as exc:
+        return JSONResponse(status_code=502, content={"error": {"type": "LLMUnavailable", "message": str(exc)}})
 
 
 @app.exception_handler(InvestigationError)

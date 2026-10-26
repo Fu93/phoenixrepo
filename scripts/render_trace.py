@@ -51,7 +51,7 @@ def render_markdown(events: list[dict], *, title: str) -> str:
     lines = [
         f"# {title}",
         "",
-        "Decisions include CANDIDATE (policy passed, no qualifying stage-1 success), RESURRECTED, RESURRECTION_FAILED, and NO_GO.",
+        "Gate 1 verdicts: CANDIDATE, ALREADY_EXISTS, NO_GO, NEEDS_REVIEW, NEEDS_PRIOR_ART, UNJUDGED. Gate 2 (revive loop) states: NOT_ATTEMPTED_GATE1, NOTHING_TO_FIX, NEEDS_REVIEW, RESURRECTED (verified locally by the repository's own test command, not on CI), RESURRECTION_FAILED. In the Zetaris evidence-policy track RESURRECTED means a recorded CI success and CANDIDATE means a policy pass with no such success.",
         "line_hash chains each row to the previous one. RUN_SEAL is the run hash. The chain shows the file was not edited later. It does not show the text is true.",
         "",
         "| # | timestamp | agent | action | status | served_model | line_hash | input | output |",
@@ -99,8 +99,10 @@ def render_html(events: list[dict], *, title: str) -> str:
     if events and events[-1].get("action") == "RUN_SEAL":
         seal = "<p>Run hash: " + html.escape(str(events[-1].get("line_hash") or "")) + "</p>"
     note = (
-        "<p>Decisions include CANDIDATE (policy passed, no qualifying stage-1 success), "
-        "RESURRECTED, RESURRECTION_FAILED, and NO_GO. "
+        "<p>Gate 1 verdicts: CANDIDATE, ALREADY_EXISTS, NO_GO, NEEDS_REVIEW, NEEDS_PRIOR_ART, UNJUDGED. "
+        "Gate 2 (revive loop) states: NOT_ATTEMPTED_GATE1, NOTHING_TO_FIX, NEEDS_REVIEW, "
+        "RESURRECTED (verified locally by the repository's own test command, not on CI), RESURRECTION_FAILED. "
+        "In the Zetaris evidence-policy track RESURRECTED means a recorded CI success and CANDIDATE means a policy pass with no such success. "
         "line_hash chains each row to the previous one. RUN_SEAL is the run hash. "
         "The chain shows the file was not edited later. It does not show the text is true.</p>"
     )

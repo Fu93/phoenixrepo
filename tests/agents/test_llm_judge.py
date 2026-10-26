@@ -149,6 +149,7 @@ def _run_live(tmp_path, repo: str, judge_raw_for_role):
         zetaris=SampleZetaris(cache_dir=Path("data/sample")),
         llm=_bound(_Scripted(judge_raw_for_role)),
         hmem_path=tmp_path / "hmem.json",
+        first_gate=lambda repo, run_id: {"verdict": "CANDIDATE", "reason": "stub gate: no network in unit tests"},
     ).run()
 
 

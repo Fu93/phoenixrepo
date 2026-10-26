@@ -7,8 +7,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+from app.first_gate import GATED_DECISIONS, NEEDS_REVIEW, REVIVED_NOT_RECOMMENDED, GateFn, apply_first_gate, judge_first_gate
 from app.adapters.sample_zetaris import SampleZetaris
 from app.adapters.zetaris import ZetarisClient, ZetarisResult
+from app.agents.discovery_planner import build_discovery_prd, render_discovery_markdown
+from app.agents.equivalence import evidence_from_rows, judge_discovery
+from app.agents.market_filter import apply_market_overlay, showcase_prior_art_note
 from app.agents.planner import (
     attempt_evidence_id,
     build_revival_prd,
@@ -40,8 +44,18 @@ from app.adapters.meterless import MeterlessError
 from app.llm.parsing import parse_model_json
 from app.llm.provider import BoundLLM, build_llm
 from app.llm.standin import SampleStandIn
+from app.prompts import load_prompt
 from app.paths import repo_root
-from app.sql_catalog import attempts_sql, profile_sql, require_repo_id, signals_sql, sources_sql
+from app.sql_catalog import (
+    attempts_sql,
+    demand_sql,
+    discovery_sql,
+    prior_art_sql,
+    profile_sql,
+    require_repo_id,
+    signals_sql,
+    sources_sql,
+)
 from app.trace_log import HackathonTrace
 from artifacts.store import ArtifactStore
 from audit.trail import AuditTrail
@@ -75,7 +89,9 @@ class InvestigationOrchestrator:
         zetaris: SampleZetaris | ZetarisClient | None = None,
         llm: BoundLLM | None = None,
         hmem_path: Path | None = None,
+        first_gate: GateFn | None = None,
     ) -> None:
+        self._first_gate_fn = first_gate
         self.repository = require_repo_id(repository)
         self.mode = mode
         self.max_repair_iterations = max_repair_iterations
@@ -122,6 +138,7 @@ class InvestigationOrchestrator:
         self.judge_failure = ""
         self.judge_exhausted = False
         self.provider_degraded = False
+        self.prompt_versions: dict[str, str] = {}
 
     def run(self) -> dict[str, Any]:
         self.trace.event(
@@ -156,6 +173,16 @@ class InvestigationOrchestrator:
             )
         judgment = self._judge(row, signals, known, recalled)
         decision, policy_reason, self.upgrade = apply_revival_attempts(row, signals, attempts)
+        if self.discovery_rows and not getattr(self.llm, "sample_standin", False):
+            decision, policy_reason = self._discovery_equivalence(decision, policy_reason)
+        else:
+            decision, policy_reason = apply_market_overlay(
+                decision,
+                policy_reason,
+                self.discovery_rows,
+                self.prior_rows,
+                self.demand_rows,
+            )
         self._advance(PhoenixState.RECONNAISSANCE_COMPLETE, "Repository row loaded from Zetaris.", [profile_evidence_id])
         self._advance(PhoenixState.EVIDENCE_COMPLETE, "Profile and revival signals loaded.", list(known))
         self._advance(PhoenixState.INTENT_RECONSTRUCTED, "Claims are tied to Zetaris rows.", [profile_evidence_id])
@@ -163,7 +190,9 @@ class InvestigationOrchestrator:
         self._advance(PhoenixState.VALUE_DECISION, decision, [profile_evidence_id])
 
         repairs_used = 0
-        if decision != "NO_GO":
+        if decision == "ALREADY_EXISTS":
+            self._advance(PhoenixState.ALREADY_EXISTS, policy_reason, [profile_evidence_id])
+        elif decision != "NO_GO":
             self._architect(row, profile_evidence_id)
             self._builder(row, decision, known)
             self._advance(PhoenixState.PRODUCT_BLUEPRINT_COMPLETE, "Revival contract drafted.", [profile_evidence_id])
@@ -182,15 +211,26 @@ class InvestigationOrchestrator:
                 repairs_used += 1
                 self._advance(PhoenixState.REPAIRING, "Signals re-queried from Zetaris.", list(known))
                 self._advance(PhoenixState.VALIDATING, policy_reason, list(known))
+            if decision in GATED_DECISIONS and not self.discovery_rows:
+                decision, policy_reason = self._first_gate_check(decision, policy_reason)
             if decision == "RESURRECTION_FAILED":
                 self._advance(PhoenixState.RESURRECTION_FAILED, policy_reason, list(known))
+            elif decision == REVIVED_NOT_RECOMMENDED:
+                self._advance(PhoenixState.REVIVED_NOT_RECOMMENDED, policy_reason, list(known))
+            elif decision == NEEDS_REVIEW:
+                self._advance(PhoenixState.NEEDS_REVIEW, policy_reason, list(known))
             elif decision == "RESURRECTED":
                 self._advance(PhoenixState.RESURRECTED, policy_reason, list(known))
             elif decision == "CANDIDATE":
                 self._advance(PhoenixState.CANDIDATE, policy_reason, list(known))
             else:
                 self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
-            self._planner(row, signals, attempts, sources, known)
+            if decision in (REVIVED_NOT_RECOMMENDED, NEEDS_REVIEW):
+                pass  # no PRD: the first gate did not clear this repository
+            elif self.discovery_rows and decision == "CANDIDATE":
+                self._discovery_planner()
+            else:
+                self._planner(row, signals, attempts, sources, known)
         else:
             self._advance(PhoenixState.NO_GO, policy_reason, [profile_evidence_id])
 
@@ -201,6 +241,10 @@ class InvestigationOrchestrator:
                 verdict_text = verdict_text.rstrip() + " Revival has not yet been attempted."
         else:
             verdict_text = explanation(row, decision, policy_reason)
+        if self.prior_rows and not self.discovery_rows:
+            note = showcase_prior_art_note(self.prior_rows)
+            if note not in verdict_text:
+                verdict_text = verdict_text.rstrip() + " " + note
         judge_note = self._judge_verdict_note()
         if judge_note:
             verdict_text = verdict_text.rstrip() + " " + judge_note
@@ -274,6 +318,9 @@ class InvestigationOrchestrator:
         signal_result = self._query(signals_sql(self.repository))
         attempt_result = self._query(attempts_sql(self.repository))
         source_result = self._query(sources_sql(self.repository))
+        discovery_result = self._query(discovery_sql(self.repository))
+        prior_result = self._query(prior_art_sql(self.repository))
+        demand_result = self._query(demand_sql(self.repository))
         if not profile_result.rows:
             raise InvestigationError(
                 "RepositoryNotInZetaris",
@@ -288,6 +335,12 @@ class InvestigationOrchestrator:
         self.signal_result = signal_result
         self.attempt_result = attempt_result
         self.source_result = source_result
+        self.discovery_result = discovery_result
+        self.prior_result = prior_result
+        self.demand_result = demand_result
+        self.discovery_rows = [dict(item) for item in discovery_result.rows]
+        self.prior_rows = [dict(item) for item in prior_result.rows]
+        self.demand_rows = [dict(item) for item in demand_result.rows]
         self.trace.event(
             agent_name="archaeologist",
             action="EVIDENCE_COLLECTION_COMPLETED",
@@ -471,6 +524,21 @@ class InvestigationOrchestrator:
             )
             self.revival_prd = self._write_prd(accepted)
 
+    def _discovery_planner(self) -> None:
+        """Plan-only productise document. The model does not draft this cohort."""
+
+        document = build_discovery_prd(
+            self.discovery_rows[0],
+            self.prior_rows,
+            self.demand_rows,
+            {
+                "discovery": _query_cite(self.discovery_result),
+                "prior_art": _query_cite(self.prior_result),
+                "demand": _query_cite(self.demand_result),
+            },
+        )
+        self.revival_prd = self._write_prd(label_prd(document, model_produced=False))
+
     def _write_prd(self, document: dict) -> dict[str, Any]:
         import os
 
@@ -486,7 +554,7 @@ class InvestigationOrchestrator:
             base = prd_basename(str(document["repo_id"]))
             markdown_file = directory / f"{base}.prd.md"
             json_file = directory / f"{base}.prd.json"
-            markdown_file.write_text(render_markdown(document), encoding="utf-8")
+            markdown_file.write_text(_markdown_for(document), encoding="utf-8")
             json_file.write_text(render_json(document), encoding="utf-8")
             markdown_path = str(markdown_file)
             json_path = str(json_file)
@@ -672,24 +740,96 @@ class InvestigationOrchestrator:
         result = self._query(signals_sql(row["repo_id"]))
         return result, [normalize_signal(item) for item in result.rows]
 
+    def _first_gate_check(self, decision: str, reason: str) -> tuple[str, str]:
+        """A revival result only stands if the prior-art judgement agrees the repository is worth saving."""
+
+        gate = self._first_gate_fn
+        if gate is None:
+            if self.sample:
+                self.trace.event(
+                    agent_name="orchestrator",
+                    action="FIRST_GATE_SKIPPED",
+                    input_summary={"repo_id": self.repository},
+                    output_summary="Sample mode has no live web search, so the first gate is not applied.",
+                    status="ok",
+                )
+                return decision, reason
+            gate = judge_first_gate
+        outcome: dict[str, Any] | None = None
+        error = ""
+        try:
+            outcome = gate(self.repository, f"{self.run_id}-gate1")
+        except Exception as exc:  # any failure must end in NEEDS_REVIEW, never in a pass
+            error = f"{type(exc).__name__}: {str(exc)[:300]}"
+        final, final_reason = apply_first_gate(decision, reason, outcome, error)
+        self.trace.event(
+            agent_name="orchestrator",
+            action="FIRST_GATE",
+            input_summary={"repo_id": self.repository, "revival_decision": decision},
+            output_summary={
+                "gate_verdict": (outcome or {}).get("verdict"),
+                "gate_run_id": (outcome or {}).get("run_id"),
+                "final_decision": final,
+                "error": error,
+            },
+            target_agent="validator",
+            status="error" if error else "ok",
+        )
+        return final, final_reason
+
+    def _discovery_equivalence(self, decision: str, reason: str) -> tuple[str, str]:
+        """Ask for a capability map when Nightshift is in use. A rejected map keeps the phrase fallback."""
+
+        evidence = evidence_from_rows(self.discovery_rows[0], self.prior_rows, self.demand_rows)
+        mapping = self._ask_equivalence(evidence)
+        judged, judged_reason = judge_discovery(
+            self.discovery_rows[0],
+            self.prior_rows,
+            self.demand_rows,
+            evidence,
+            mapping,
+        )
+        self.trace.event(
+            agent_name="equivalence",
+            action="PRIOR_ART_JUDGEMENT",
+            input_summary={"mapping": bool(mapping), "repo_id": self.discovery_rows[0].get("repo_id")},
+            output_summary={"decision": judged, "reason": judged_reason[:500]},
+            target_agent="validator",
+            llm={**self._llm_trace(), "prompt_version": self.prompt_versions.get("equivalence", "")},
+        )
+        return judged, judged_reason
+
+    def _ask_equivalence(self, evidence: list[dict]) -> dict | None:
+        try:
+            parsed, _carry = self._role_chunk(
+                "equivalence",
+                1,
+                {"candidate": self.discovery_rows[0], "prior_art": self.prior_rows, "evidence": evidence},
+                "",
+                target="validator",
+            )
+        except (InvestigationError, MeterlessError, ValueError):
+            return None
+        if not isinstance(parsed, dict):
+            return None
+        return parsed
+
     def _role_chunk(self, role: str, attempt: int, payload: dict, carryover: str, target: str):
         self._check_run_budget()
+        prompt = load_prompt(role)
+        self.prompt_versions[role] = prompt.sha256
         user = (
             f"ROLE: {role}\nATTEMPT: {attempt}\nCARRYOVER:\n{carryover}\n"
             f"EVIDENCE_JSON:\n{json.dumps(payload, ensure_ascii=False, default=str)}\n"
             "Return one JSON object and cite only evidence ids from EVIDENCE_JSON. "
+            "If a fact is not in those rows, write unknown. "
             "Reasoning before the answer is allowed. The last value in the reply must be that JSON object."
         )
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are one role in PhoenixRepo. Use only the Zetaris rows in the user message. "
-                    "Do not invent demand, users, or test results."
-                ),
-            },
+            {"role": "system", "content": prompt.text},
             {"role": "user", "content": user},
         ]
+        model_trace = {**self._llm_trace(), "prompt_version": prompt.sha256}
         try:
             raw = self.llm.complete(messages, deadline=self._llm_deadline())
         except MeterlessError as exc:
@@ -703,12 +843,13 @@ class InvestigationOrchestrator:
                     "requested_model": getattr(self.llm, "requested_model", ""),
                     "served_model": getattr(self.llm, "served_model", None),
                     "reason": str(exc)[:300],
+                    "prompt_version": prompt.sha256,
                 },
                 output_summary="Deterministic stand-in used after Nightshift lanes failed.",
                 target_agent="validator",
                 retry_count=attempt - 1,
                 status="degraded",
-                llm=self._llm_trace(),
+                llm=model_trace,
             )
             raw = SampleStandIn().complete(messages)
             self.llm.requested_model = SampleStandIn.model_name
@@ -718,6 +859,7 @@ class InvestigationOrchestrator:
         model_trace = {
             "requested_model": self.llm.requested_model,
             "served_model": self.llm.served_model,
+            "prompt_version": prompt.sha256,
         }
         try:
             parsed = parse_model_json(
@@ -729,6 +871,7 @@ class InvestigationOrchestrator:
                     "builder": ("steps",),
                     "diagnostician": ("action", "claims", "decision"),
                     "planner": ("findings", "stages"),
+                    "equivalence": ("capabilities", "mappings"),
                 }.get(role, ("decision", "claims", "steps", "contract", "explanation")),
             )
         except InvestigationError as exc:
@@ -821,7 +964,11 @@ class InvestigationOrchestrator:
             target_agent=role,
             retry_count=attempt - 1,
             status=status,
-            llm={"requested_model": requested_model, "served_model": served_model},
+            llm={
+                "requested_model": requested_model,
+                "served_model": served_model,
+                "prompt_version": load_prompt("reviewer").sha256,
+            },
         )
 
     def _note_judge_exhausted(self, role: str) -> None:
@@ -1161,6 +1308,7 @@ class InvestigationOrchestrator:
                     "label": self.llm.label(),
                     "explanation_accepted": model_accepted,
                     "primary_provider": "meterless",
+                    "prompt_versions": dict(self.prompt_versions),
                     "judge": {
                         "advisory": True,
                         "exhausted": self.judge_exhausted,
@@ -1207,6 +1355,11 @@ class InvestigationOrchestrator:
                     "cannot override NO_GO, missing tests, or a missing licence file. A qualifying "
                     "stage-1 failure is RESURRECTION_FAILED and cites that run. The latest attempt "
                     "wins. Refactor and upgrade are an upgrade result and do not change the verdict. "
+                    "A discovery row is judged from the README and from external demand for the problem. "
+                    "The repository's own stars, forks, and issues are not that signal. "
+                    "ALREADY_EXISTS means every core capability is covered by one maintained free OSI "
+                    "alternative after quote checks. With no verified mapping the labelled fallback "
+                    "is phrase/keyword. ALREADY_EXISTS does not get a revival plan. "
                     "The trace hash chain shows the record was not altered after the run. It does not "
                     "show that the record is true."
                 ),
@@ -1245,7 +1398,7 @@ class InvestigationOrchestrator:
         markdown_path = self.revival_prd.get("markdown_path") or ""
         json_path = self.revival_prd.get("json_path") or ""
         if markdown_path:
-            Path(markdown_path).write_text(render_markdown(document), encoding="utf-8")
+            Path(markdown_path).write_text(_markdown_for(document), encoding="utf-8")
         if json_path:
             Path(json_path).write_text(render_json(document), encoding="utf-8")
 
@@ -1274,6 +1427,16 @@ class InvestigationOrchestrator:
     def _check_run_budget(self) -> None:
         if time.monotonic() - self.started > self.settings.run_timeout_seconds:
             raise InvestigationError("RunTimeout", "The investigation exceeded its run timeout.", 504)
+
+
+def _markdown_for(document: dict) -> str:
+    if document.get("kind") == "discovery":
+        return render_discovery_markdown(document)
+    return render_markdown(document)
+
+
+def _query_cite(result: ZetarisResult) -> dict[str, str]:
+    return {"query_id": result.query_id, "sql": result.sql, "content_hash": result.content_hash}
 
 
 def _planner_evidence_text(row: dict, signals: list[dict], attempts: list[dict], sources: list[dict]) -> str:
