@@ -40,6 +40,21 @@ def _cell(text: Any, limit: int = 110) -> str:
     return one if len(one) <= limit else one[: limit - 1].rstrip() + "…"
 
 
+def _served_by_provider(path: Path) -> dict[str, dict[str, int]]:
+    """provider -> served model -> used answers, from the trace lines themselves."""
+    out: dict[str, dict[str, int]] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if "served_model" not in record or str(record.get("status") or "") in {"error", "rejected"}:
+            continue
+        provider = "nvidia-direct" if '"provider": "nvidia-direct"' in str(record.get("output_summary") or "") else "nightshift"
+        model = str(record.get("served_model") or "(missing)")
+        out.setdefault(provider, {})[model] = out.setdefault(provider, {}).get(model, 0) + 1
+    return out
+
+
 def _cache_hits(path: Path) -> int:
     hits = 0
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -87,6 +102,7 @@ def trace_facts(run_id: str | None, logs: Path) -> dict[str, Any]:
         facts.update(nemotron_report(path))
         facts["cache_hits"] = _cache_hits(path)
         facts["verdict_answer"] = _verdict_answer(path)
+        facts["served_by_provider"] = _served_by_provider(path)
     else:
         facts["chain_error"] = detail
     return facts
@@ -97,7 +113,7 @@ def collect(report: dict[str, Any], labels: dict[str, Any], logs: Path) -> dict[
     rows = [r for r in report.get("results") or [] if isinstance(r, dict) and r.get("repo_id") in cases]
     per_case = []
     totals = {"traces": 0, "chain_ok": 0, "answers_used": 0, "answers_by_nemotron": 0, "cache_hits": 0,
-              "providers": {}, "not_nemotron": [], "verdicts": 0, "verdicts_by_nemotron": 0}
+              "providers": {}, "not_nemotron": [], "verdicts": 0, "verdicts_by_nemotron": 0, "served_by_provider": {}}
     for row in rows:
         facts = trace_facts(row.get("run_id"), logs)
         if facts.get("found"):
@@ -110,6 +126,10 @@ def collect(report: dict[str, Any], labels: dict[str, Any], logs: Path) -> dict[
             for name, count in facts["providers"].items():
                 totals["providers"][name] = totals["providers"].get(name, 0) + count
             totals["not_nemotron"] += [f"{row['repo_id']} {item}" for item in facts["not_nemotron"]]
+            for prov, models in facts["served_by_provider"].items():
+                bucket = totals["served_by_provider"].setdefault(prov, {})
+                for model, count in models.items():
+                    bucket[model] = bucket.get(model, 0) + count
             answer = facts.get("verdict_answer")
             if answer:
                 totals["verdicts"] += 1
@@ -191,8 +211,10 @@ def slots(data: dict[str, Any], source: str, readme: bool) -> dict[str, str]:
         )
         out["provider-split"] = (
             f"Provider split on that run, from `verify_trace.py --require-nemotron` over each case trace: {split}.{cached} "
-            "Every `nvidia-direct` call was served by `nvidia/nemotron-3-ultra-550b-a55b`, because NVIDIA's API answered 404 "
-            "for the 120B Super model on this account."
+            "Served model per provider: " + "; ".join(
+                f"{prov}: " + ", ".join(f"`{model}` {count}" for model, count in sorted(models.items()))
+                for prov, models in sorted(t["served_by_provider"].items())
+            ) + "."
         )
     else:
         share = f"**TBD** ({traced})."

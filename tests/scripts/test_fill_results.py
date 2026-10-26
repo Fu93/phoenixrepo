@@ -43,6 +43,7 @@ def test_fill_writes_only_verified_numbers(tmp_path: Path):
     values = fr.slots(data, "logs/eval.json", readme=True)
     assert "**4** of **4** answers used (2 of 3 case traces verified" in values["nemotron-answer-share"]
     assert "nightshift **2**" in values["provider-split"] and "nvidia-direct **2**" in values["provider-split"]
+    assert f"nightshift: `{NEMO}` 2; nvidia-direct: `{NEMO}` 2" in values["provider-split"]
     assert "Nemotron in **2** of the **2** cases" in values["nemotron-answer-share"]
     assert f"`{NEMO}` (nvidia-direct)" in values["per-case-table"]
     assert "1 of the used answers were replayed from the LLM cache" in values["provider-split"]

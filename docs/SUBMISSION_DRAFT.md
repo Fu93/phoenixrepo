@@ -34,7 +34,7 @@ Answers by NVIDIA Nemotron on the scored run: **TBD** of **TBD**.
 <!-- END numbers: nemotron-answer-share -->
 
 <!-- BEGIN numbers: provider-split -->
-Provider split, Nightshift answers used / `nvidia-direct` answers used (`verify_trace.py --require-nemotron`): **TBD** / **TBD**. Every `nvidia-direct` call was served by `nvidia/nemotron-3-ultra-550b-a55b`, because the API answered 404 for the 120B Super model on this account.
+Provider split, Nightshift answers used / `nvidia-direct` answers used (`verify_trace.py --require-nemotron`): **TBD** / **TBD**. `nvidia-direct` requests `nvidia/nemotron-3-ultra-550b-a55b`, because the API answered 404 for the 120B Super model on this account; the served model per provider is counted from the traces.
 <!-- END numbers: provider-split -->
 
 <!-- BEGIN numbers: calendarsync-final-verdict -->
