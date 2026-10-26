@@ -63,7 +63,7 @@ The fix that matters most is fewer wrong refusals. CalendarSyncProject was once 
 
 Gate 1's judgements are asked of NVIDIA Nemotron in two tiers: a fast tier for the many overlap checks and a reasoning tier for the verdict, whose reasoning is kept next to the quote. Meterless Nightshift is tried first, and NVIDIA's own API answers when Nightshift fails. On the scored run, Nemotron wrote **TBD** of the **TBD** answers used.
 
-Every step is a line in a hash-chained trace that records the model that actually answered; one command verifies the chain and that every used answer was Nemotron. Gate 1 can load its evidence from Zetaris over SQL; this submission exercised that live, read-only, on two repositories. The 16 scored evaluation repositories were fetched live from GitHub instead.
+Every step is a line in a hash-chained trace that records the model that actually answered; one command verifies the chain and that every used answer was Nemotron. Gate 1 can load its evidence from Zetaris over SQL; this submission ran gate 1 that way, read-only, on two repositories, with every answer verified as Nemotron's (one of the two verdicts disagrees with the human label, and the README says so). The 16 scored evaluation repositories were fetched live from GitHub instead.
 
 Limits: no AI-written patch has fixed a real repository yet, and the code was written with AI assistance.
 
