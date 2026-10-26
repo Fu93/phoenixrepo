@@ -23,7 +23,7 @@ import re
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -74,6 +74,78 @@ STOPWORDS = frozenset(
 )
 
 RETRY_DELAYS = (0, 3, 8, 20, 45)
+
+# Defaults of the Nightshift client. Each can be changed per machine without code edits:
+#   PHOENIX_LLM_ATTEMPT_TIMEOUT_S  one HTTP attempt (read timeout and wall clock), default 120
+#   PHOENIX_LLM_TOTAL_TIMEOUT_S    one call across retries, default 420
+#   PHOENIX_LLM_MAX_TOKENS         completion budget, default 4096
+#   PHOENIX_LLM_EXTRA_BODY         JSON object merged into the request body, for example
+#                                  {"chat_template_kwargs": {"enable_thinking": false}}
+# scripts/nightshift_probe.py measures which values work on this machine's Nightshift.
+DEFAULT_ATTEMPT_TIMEOUT_S = 120.0
+DEFAULT_READ_TIMEOUT_S = 90.0
+DEFAULT_TOTAL_TIMEOUT_S = 420.0
+DEFAULT_MAX_TOKENS = 4096
+_PROTECTED_BODY_KEYS = frozenset({"model", "messages", "stream"})
+
+
+def _env_positive(name: str) -> float | None:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def extra_body_from_env() -> dict[str, Any]:
+    """PHOENIX_LLM_EXTRA_BODY as a dict. Invalid JSON or a non-object is ignored with a warning."""
+    raw = os.environ.get("PHOENIX_LLM_EXTRA_BODY", "").strip()
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        sys.stderr.write("warning: PHOENIX_LLM_EXTRA_BODY is not valid JSON; ignored\n")
+        return {}
+    if not isinstance(value, dict):
+        sys.stderr.write("warning: PHOENIX_LLM_EXTRA_BODY must be a JSON object; ignored\n")
+        return {}
+    return {key: item for key, item in value.items() if key not in _PROTECTED_BODY_KEYS}
+
+
+def routing_meta(data: Any, headers: Any = None) -> dict[str, str]:
+    """What Nightshift says about its own routing, when it says anything.
+
+    Some Nightshift builds return a `meterless` block in the body (routed_model, winning_route)
+    and some send `meterless-*` response headers. Both are optional; an empty dict means the
+    response carried no routing detail, and the response `model` field stays the served model.
+    """
+    meta: dict[str, str] = {}
+    block = data.get("meterless") if isinstance(data, dict) else None
+    if isinstance(block, dict):
+        for key in ("routed_model", "requested_model", "route", "lane", "mode"):
+            value = block.get(key)
+            if isinstance(value, str) and value.strip():
+                meta[key] = value.strip()[:120]
+        route = block.get("winning_route")
+        if isinstance(route, dict):
+            for key in ("provider", "model"):
+                value = route.get(key)
+                if isinstance(value, str) and value.strip():
+                    meta[f"winning_{key}"] = value.strip()[:120]
+    if headers is not None:
+        try:
+            items = list(headers.items())
+        except AttributeError:
+            items = []
+        for key, value in items:
+            name = str(key).lower()
+            if name.startswith("meterless-") and isinstance(value, str) and value.strip():
+                meta[name] = value.strip()[:120]
+    return meta
 
 
 class RelevanceLLMError(InvestigationError):
@@ -380,16 +452,37 @@ class RelevanceClient:
     token: str | None = None
     model: str = DEFAULT_NIGHTSHIFT_MODEL
     cache_dir: Path | None = None
-    timeout: float | httpx.Timeout = 90.0
-    wall_clock_timeout: float = 120.0
-    total_timeout: float = 420.0
+    timeout: float | httpx.Timeout = DEFAULT_READ_TIMEOUT_S
+    wall_clock_timeout: float = DEFAULT_ATTEMPT_TIMEOUT_S
+    total_timeout: float = DEFAULT_TOTAL_TIMEOUT_S
     transport: httpx.BaseTransport | None = None
     mock_handler: Callable[[str, str], str] | None = None
     mock_served_model: str | None = None
     trace: Any | None = None
+    max_tokens: int = DEFAULT_MAX_TOKENS
+    extra_body: dict[str, Any] | None = None
+    last_routing: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.base_url = self.base_url.rstrip("/")
+        # Environment overrides apply only to values the caller left at the default, so a
+        # caller (or a test) that passes an explicit timeout keeps it.
+        attempt = _env_positive("PHOENIX_LLM_ATTEMPT_TIMEOUT_S")
+        if attempt is not None:
+            if self.wall_clock_timeout == DEFAULT_ATTEMPT_TIMEOUT_S:
+                self.wall_clock_timeout = attempt
+            if self.timeout == DEFAULT_READ_TIMEOUT_S:
+                self.timeout = attempt
+        total = _env_positive("PHOENIX_LLM_TOTAL_TIMEOUT_S")
+        if total is not None and self.total_timeout == DEFAULT_TOTAL_TIMEOUT_S:
+            self.total_timeout = total
+        tokens = _env_positive("PHOENIX_LLM_MAX_TOKENS")
+        if tokens is not None and self.max_tokens == DEFAULT_MAX_TOKENS:
+            self.max_tokens = int(tokens)
+        if self.extra_body is None:
+            self.extra_body = extra_body_from_env()
+        else:
+            self.extra_body = {key: item for key, item in self.extra_body.items() if key not in _PROTECTED_BODY_KEYS}
         if self.token is None:
             self.token = os.environ.get("METERLESS_RUNTIME_TOKEN") or ""
         if self.cache_dir is None and os.environ.get("PHOENIX_LLM_CACHE_DIR"):
@@ -408,7 +501,15 @@ class RelevanceClient:
     def _call_label(self, served: str) -> str:
         return served if served else "(missing)"
 
-    def _observe(self, requested: str, served: str, repo_id: str, step: str, status: str = "ok") -> None:
+    def _observe(
+        self,
+        requested: str,
+        served: str,
+        repo_id: str,
+        step: str,
+        status: str = "ok",
+        routing: dict[str, str] | None = None,
+    ) -> None:
         """Count one model reply and, when a trace is attached, write one LLM_CALL line.
 
         served is stored as Nightshift returned it. A missing model stays empty and is
@@ -429,7 +530,7 @@ class RelevanceClient:
             agent_name="orchestrator",
             action="LLM_CALL",
             input_summary={"repo_id": repo_id, "step": step or ""},
-            output_summary={"requested_model": requested, "served_model": served},
+            output_summary={"requested_model": requested, "served_model": served, **({"routing": routing} if routing else {})},
             llm={"requested_model": requested, "served_model": served},
             status=status,
         )
@@ -529,7 +630,9 @@ class RelevanceClient:
                     )
                 req_raw = cached.get("requested_model")
                 req_m = req_raw.strip() if isinstance(req_raw, str) and req_raw.strip() else self.model
-                self._observe(req_m, served, repo_id, step)
+                cached_routing = cached.get("routing") if isinstance(cached.get("routing"), dict) else {}
+                self.last_routing = dict(cached_routing)
+                self._observe(req_m, served, repo_id, step, routing=cached_routing or None)
                 self.last_cache_hit = True
                 self.last_cache_file = cache_file
                 self._log_served(repo_id, step, served, time.monotonic() - call_start, cache_hit=True)
@@ -581,22 +684,23 @@ class RelevanceClient:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": 0,
             "stream": False,
-            "max_tokens": 4096,
+            "max_tokens": int(self.max_tokens),
         }
+        payload.update(self.extra_body or {})
 
         if isinstance(self.timeout, (int, float)):
             configured_read = float(self.timeout)
             client_timeout = httpx.Timeout(connect=10.0, read=configured_read, write=30.0, pool=10.0)
         elif isinstance(self.timeout, httpx.Timeout):
-            configured_read = float(self.timeout.read or 90.0)
+            configured_read = float(self.timeout.read or DEFAULT_READ_TIMEOUT_S)
             client_timeout = self.timeout
         else:
-            configured_read = 90.0
+            configured_read = DEFAULT_READ_TIMEOUT_S
             client_timeout = httpx.Timeout(connect=10.0, read=configured_read, write=30.0, pool=10.0)
 
         def _do_post(timeout: httpx.Timeout = client_timeout) -> httpx.Response:
@@ -668,6 +772,8 @@ class RelevanceClient:
                     raise RelevanceLLMError(
                         f"Nightshift served local model {served}; refusing to score with a small local model"
                     )
+                routing = routing_meta(data, getattr(resp, "headers", None))
+                self.last_routing = routing
                 choices = data.get("choices") or []
                 text = ""
                 if choices and isinstance(choices[0], dict):
@@ -685,11 +791,12 @@ class RelevanceClient:
                     "input_sha256": input_hash,
                     "requested_model": self.model,
                     "served_model": served,
+                    "routing": routing,
                     "response_text": text,
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }
                 cache_file.write_text(json.dumps(record, indent=2), encoding="utf-8")
-                self._observe(self.model, served, repo_id, step)
+                self._observe(self.model, served, repo_id, step, routing=routing or None)
                 self.last_cache_hit = False
                 self.last_cache_file = cache_file
                 self._log_served(repo_id, step, served, time.monotonic() - call_start, cache_hit=False)

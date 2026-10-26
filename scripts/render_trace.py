@@ -140,4 +140,12 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    import sys as _sys
+
+    _root = str(Path(__file__).resolve().parents[1])
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
+    from app.console import ensure_utf8_stdio
+
+    ensure_utf8_stdio()
     raise SystemExit(main())
