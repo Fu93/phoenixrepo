@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.sql_catalog import ATTEMPT_COLUMNS, SOURCE_COLUMNS  # noqa: E402
-from scripts.collect_revival_attempt import _decode_content, _workflow_excerpt, _workflow_runs_build  # noqa: E402
+from scripts.collect_revival_attempt import _decode_content, _workflow_excerpt  # noqa: E402
 from scripts.curate_real_repos import GitHubClient, write_csv  # noqa: E402
 
 VERIFICATION_LOG_LINE = "Cache service responded with 400"
@@ -149,7 +149,6 @@ def main() -> int:
             if "dependencies.ejs" not in row["excerpt"]:
                 row["excerpt"] = row["excerpt"].rstrip() + "; " + extra
 
-    existing = {row["source_id"] for row in sources}
     additions = [
         {
             "repo_id": UPSTREAM,
@@ -187,6 +186,7 @@ def main() -> int:
         current = by_id.get(row["source_id"])
         if current is None and row["excerpt"]:
             sources.append(row)
+            by_id[row["source_id"]] = row  # a repeated id in additions must not be appended twice
         elif current is not None and row["source_id"] == "ci-log-37141993934":
             current["excerpt"] = row["excerpt"]
             current["data_origin"] = row["data_origin"]

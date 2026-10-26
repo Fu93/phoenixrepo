@@ -63,7 +63,8 @@ def rows_from_payload(payload: Any) -> tuple[list[str], list[dict[str, Any]]]:
         raise ZetarisError("Zetaris returned a non-object body.")
     if payload.get("error"):
         detail = payload["error"]
-        message = detail.get("message") if isinstance(detail, dict) else str(detail)
+        # A dict without "message" used to raise TypeError (None[:300]) instead of ZetarisError.
+        message = str(detail.get("message") or detail) if isinstance(detail, dict) else str(detail)
         raise ZetarisError(f"Zetaris error: {message[:300]}")
     data = payload.get("data")
     if data is None:
