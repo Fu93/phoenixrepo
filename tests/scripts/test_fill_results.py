@@ -65,3 +65,27 @@ def test_no_traces_means_tbd(tmp_path: Path):
     values = fr.slots(fr.collect(report, LABELS, tmp_path), "r.json", readme=False)
     assert "**TBD**" in values["nemotron-answer-share"]
     assert "build-window-commit-count" in values and "calendarsync-final-verdict" not in values
+
+
+def test_nemotron_evidence_counts_tiers_latency_and_failures(tmp_path: Path):
+    logs = tmp_path / "logs"
+    trace = HackathonTrace("ev", log_dir=logs)
+    rows = [
+        ({"tier": "fast", "elapsed_s": 10.0}, "ok"),
+        ({"tier": "fast", "elapsed_s": 30.0}, "ok"),
+        ({"tier": "fast"}, "error"),
+        ({"tier": "deep", "elapsed_s": 90.0, "provider": "nvidia-direct", "reasoning": "x" * 5000}, "ok"),
+        ({"tier": "fast", "cache_hit": True}, "ok"),
+    ]
+    for extra, status in rows:
+        served = "" if status == "error" else NEMO
+        trace.event(agent_name="orchestrator", action="LLM_CALL", input_summary={"repo_id": "x", "step": "discovery"},
+                    output_summary={"requested_model": NEMO, "served_model": served, **extra}, status=status,
+                    llm={"requested_model": NEMO, "served_model": served}, summary_limit=4000)
+    trace.seal()
+    report = {"results": [{"repo_id": "Selfdb-io/SelfDB", "verdict": "ALREADY_EXISTS", "reason": "x", "run_id": "ev"}]}
+    out = fr.nemotron_evidence(fr.collect(report, LABELS, logs))
+    assert f"| fast | `{NEMO}` 3 |" in out and f"| deep | `{NEMO}` 1 |" in out
+    assert f"| `{NEMO}` | 3 | 30 | 90 |" in out
+    assert "reasoning kept in the trace: **1** of **1**" in out
+    assert "failed (timeout, HTTP 5xx or non-Nemotron answer): **1**" in out and "(`nvidia-direct`): **1**" in out

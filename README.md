@@ -155,6 +155,12 @@ Answers by NVIDIA Nemotron on the scored run: **TBD** of **TBD**. The same share
 Provider split on that run, Nightshift answers used / `nvidia-direct` answers used, as printed by `verify_trace.py --require-nemotron`: **TBD** / **TBD**.
 <!-- END numbers: provider-split -->
 
+How Nemotron was used on the scored run, counted from the same verified traces: which tier answered with which served model, how long live answers took, and how often Nightshift failed and NVIDIA's API answered instead.
+
+<!-- BEGIN numbers: nemotron-evidence -->
+**TBD**
+<!-- END numbers: nemotron-evidence -->
+
 The same page, with no install, is the static demo at <https://fu93.github.io/phoenixrepo/>. Replays shipped in this repository stay labelled SAMPLE until `scripts/import_replay.py` copies a real trace byte for byte and labels it RECORDED.
 
 ## What it does now: two gates
