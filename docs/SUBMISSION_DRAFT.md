@@ -11,7 +11,10 @@ Rubric: Impact 30, Technical 20, Innovation 15, Demo 15, Product & UX 10, Sponso
 These come from the author's Windows runs. The files are under `logs/` there and are not committed.
 
 - Latest gate-1 batch (`r5`, 5 repositories): 0 `CANDIDATE`, 1 `ALREADY_EXISTS` (`[TODO: owner]/pagerbeauty`), 2 `UNJUDGED`, 2 `NEEDS_REVIEW`. [TODO: scores file path and run id.]
-- Requested model `nvidia/nemotron-3-super-120b-a12b`; served model `gemini-3.1-flash-lite`, so every LLM line is `MODEL_MISMATCH`. `scripts/nightshift_probe.py` (PR #17) measures whether any Nemotron id is actually served. [TODO: probe result.]
+- Before the probe: requested `nvidia/nemotron-3-super-120b-a12b`, served `gemini-3.1-flash-lite`, every LLM line `MODEL_MISMATCH`.
+- `scripts/nightshift_probe.py` on 26 Oct 2026: 18 of 18 replies came from `nvidia/nemotron-*` models, with short prompts, 3 to 57 seconds each. Nightshift did not always serve the requested size. [TODO: probe report path in `logs/`.]
+- Plan: `PHOENIX_NEMOTRON_POLICY=require` (no non-Nemotron answer informs a verdict). No real judgement has run under it yet. [TODO: pagerbeauty run id and its `answers_by_nemotron` / `answers_used`.]
+- The old `GITHUB_TOKEN` returned HTTP 401 and was replaced on 26 Oct.
 - Nightshift calls took 45 to 345 seconds; HTTP 502 arrived after about 5.5 minutes; one repository took 5 to 21 minutes.
 - `/ui` replays are all labelled SAMPLE until a real trace is imported with `scripts/import_replay.py`.
 - Gate 2 has one engineering trial on pwgen. [TODO: outcome and trace path.]
@@ -27,7 +30,7 @@ Theme: **what it refused, and why**. Record at 1080p from `http://127.0.0.1:8000
 | 0:00 to 0:20 | "Reviving an abandoned repository is cheap to start and expensive to regret. Most should not be revived. PhoenixRepo asks first whether the idea deserves a second life, and every 'no' points at the row that proves it." | Title card, then the README's two-gate summary. |
 | 0:20 to 0:40 | "Two gates. Gate 1: is the idea worth rescuing? It reads stored evidence from Zetaris, then searches GitHub, npm and the web. Gate 2 runs only if gate 1 says candidate. Every model call goes through Meterless Nightshift, and every step goes into a hash-chained trace." | README gate tables. If PR #18 is merged: a `zetaris_query` line with its `content_hash`. |
 | 0:40 to 1:25 | "A real refusal. [pagerbeauty] [one-line job]. PhoenixRepo found [alternative], checked that it does the same job for the same user, that it is maintained and mature, and that the quote it relies on appears word for word on that page." | `/ui`, the RECORDED pagerbeauty replay: timeline, verdict card, the alternative, the verified quote and its link. [TODO: alternative name and quote from the imported record.] |
-| 1:25 to 1:50 | "It also shows which model answered. We requested Nemotron. [If probe found Nemotron: these lines were served by Nemotron.] [Else: Nightshift served gemini-3.1-flash-lite, and every such line is flagged MODEL_MISMATCH rather than hidden.]" | The served-model table and a flagged line. Say the true one. |
+| 1:25 to 1:50 | "Every answer behind this verdict was written by NVIDIA Nemotron, and the trace proves it line by line. A fast Nemotron handled the many overlap checks; a larger one wrote the verdict, and its reasoning is shown here, but the verdict only stands because the quote checks pass. Any answer from another model is discarded, not used." | `/ui` served-model line: "[N] of [N] answers used were written by Nemotron". Open the verdict step: the reasoning, then the verified quote. [TODO: N from the run. If any line is not Nemotron, say so on camera.] |
 | 1:50 to 2:15 | "When the evidence is incomplete, it does not guess. These came back NEEDS_REVIEW or UNJUDGED because Nightshift returned 502; finished calls are cached and the rerun picks them up." | A `NEEDS_REVIEW` or `UNJUDGED` row and its reason; the `rerun_unjudged.py` command. |
 | 2:15 to 2:40 | "A refused idea is never built: gate 2 is not attempted and nothing is cloned. [If a CANDIDATE appeared and gate 2 ran: here is what it did, including the failures.]" | `NOT_ATTEMPTED_GATE1` replay (SAMPLE label visible) or a real revive trace. Never `--gate-verdict` for a CANDIDATE shown on camera. |
 | 2:40 to 3:05 | "Anyone can check the record. The chain verifies. Change one character and it fails." | `/ui` verification: OK, then the Tamper button: FAILED. Or `verify_trace.py` before and after editing a copy. |
@@ -49,9 +52,9 @@ Gate 2 runs only when gate 1 says CANDIDATE. It runs the repository's own tests,
 
 Every step is a line in a hash-chained trace that records the model requested and the model that actually answered. A token-free page replays recorded runs and shows the chain failing when one character changes.
 
-Limits: Nightshift can be slow and may serve a different model than requested (flagged, not hidden). No AI-written patch has yet fixed a real repository. The code was written with AI coding assistance.
+Every model call goes through Meterless Nightshift to NVIDIA Nemotron. A Nemotron-only policy discards any answer written by another model, each trace line records the model that actually answered, and the report prints the share of answers written by Nemotron. [TODO: the measured share and the label agreement from the Windows runs.]
 
-[TODO: replace "may serve a different model" with the probe result.]
+Limits: Nightshift can be slow and chooses which Nemotron size answers. No AI-written patch has yet fixed a real repository. The code was written with AI coding assistance.
 
 ## (iii) "Built before the event" declaration
 

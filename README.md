@@ -1,10 +1,62 @@
 # PhoenixRepo
 
-PhoenixRepo does not assume an abandoned repository should be saved. It asks whether the evidence says it deserves another life, and it will not issue a verdict it cannot point at a row.
+**Before anyone spends a weekend reviving an abandoned GitHub repository, PhoenixRepo checks whether the idea already exists in a maintained form, and explains every refusal with evidence a reviewer can check line by line.**
 
-Track 02 of the Open Agent Hackathon 2026, "The Agent That Can Explain Why". Solo entry under the team name PhoenixRepo.
+Open Agent Hackathon 2026, Track 02 "The Agent That Can Explain Why". Solo entry.
 
-This README describes the current behaviour. The first part (two gates, LLM provider, limits) covers the repository-judging and revival flow added in the build window. The later sections document the earlier Zetaris evidence-policy track (`POST /run`), which is still in the repository and still tested. `PRE_EVENT_PLAN.md` and `OPENING_READY.md` are the 8 October 2026 skeleton notes. They are historical. Where they disagree with this file, this file is the current behaviour.
+## Try it in 30 seconds, no tokens
+
+```bash
+pip install -r requirements.txt
+python main.py
+# open http://127.0.0.1:8000/ui
+```
+
+Or `docker build -t phoenixrepo . && docker run --rm -p 8000:8000 phoenixrepo`. The page replays recorded gate-1 runs step by step: which model answered each call, the alternative that blocked the idea, the quote that was checked word for word, and the hash chain. **Tamper** changes one character of a copy in memory and the chain check fails. Replays labelled SAMPLE are reconstructions; RECORDED ones are real trace files copied byte for byte.
+
+## How it decides
+
+```mermaid
+flowchart LR
+  A[GitHub repository] --> B[Zetaris SQL views<br/>stored candidate, prior art, demand<br/>query id + content hash]
+  A --> C[Live prior-art search<br/>GitHub, npm, web, vendor docs]
+  B --> D[Nemotron via Meterless Nightshift<br/>fast tier: overlap judgements<br/>deep tier: verdict with reasoning]
+  C --> D
+  D --> E{Deterministic checks<br/>quote found verbatim?<br/>alternative maintained, mature, same job?}
+  E -->|blocked| F[ALREADY_EXISTS / NO_GO]
+  E -->|evidence incomplete| G[NEEDS_REVIEW / UNJUDGED]
+  E -->|nothing blocks| H[CANDIDATE]
+  H --> I[Gate 2: repository's own tests,<br/>model patches, independent verifier]
+  F & G & H & I --> J[(Hash-chained trace<br/>requested vs served model)]
+```
+
+Three rules carry the design:
+
+1. **The model proposes, the code verifies.** A refusal needs a quote that appears verbatim in the alternative's own text and an alternative that passes the maturity checks. Nemotron's reasoning is shown next to the verdict as its account; it never decides on its own.
+2. **A failure is never "no competition".** A search error, a Nightshift 502, an expired token or a stopped Zetaris gives `NEEDS_REVIEW` or `UNJUDGED`, never `CANDIDATE`. Gate 2 cannot run without a `CANDIDATE`.
+3. **Every claim can be checked.** Each step is a line in a hash-chained trace with the model requested and the model that actually answered; `scripts/verify_trace.py` fails if one character changes.
+
+## Sponsor technology
+
+| Sponsor | What it does here | Where |
+| --- | --- | --- |
+| **Zetaris** | Gate 1 loads the stored candidate, prior-art and demand rows from the `phoenix.*` views over the REST SQL contract. Each statement is a trace line with its SQL, `query_id` and `content_hash`; a read-only preflight stops the run if Zetaris is down instead of guessing. | `app/adapters/zetaris_evidence.py`, `scripts/zetaris_check.py` |
+| **Meterless Nightshift** | The only model route for gate 1 and gate 2. Every call records `requested_model`, `served_model`, latency and any routing detail Nightshift returns. | `app/agents/relevance.py`, `scripts/nightshift_probe.py` |
+| **NVIDIA Nemotron** | Requested for every judgement: a fast Nemotron for the many overlap checks, a larger one for the verdict with its reasoning kept. `PHOENIX_NEMOTRON_POLICY=require` discards any answer not written by `nvidia/nemotron-*`; the report and `/ui` print how many answers used were Nemotron's. | `app/agents/relevance.py`, `scripts/eval_gate1.py` |
+| **Meterless H-MEM, Markovian** | Memory of evidence claims and verdicts, and the bounded multi-step loop, in the evidence-policy track (`POST /run`). | `app/engines/` |
+
+## Where to look, by judging criterion
+
+| Criterion | Look at |
+| --- | --- |
+| Impact | The problem above; refusal reports in `/ui`; `data/eval/gate1_labels.json` (human labels with the quotes that justify them) |
+| Technical | The trace and its verifier; `app/revive_verify.py` (tamper-resistant gate 2); `tests/` run in CI on every PR |
+| Innovation | Judging the idea before the code; verbatim-quote verification of model claims; Nemotron-only policy with measured share |
+| Demo | `GET /ui` replays, served-model table, tamper check |
+| Product & UX | One command per job: `scripts/judge_repo.py <url>` writes an HTML report; `/ui` needs no setup |
+| Sponsor | The table above |
+
+The honest limits are in [Limits](#limits). This README then documents the current behaviour in detail. The later sections cover the earlier Zetaris evidence-policy track (`POST /run`), which is still in the repository and still tested. `PRE_EVENT_PLAN.md` and `OPENING_READY.md` are the 8 October 2026 skeleton notes; where they disagree with this file, this file is the current behaviour.
 
 ## What it does now: two gates
 
