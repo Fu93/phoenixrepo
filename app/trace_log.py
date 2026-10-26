@@ -124,6 +124,9 @@ class HackathonTrace:
             if model_mismatch(served):
                 # Visible on the line. Do not replace served_model with the requested id.
                 record["flags"] = ["MODEL_MISMATCH"]
+                if status == "rejected":
+                    # A Nemotron-only policy discarded this answer; it did not inform a verdict.
+                    record["flags"].append("DISCARDED_BY_POLICY")
             if llm.get("prompt_version"):
                 record["prompt_version"] = str(llm["prompt_version"])
         record = sanitize_metadata(record)
@@ -149,7 +152,7 @@ class HackathonTrace:
                 flags = json.loads(line).get("flags") or []
             except json.JSONDecodeError:
                 continue
-            if "MODEL_MISMATCH" in flags:
+            if "MODEL_MISMATCH" in flags and "DISCARDED_BY_POLICY" not in flags:
                 count += 1
         return count
 

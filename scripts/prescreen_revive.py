@@ -568,7 +568,7 @@ def main(argv: list[str] | None = None, *, cloner: Callable | None = None, runne
 
 
 if __name__ == "__main__":
-    from app.console import ensure_utf8_stdio
+    from app.console import prepare_cli
 
-    ensure_utf8_stdio()
+    prepare_cli()
     raise SystemExit(main())

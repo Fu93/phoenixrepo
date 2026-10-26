@@ -39,7 +39,9 @@ class RepoFactsClient:
 
     def _headers(self, host: str) -> dict[str, str]:
         headers = {"User-Agent": "PhoenixRepo-facts", "Accept": "application/json"}
-        if host == "github" and self.token:
+        from app.github_auth import token_usable
+
+        if host == "github" and token_usable(self.token):
             headers["Authorization"] = f"Bearer {self.token}"
             headers["Accept"] = "application/vnd.github+json"
         return headers
@@ -57,9 +59,15 @@ class RepoFactsClient:
                 return json.loads(cached.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 pass
+        from app.github_auth import mark_unauthorized
+
         try:
             with httpx.Client(transport=self.transport, timeout=self.timeout) as client:
-                resp = client.get(url, headers=self._headers(host))
+                headers = self._headers(host)
+                resp = client.get(url, headers=headers)
+                if resp.status_code == 401 and "Authorization" in headers:
+                    mark_unauthorized(self.token)
+                    resp = client.get(url, headers=self._headers(host))
         except httpx.HTTPError:
             return None
         if resp.status_code != 200:

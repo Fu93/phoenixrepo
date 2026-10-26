@@ -249,7 +249,16 @@
       node.textContent = "No step selected.";
       return;
     }
-    node.textContent = "input\n" + (step.input_summary || "") + "\n\noutput\n" + (step.output_summary || "");
+    var head = "";
+    if (step.reasoning) {
+      head = "Model reasoning (" + (step.served_model || "model") + (step.tier ? ", " + step.tier + " tier" : "") +
+        "). Shown as the model's account; the verdict stands only on the verbatim quote checks.\n" +
+        step.reasoning + "\n\n";
+    }
+    if (step.provider && step.provider !== "nightshift") {
+      head = "provider " + step.provider + "\n\n" + head;
+    }
+    node.textContent = head + "input\n" + (step.input_summary || "") + "\n\noutput\n" + (step.output_summary || "");
     textOf("play-status", "Step " + step.index + " of " + replay.steps.length);
   }
 
@@ -337,8 +346,12 @@
     var rows = names.map(function (name) {
       return "<tr><td>" + esc(name) + "</td><td>" + esc(calls[name]) + "</td></tr>";
     }).join("");
+    var used = models.answers_used || 0;
+    var share = used ? Math.floor(100 * (models.answers_by_nemotron || 0) / used) : 0;
     node.innerHTML =
-      "<p><strong>MODEL_MISMATCH</strong> lines: " + esc(models.model_mismatch_count) + "</p>" +
+      "<p><strong>" + esc(models.answers_by_nemotron || 0) + " of " + esc(used) + "</strong> answers used were written by Nemotron" +
+      (used ? " (" + esc(share) + "%)" : "") + ". <strong>MODEL_MISMATCH</strong> lines: " + esc(models.model_mismatch_count) +
+      ". Discarded by the Nemotron policy: " + esc(models.discarded_by_policy || 0) + ".</p>" +
       "<table><thead><tr><th>Served model</th><th>Calls</th></tr></thead><tbody>" + rows + "</tbody></table>";
   }
 

@@ -156,12 +156,17 @@ def step_from_event(event: dict[str, Any], index: int) -> dict[str, Any]:
             flags.add("MODEL_MISMATCH")
     elif served and model_mismatch(served):
         flags.add("MODEL_MISMATCH")
+    output = parsed[1] if isinstance(parsed[1], dict) else {}
+    reasoning = output.get("reasoning") if isinstance(output.get("reasoning"), str) else ""
     return {
         "index": index,
         "agent": str(event.get("agent_name") or ""),
         "action": str(event.get("action") or event.get("event") or ""),
         "requested_model": requested,
         "served_model": served,
+        "provider": str(output.get("provider") or ("nightshift" if llm_line else "")),
+        "tier": str(output.get("tier") or ""),
+        "reasoning": _clip(reasoning, 1500),
         "seconds": _seconds(payloads),
         "status": status,
         "flags": sorted(flags),
@@ -176,15 +181,29 @@ def model_summary(steps: list[dict[str, Any]]) -> dict[str, Any]:
     """Served-model counts from LLM lines. An empty served id is ``(missing)``."""
 
     calls: dict[str, int] = {}
-    mismatches = 0
+    mismatches = discarded = used = nemotron = 0
     for step in steps:
         if not step.get("llm_line"):
             continue
         label = step.get("served_model") or "(missing)"
         calls[label] = calls.get(label, 0) + 1
-        if "MODEL_MISMATCH" in (step.get("flags") or []):
+        flags = step.get("flags") or []
+        if "DISCARDED_BY_POLICY" in flags:
+            discarded += 1
+            continue
+        if "MODEL_MISMATCH" in flags:
             mismatches += 1
-    return {"model_mismatch_count": mismatches, "model_calls": calls}
+        if label != "(missing)" and step.get("status") not in {"error", "rejected"}:
+            used += 1
+            if label.startswith("nvidia/nemotron-"):
+                nemotron += 1
+    return {
+        "model_mismatch_count": mismatches,
+        "model_calls": calls,
+        "discarded_by_policy": discarded,
+        "answers_used": used,
+        "answers_by_nemotron": nemotron,
+    }
 
 
 def _directory(replay_id: str) -> Path:

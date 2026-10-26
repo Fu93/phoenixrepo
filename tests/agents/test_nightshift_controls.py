@@ -182,9 +182,38 @@ def test_probe_without_token_is_a_usage_error(monkeypatch: pytest.MonkeyPatch):
 
 def test_ensure_utf8_stdio_switches_a_legacy_code_page(monkeypatch: pytest.MonkeyPatch):
     raw = io.BytesIO()
-    legacy = io.TextIOWrapper(raw, encoding="cp950", errors="strict")
+    # newline="\n": on Windows the default writes "\r\n", which is not what this test is about.
+    legacy = io.TextIOWrapper(raw, encoding="cp950", errors="strict", newline="\n")
     monkeypatch.setattr(sys, "stdout", legacy)
     ensure_utf8_stdio()
     sys.stdout.write("引文 ✓ quote\n")
     sys.stdout.flush()
     assert raw.getvalue().decode("utf-8") == "引文 ✓ quote\n"
+
+
+def test_probe_recommends_a_deep_model_when_a_larger_nemotron_answered():
+    attempts = [
+        probe.Attempt("nvidia/nemotron-3.5-lightning-30b-a3b", "thinking_off_template", 200, 3.0, "nvidia/nemotron-3.5-lightning-30b-a3b", True, True),
+        probe.Attempt("nvidia/nemotron-3.5-lightning-30b-a3b", "default", 200, 9.0, "nvidia/nemotron-3.5-lightning-30b-a3b", True, True),
+        probe.Attempt("nvidia/nemotron-3-ultra-550b-a55b", "default", 200, 20.0, "nvidia/nemotron-3-ultra-550b-a55b", True, True),
+        probe.Attempt("nvidia/nemotron-3-super-120b-a12b", "default", 200, 15.0, "gemini-3.1-flash-lite", False, True),
+    ]
+    env = probe.recommend(attempts)
+    assert env["MODEL_NAME"] == "nvidia/nemotron-3.5-lightning-30b-a3b"
+    assert env["MODEL_NAME_DEEP"] == "nvidia/nemotron-3-ultra-550b-a55b"
+    assert int(env["PHOENIX_LLM_ATTEMPT_TIMEOUT_S"]) >= 120  # sized for the slower deep model
+
+
+def test_prepare_cli_loads_dotenv_without_overriding(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from app.console import load_env_file
+
+    (tmp_path / ".env").write_text("PHOENIX_LLM_TOTAL_TIMEOUT_S=150\nPHOENIX_DEEP_MODEL=from-file\n", encoding="utf-8")
+    monkeypatch.delenv("PHOENIX_LLM_TOTAL_TIMEOUT_S", raising=False)
+    monkeypatch.setenv("PHOENIX_DEEP_MODEL", "from-process")
+    monkeypatch.chdir(tmp_path)
+    load_env_file()
+    import os
+
+    assert os.environ["PHOENIX_LLM_TOTAL_TIMEOUT_S"] == "150"
+    assert os.environ["PHOENIX_DEEP_MODEL"] == "from-process"
+    monkeypatch.delenv("PHOENIX_LLM_TOTAL_TIMEOUT_S", raising=False)

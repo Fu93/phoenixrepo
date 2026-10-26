@@ -145,7 +145,7 @@ if __name__ == "__main__":
     _root = str(Path(__file__).resolve().parents[1])
     if _root not in _sys.path:
         _sys.path.insert(0, _root)
-    from app.console import ensure_utf8_stdio
+    from app.console import prepare_cli
 
-    ensure_utf8_stdio()
+    prepare_cli()
     raise SystemExit(main())

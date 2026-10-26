@@ -48,14 +48,20 @@ def parse_repo_url(url: str) -> str:
 
 
 def _get(url: str, token: str, accept: str = "application/vnd.github+json") -> Any:
+    from app.github_auth import mark_unauthorized, token_usable
+
     headers = {"Accept": accept, "User-Agent": "phoenixrepo-judge"}
-    if token:
+    if token_usable(token):
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             body = resp.read()
     except urllib.error.HTTPError as exc:
+        if exc.code == 401 and "Authorization" in headers:
+            # An expired token: GitHub refuses even public data. Mark it and ask once without it.
+            mark_unauthorized(token)
+            return _get(url, token, accept)
         raise JudgeError(f"GitHub returned HTTP {exc.code} for {url.split('?')[0]}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
         raise JudgeError(f"could not reach GitHub: {exc}") from exc
@@ -171,6 +177,7 @@ def judge(url: str, out_dir: Path | None = None, use_llm: bool = True, run_id: s
         if r.get("repo_id") == repo_id:
             verdict, reason = str(r.get("verdict")), str(r.get("reason") or "")
     events = evidence_report.load_events(logs, run_ids=[rid])
+    model_rows = evidence_report.served_model_rows(events)
     report = out / "report.html"
     report.write_text(
         evidence_report.render_repo_html(
@@ -180,11 +187,22 @@ def judge(url: str, out_dir: Path | None = None, use_llm: bool = True, run_id: s
             evidence_report.events_for_repo(events, repo_id),
             run_id=rid,
             run_hash=str(results.get("run_hash") or ""),
-            model_rows=evidence_report.served_model_rows(events),
+            model_rows=model_rows,
         ),
         encoding="utf-8",
     )
-    return {"repo_id": repo_id, "verdict": verdict, "reason": reason, "run_id": rid, "run_hash": results.get("run_hash"), "report": str(report)}
+    used, by_nemotron = evidence_report.nemotron_share(model_rows)
+    return {
+        "repo_id": repo_id,
+        "verdict": verdict,
+        "reason": reason,
+        "run_id": rid,
+        "run_hash": results.get("run_hash"),
+        "report": str(report),
+        "served_models": {row["served_model"]: row["calls"] for row in model_rows},
+        "answers_used": used,
+        "answers_by_nemotron": by_nemotron,
+    }
 
 
 def main() -> int:
@@ -207,7 +225,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from app.console import ensure_utf8_stdio
+    from app.console import prepare_cli
 
-    ensure_utf8_stdio()
+    prepare_cli()
     raise SystemExit(main())
