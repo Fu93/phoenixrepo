@@ -4,7 +4,9 @@ from datetime import date
 import httpx
 
 from app.agents.blocker import evaluate_blocker
+from app.agents.relevance import search_prior_art
 from app.agents.repo_facts import RepoFactsClient
+from app.tools import Budget, GitHubTool, NpmTool, ToolBox, WebSearchTool
 
 
 TOKEN = "ghp_test_secret_value"
@@ -91,6 +93,78 @@ def test_a_fetch_failure_is_source_error_and_cannot_block(tmp_path):
     assert decision["blocks"] is False
     assert decision["role"] == "source_error"
     assert decision["verdict_if_blocked"] is None
+
+
+def test_web_found_github_repo_keeps_the_host_star_count(tmp_path):
+    """rosswintle/sync-raindrop arrived from web search with unknown stars, not a measured zero."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if "mcp.exa.ai" in url:
+            text = (
+                "Title: Sync Raindrop\n"
+                "URL: https://github.com/rosswintle/sync-raindrop\n"
+                "Highlights:\n"
+                "Sync Raindrop bookmarks to a folder\n\n"
+            )
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": text}]}})
+        if "hn.algolia.com" in url:
+            return httpx.Response(200, json={"hits": []})
+        if "api.github.com/search/repositories" in url or "registry.npmjs.org" in url:
+            return httpx.Response(200, json={"items": [], "objects": [], "total": 0})
+        if url.rstrip("/").endswith("/repos/rosswintle/sync-raindrop"):
+            return httpx.Response(200, json={
+                "stargazers_count": 128,
+                "archived": False,
+                "pushed_at": "2026-08-01T00:00:00Z",
+                "license": {"spdx_id": "MIT"},
+                "forks_count": 4,
+            })
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    toolbox = ToolBox(
+        tools={
+            "github": GitHubTool(transport=transport),
+            "npm": NpmTool(transport=transport),
+            "web_search": WebSearchTool(transport=transport),
+        },
+        budget=Budget(max_calls=20, max_seconds=30.0),
+    )
+    found = search_prior_art({"repo_id": "me/linkblog"}, ["sync raindrop bookmarks"], toolbox)
+    row = next(item for item in found if "rosswintle/sync-raindrop" in str(item.get("alternative_id")))
+    assert row["source"] == "web"
+    assert row["stars"] is None
+    filled = RepoFactsClient(cache_dir=tmp_path, transport=transport).fetch_alternative(row)
+    assert filled["stars"] == 128
+    assert filled["pushed_at"] == "2026-08-01T00:00:00Z"
+    assert filled["licence_spdx"] == "MIT"
+
+
+def test_a_complete_github_row_with_zero_stars_is_not_refetched(tmp_path):
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(200, json={
+            "stargazers_count": 999,
+            "archived": False,
+            "pushed_at": "2026-08-01T00:00:00Z",
+            "license": {"spdx_id": "MIT"},
+        })
+
+    client = RepoFactsClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler))
+    row = client.fetch_alternative({
+        "alternative_id": "someone/empty",
+        "url": "https://github.com/someone/empty",
+        "source": "github",
+        "stars": 0,
+        "pushed_at": "2026-01-01T00:00:00Z",
+        "archived": False,
+        "licence_spdx": "MIT",
+    })
+    assert row["stars"] == 0
+    assert calls == []
 
 
 def test_rescue_fetch_reads_ci_and_bot_pull_requests(tmp_path):

@@ -2331,7 +2331,7 @@ def search_prior_art(
                         "description": desc,
                         "readme": snippet,
                         "licence_spdx": "",
-                        "stars": 0,
+                        "stars": None,
                         "pushed_at": "",
                         "source": "web",
                         "query": q,
