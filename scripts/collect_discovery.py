@@ -14,7 +14,6 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -111,16 +110,19 @@ CONFIG_EXTENSIONS = frozenset(
 
 def get_github_token() -> str:
     """Safely obtain GitHub token from env or gh CLI without ever printing it."""
-    token = os.environ.get("GITHUB_TOKEN") or ""
+    token = (os.environ.get("GITHUB_TOKEN") or "").strip()
     if not token:
-        try:
-            import subprocess
+        import subprocess
 
-            out = subprocess.getoutput("gh auth token").strip()
-            if out and not out.startswith("error") and "not logged in" not in out.lower():
-                token = out
-        except Exception:
-            token = ""
+        try:
+            proc = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=10, check=False)
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        # Only a clean exit is a token. getoutput() used to return the shell's error text
+        # ("/bin/sh: gh: not found") and send it as the bearer token.
+        out = (proc.stdout or "").strip()
+        if proc.returncode == 0 and out and not any(ch.isspace() for ch in out):
+            token = out
     return token
 
 
@@ -675,6 +677,10 @@ def collect_live_discovery(
 
     benchmark_repo_ids = {spec["repo_id"] for spec in candidates_specs}
     seen_repo_ids = set(benchmark_repo_ids)
+    # Defined before the cache is read: the resume path records exclusions too. It used to be
+    # defined after, so the first excluded cached repo raised NameError, which the broad except
+    # below swallowed, and the whole resume cache was silently ignored.
+    excluded_repos: dict[str, str] = {}
 
     if resume and cache_path.exists():
         try:
@@ -684,7 +690,6 @@ def collect_live_discovery(
             for spec in cached.get("candidates") or []:
                 fn = spec["repo_id"]
                 if fn not in benchmark_repo_ids:
-                    r_desc = str((repos.get(fn) or {}).get("description") or "")
                     r_readme = str(spec.get("readme_excerpt") or "")
                     repo_obj = repos.get(fn) or {}
                     reason = check_discovery_exclusion(repo_obj, r_readme)
@@ -708,8 +713,8 @@ def collect_live_discovery(
                 if spec.get("repo_id") in seen_repo_ids and key not in seen_demand:
                     demand_specs.append(spec)
                     seen_demand.add(key)
-        except Exception:
-            pass
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            sys.stderr.write(f"warning: ignoring unreadable resume cache {cache_path}: {type(exc).__name__}: {exc}\n")
 
     auth_token = token or get_github_token()
     headers = {
@@ -720,7 +725,6 @@ def collect_live_discovery(
         headers["Authorization"] = f"Bearer {auth_token}"
 
     commands_log: list[str] = list(benchmark_raw.get("commands") or [])
-    excluded_repos: dict[str, str] = {}
 
     # Evaluate how many candidates we currently have
     def _count_candidates() -> int:

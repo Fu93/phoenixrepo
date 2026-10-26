@@ -668,21 +668,23 @@ class GitHubTool:
         query = str(args.get("query") or "")
         repo = str(args.get("repo") or "").strip()
 
+        # Queries come from model-extracted problem text ("C# tools", "Q&A bot"): an unencoded
+        # '&', '#' or '+' silently cut or changed the search, so every value is URL-encoded.
         if action in {"repositories", "search_repos", "search_repositories"}:
-            q = query
+            q = urllib.parse.quote_plus(query)
             per_page = int(args.get("per_page") or 10)
             url = f"https://api.github.com/search/repositories?q={q}&per_page={per_page}"
         elif action == "issues" or (query and action != "repo" and action != "readme"):
-            q = query or f"repo:{repo}"
+            q = urllib.parse.quote_plus(query or f"repo:{repo}")
             url = f"https://api.github.com/search/issues?q={q}"
         elif action == "readme" or args.get("kind") == "readme":
             if not repo:
                 return ToolResult(ok=False, data="", error="repo required for readme", source_url="", fetched_at=now)
-            url = f"https://api.github.com/repos/{repo}/readme"
+            url = f"https://api.github.com/repos/{urllib.parse.quote(repo, safe='/')}/readme"
         else:
             if not repo:
                 return ToolResult(ok=False, data="", error="repo or query required", source_url="", fetched_at=now)
-            url = f"https://api.github.com/repos/{repo}"
+            url = f"https://api.github.com/repos/{urllib.parse.quote(repo, safe='/')}"
 
         try:
             with httpx.Client(transport=self.transport, timeout=self.timeout_seconds) as client:

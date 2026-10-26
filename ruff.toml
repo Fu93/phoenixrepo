@@ -1,0 +1,8 @@
+# Minimal gate run in CI: syntax errors, undefined names, and redefinitions.
+# These are the classes of bug that reached main before (an undefined name swallowed by a
+# broad except in scripts/collect_discovery.py). Style rules are intentionally not enforced.
+target-version = "py312"
+line-length = 200
+
+[lint]
+select = ["E9", "F63", "F7", "F82", "F811"]

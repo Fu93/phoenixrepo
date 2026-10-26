@@ -6,6 +6,7 @@ exit codes, and rejects a diff that deletes, skips, or loosens tests.
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import tempfile
@@ -13,7 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app.quality_gate import MAX_DIFF_FILES, MAX_DIFF_LINES
-from app.revive_loop import CmdResult, is_protected, snapshot_worktree
+from app.revive_loop import CmdResult, acceptance_ok, is_protected
 
 Runner = Callable[[str, Path, int], CmdResult]
 COUNT_RE = re.compile(r"(\d+)\s+(passed|failed|skipped|errors?|error)", re.IGNORECASE)
@@ -76,9 +77,42 @@ def _assert_lines(text: str) -> list[str]:
     return [line.strip() for line in ASSERT_RE.findall(text or "")]
 
 
+_TEST_SCRIPT_KEYS = ("test", "pretest")
+
+
+def _package_test_scripts(data: bytes | None) -> dict[str, str] | None:
+    if data is None:
+        return None
+    try:
+        parsed = json.loads(data.decode("utf-8", "replace"))
+    except ValueError:
+        return None
+    scripts = parsed.get("scripts") if isinstance(parsed, dict) else None
+    if not isinstance(scripts, dict):
+        return {}
+    return {key: str(scripts.get(key) or "") for key in _TEST_SCRIPT_KEYS}
+
+
+def _test_command_changes(original: dict[str, bytes], patched: dict[str, bytes]) -> list[str]:
+    """The repository's own test command is the validator, so the builder may not rewrite it."""
+    reasons: list[str] = []
+    for rel in sorted(set(original) | set(patched)):
+        if rel.rsplit("/", 1)[-1] != "package.json" or "node_modules/" in rel:
+            continue
+        before = _package_test_scripts(original.get(rel))
+        after = _package_test_scripts(patched.get(rel))
+        if before is None:
+            continue
+        after = after or {}
+        for key in _TEST_SCRIPT_KEYS:
+            if before.get(key, "") != after.get(key, ""):
+                reasons.append(f"test command changed in {rel}: scripts.{key}")
+    return reasons
+
+
 def weakened_test_diff(original: dict[str, bytes], patched: dict[str, bytes]) -> list[str]:
     """Reasons a test was deleted, skipped, or had an assertion loosened. Empty means no weakening."""
-    reasons: list[str] = []
+    reasons: list[str] = _test_command_changes(original, patched)
     original_tests = {rel for rel in original if is_protected(rel)}
     patched_tests = {rel for rel in patched if is_protected(rel)}
     for rel in sorted(original_tests - patched_tests):
@@ -118,12 +152,8 @@ def _diff_stat(original: dict[str, bytes], patched: dict[str, bytes]) -> tuple[l
 
 
 def _acceptance_ok(result: CmdResult, expected: str) -> bool:
-    text = expected or ""
-    if re.search(r"exit code 0|exits 0", text, re.IGNORECASE):
-        return result.ok
-    if text and text in (result.output or ""):
-        return result.ok
-    return result.ok
+    # Every branch of the old version returned result.ok, so "exit code 5" was judged as exit 0.
+    return acceptance_ok(result, expected)
 
 
 def _manifest_has(patched: dict[str, bytes], package: str, version: str) -> bool:
@@ -172,8 +202,13 @@ def verify_revival(
         fewer_passed = final_counts["passed"] < base_counts["passed"] and not (
             final_counts["failed"] < base_counts["failed"]
         )
+        # Failures that turned into skips are not fixes: without this, a patch that skips every
+        # failing test lowered "failed", which excused the drop in "passed", and the run passed.
+        more_skipped = final_counts["skipped"] > base_counts["skipped"] and final_counts["passed"] <= base_counts["passed"]
         detail = f"baseline {base_counts} -> final {final_counts}"
-        counts_fail = worse or fewer_passed
+        if more_skipped:
+            detail += "; more tests were skipped and no more passed"
+        counts_fail = worse or fewer_passed or more_skipped
         checks.append(_check("test_counts", "FAIL" if counts_fail else "PASS", detail))
 
     build_worse = False

@@ -171,26 +171,44 @@ class BoundLLM:
             kwargs["timeout"] = timeout
         return self.inner.complete(messages, **kwargs)  # type: ignore[attr-defined]
 
+    def _call(self, messages: list[dict[str, str]], model: str, timeout: float | None) -> tuple[str, str, str | None]:
+        """One provider call. Returns (text, requested_model, served_model) and touches no state on self."""
+        text = self._invoke(messages, model, timeout)
+        requested = getattr(self.inner, "last_requested_model", model) or model
+        served = getattr(self.inner, "last_served_model", None) or None
+        if served is None and self.sample_standin:
+            served = model
+        return text, requested, served
+
+    def _record(self, model: str, requested: str, served: str | None) -> None:
+        self.lane = model
+        self.requested_model = requested
+        # Always overwrite: keeping the previous value when a reply has no `model` field put the
+        # last call's served model on this call's trace line.
+        self.served_model = served
+
     def _once(self, messages: list[dict[str, str]], model: str, timeout: float | None = None) -> str:
         self.lane = model
         self.requested_model = model
-        text = self._invoke(messages, model, timeout)
-        self.requested_model = getattr(self.inner, "last_requested_model", model) or model
-        served = getattr(self.inner, "last_served_model", None)
-        if served:
-            self.served_model = served
-        elif self.sample_standin:
-            self.served_model = model
+        text, requested, served = self._call(messages, model, timeout)
+        self._record(model, requested, served)
         return text
 
     def _once_bounded(self, messages: list[dict[str, str]], model: str, timeout: float) -> str:
-        """Wait at most `timeout` seconds. A late attempt is abandoned, not joined again."""
+        """Wait at most `timeout` seconds. A late attempt is abandoned, not joined again.
+
+        The worker thread only fills its own box. Provenance is written by the caller after a
+        successful join, so an abandoned attempt that finishes later cannot overwrite
+        requested_model / served_model for the call that replaced it.
+        """
 
         box: dict = {}
+        self.lane = model
+        self.requested_model = model
 
         def run() -> None:
             try:
-                box["text"] = self._once(messages, model, timeout=timeout)
+                box["result"] = self._call(messages, model, timeout)
             except Exception as exc:
                 box["error"] = exc
 
@@ -201,7 +219,9 @@ class BoundLLM:
             raise MeterlessError(f"Meterless chat timed out after {timeout}s.")
         if "error" in box:
             raise box["error"]
-        return str(box.get("text") or "")
+        text, requested, served = box.get("result") or ("", model, None)
+        self._record(model, requested, served)
+        return str(text or "")
 
     def _remember(self, lane: str, reason: str) -> None:
         self.fallback_log.append(

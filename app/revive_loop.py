@@ -93,6 +93,23 @@ class CmdResult:
         return self.code == 0
 
 
+_EXPECTED_EXIT_RE = re.compile(r"\bexit(?:s| code)?\s+(-?\d+)\b", re.IGNORECASE)
+
+
+def acceptance_ok(result: CmdResult, expected: str) -> bool:
+    """Whether an acceptance run meets its stated expectation.
+
+    "exit code N" / "exits N" is compared to the real exit code, so an evidence item that
+    expects pytest's exit 5 is judged on exit 5. Anything else needs exit 0: prose such as
+    "the CLI prints its version" is not machine-checkable, and a model's description is never
+    the validator.
+    """
+    match = _EXPECTED_EXIT_RE.search(expected or "")
+    if match:
+        return result.code == int(match.group(1))
+    return result.ok
+
+
 @dataclass
 class ReviveResult:
     state: str
@@ -500,25 +517,64 @@ def is_no_tests(cmd: str, output: str, code: int) -> bool:
     return code == 5 and "pytest" in (cmd or "")
 
 
-def shell_runner(cmd: str, cwd: Path, timeout: int, *, environ: dict[str, str] | None = None) -> CmdResult:
-    """Run one command non-interactively (CI=1, no stdin) and kill the whole process tree on timeout."""
-    import os
-    import time
+# Environment variables never handed to the repository's own install and test commands. That
+# code is untrusted (npm lifecycle scripts, test suites), and its output goes into traces and
+# model prompts. Exact names first, then any name that looks like a credential.
+SECRET_ENV_NAMES = frozenset(
+    {
+        "METERLESS_RUNTIME_TOKEN",
+        "METERLESS_API_KEY",
+        "ZETARIS_API_KEY",
+        "NVIDIA_API_KEY",
+        "MODEL_API_KEY",
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "XAI_API_KEY",
+    }
+)
+_SECRET_ENV_RE = re.compile(r"(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIAL)", re.IGNORECASE)
 
-    env = dict(os.environ, CI="1", NO_COLOR="1", FORCE_COLOR="0", PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+
+def child_env(environ: dict[str, str] | None = None) -> dict[str, str]:
+    """os.environ without credentials, plus the non-interactive flags and any explicit extras."""
+    import os
+
+    env = {key: value for key, value in os.environ.items() if key.upper() not in SECRET_ENV_NAMES and not _SECRET_ENV_RE.search(key)}
+    env.update(CI="1", NO_COLOR="1", FORCE_COLOR="0", PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     if environ:
         env.update({str(key): str(value) for key, value in environ.items()})
+    return env
+
+
+def shell_runner(cmd: str, cwd: Path, timeout: int, *, environ: dict[str, str] | None = None) -> CmdResult:
+    """Run one command non-interactively (CI=1, no stdin) and kill the whole process tree on timeout.
+
+    The command runs with credentials removed from its environment (see SECRET_ENV_NAMES).
+    """
+    import os
+    import signal
+    import time
+
+    env = child_env(environ)
     started = time.monotonic()
-    proc = subprocess.Popen(cmd, cwd=str(cwd), shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+    # POSIX: a new session makes the shell a process-group leader, so a timeout can kill the
+    # group. proc.kill() alone killed only /bin/sh and left node/pytest running and holding the pipe.
+    popen_extra: dict[str, Any] = {} if os.name == "nt" else {"start_new_session": True}
+    proc = subprocess.Popen(cmd, cwd=str(cwd), shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, **popen_extra)  # noqa: S602 — the repository's own manifest command
     try:
         raw, _ = proc.communicate(timeout=timeout)
         out = decode_output(raw)
         code = proc.returncode
     except subprocess.TimeoutExpired:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False)
         else:
-            proc.kill()
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                proc.kill()
         try:
             raw, _ = proc.communicate(timeout=10)
             out = decode_output(raw)
@@ -550,18 +606,36 @@ def detect_commands(repo: Path) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _rel_parts(path: str) -> list[str]:
+    """Path components with "." and empty segments removed. ".." is kept so callers can refuse it."""
+    return [part for part in str(path or "").replace("\\", "/").strip().split("/") if part not in ("", ".")]
+
+
+def _is_vcs_path(parts: list[str]) -> bool:
+    # casefold: ".GIT/config" is the same directory on Windows and macOS.
+    return any(part.casefold() == ".git" for part in parts)
+
+
 def is_protected(path: str) -> bool:
-    norm = path.replace("\\", "/").lstrip("./")
-    name = norm.rsplit("/", 1)[-1]
+    # The old version used lstrip("./"), which strips characters, not a prefix: ".git/config"
+    # became "git/config", so the ".git/" guard never matched and "./.git/hooks/..." was editable.
+    parts = _rel_parts(path)
+    norm = "/".join(parts)
+    name = parts[-1] if parts else ""
     if norm == SYNTH_DIR or norm.startswith(SYNTH_DIR + "/"):
         return True
-    return bool(TEST_PATH_RE.search(norm)) or name in PROTECTED_NAMES or norm.startswith(".git/")
+    if _is_vcs_path(parts):
+        return True
+    # conftest.py is test code wherever it lives: a root conftest can skip or deselect every test.
+    return bool(TEST_PATH_RE.search(norm)) or name in PROTECTED_NAMES or name == "conftest.py"
 
 
 def _safe_path(repo: Path, rel: str) -> Path | None:
-    rel = rel.replace("\\", "/").strip()
-    if not rel or rel.startswith("/") or ".." in rel.split("/") or rel.startswith(".git/") or ":" in rel:
+    raw = str(rel or "").replace("\\", "/").strip()
+    parts = _rel_parts(raw)
+    if not parts or raw.startswith("/") or ".." in parts or _is_vcs_path(parts) or ":" in raw:
         return None
+    rel = "/".join(parts)
     target = (repo / rel).resolve()
     try:
         target.relative_to(repo.resolve())
@@ -1866,7 +1940,7 @@ def revive(
                 regs = regression_ids(accepted_checks, gate)
                 # ensure_env has already run. An environment failure that survives it can be reverted;
                 # one that ensure_env fixed is a pass and is kept.
-                if regs or not run.ok or not acc.ok:
+                if regs or not run.ok or not acceptance_ok(acc, expected):
                     failed_check = regs[0] if regs else "tests"
                     _restore(snap)
                     detail = _failure_text(regs, gate) if regs else run.output

@@ -27,7 +27,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlparse
 
 import httpx
 
@@ -1448,15 +1447,17 @@ def search_prior_art(
 ) -> SearchResultsList:
     """Search for potential prior-art alternatives across queries via the existing toolbox.
 
-    Queries multi-sources (GitHub, npm, PyPI, and Web/DuckDuckGo).
+    Queries GitHub, npm and the web (Exa, Parallel, Keenable, DuckDuckGo). PyPI search is not
+    counted as a source (its search page is behind a bot challenge).
     Deduplicates results, excludes candidate itself and its forks, keeps at most 15 results.
+    ``language`` is accepted for compatibility and deliberately not used to filter: prior art
+    written in another language still solves the same problem.
     Never uses candidate's own stars or forks anywhere.
     Tracks per-source counts and status.
     """
     cand_id = str(candidate.get("repo_id") or "").strip()
     cand_name = cand_id.split("/")[-1].casefold() if "/" in cand_id else cand_id.casefold()
     cand_url = str(candidate.get("html_url") or "").strip().casefold().rstrip("/")
-    lang = (language or candidate.get("primary_language") or candidate.get("language") or "").strip()
 
     results: list[dict[str, Any]] = []
     seen_ids: set[str] = {cand_id.casefold()}
@@ -1485,7 +1486,9 @@ def search_prior_art(
 
     # Collect one bucket per query, then merge round-robin so the first query
     # cannot fill every slot (e.g. a tech-stack query crowding out the job query).
-    max_results = 18
+    # 15 is the documented cap. It was 18 and then cut to 15 on return, so source_counts
+    # counted rows that were dropped and README calls were spent on them.
+    max_results = 15
     buckets: list[list[tuple[str, dict[str, Any]]]] = []
     if "pypi" in source_status:
         # PyPI's search page is behind a bot challenge; package metadata lookups still work,
@@ -1532,10 +1535,12 @@ def search_prior_art(
                         "source": "github",
                         "query": q,
                     }))
-            elif not gh_res.ok:
-                err_str = str(gh_res.error or "")
-                if "SOURCE_ERROR" in err_str:
-                    source_status["github"] = "SOURCE_ERROR"
+            elif not gh_res.ok and str(gh_res.error or "") != "BUDGET_EXHAUSTED":
+                # A rate limit (HTTP 403/429), an HTTP error or a network error is a source error,
+                # the same as for npm and web. It used to count only when the message contained
+                # the literal "SOURCE_ERROR", so a rate-limited GitHub still counted as a
+                # successful source and coverage looked sufficient.
+                source_status["github"] = "SOURCE_ERROR"
 
         # 2. npm registry (first 3 queries)
         if "npm" in source_status and idx < 3 and not toolbox.budget.is_exhausted():

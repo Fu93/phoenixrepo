@@ -45,11 +45,11 @@ When gate 1 passed:
 2. Install, then run the baseline test command. If it already passes the state is `NOTHING_TO_FIX`.
 3. If the baseline failure is a missing platform binary (the npm optional-dependency bug for rollup, esbuild, swc or parcel), do one clean reinstall of `node_modules` before blaming the code (trace event `REVIVE_ENV_REPAIR`).
 4. The model drafts a short upgrade PRD from the repository's real files and the failing output (`REVIVE_PRD`).
-5. The model proposes JSON edits, at most 5 per iteration (`REVIVE_PATCH`). Edits to tests, lockfiles, `.git` or any path outside the repository are rejected, and the rejection is recorded.
+5. The model proposes JSON edits, at most 5 per iteration (`REVIVE_PATCH`). Edits to tests (including any `conftest.py`), lockfiles, any `.git` directory (matched case-insensitively, after `./` and `.` segments are normalised) or any path outside the repository are rejected, and the rejection is recorded. The independent verifier also fails a revival that changes `scripts.test` / `scripts.pretest` in a `package.json`, or that skips more tests without passing more.
 6. Apply the edits and re-run the repository's own test command (`REVIVE_VALIDATE`). **Only exit code 0 accepts**: state `RESURRECTED`. The model's opinion is never the validator.
 7. On failure the real output tail goes back to the builder, for up to 4 iterations. After that the state is `RESURRECTION_FAILED`.
 
-Other trace events: `REVIVE_INSTALL`, `REVIVE_BASELINE`, `REVIVE_UNSUPPORTED`, `REVIVE_RESULT`. The loop commits to a local branch (`phoenix/<run_id>`) and never pushes or opens a pull request. Tests run non-interactively (`CI=1`, no stdin) and a timed-out command's whole process tree is killed.
+Other trace events: `REVIVE_INSTALL`, `REVIVE_BASELINE`, `REVIVE_UNSUPPORTED`, `REVIVE_RESULT`. The loop commits to a local branch (`phoenix/<run_id>`) and never pushes or opens a pull request. Tests run non-interactively (`CI=1`, no stdin), without credentials in their environment (`METERLESS_RUNTIME_TOKEN`, `GITHUB_TOKEN` and any variable named like a token, key, secret or password are removed), and a timed-out command's whole process tree is killed (a process group on Linux and macOS, `taskkill /T` on Windows).
 
 #### Two sources of `RESURRECTED`
 
@@ -157,7 +157,7 @@ A live model writes the explanation. If that explanation disagrees with the poli
 
 In live mode, after the deterministic check, the validator sends the archaeologist claims and the market-judge explanation to Nightshift (`meterless/auto`, or `MODEL_NAME` such as `nvidia/nemotron-3-super-120b-a12b`) and asks for `{"decision":"accept"|"reject",...}`. The judge is advisory. A parsed reject adds a rejection and can force one retry. A parsed accept does not erase a missing or unknown evidence id; the trace records `guard_override`. When the retries are exhausted, the evidence-backed claims stay and the deterministic policy verdict is still produced. The verdict text says the judge was advisory. If the judge times out, returns 401, or raises any other error, that failure is logged as `LLM_JUDGE` with status `timeout`, `unauthorized`, or `error`, `raw_decision` is `unavailable`, and the policy verdict is still produced. The same failure is copied into `metadata.llm.judge` and into the verdict text. The judge does not end the run with 422, 502, or 401. Sample mode does not make this call. A successful call logs `requested_model`, `served_model`, and `latency_ms`.
 
-A Nightshift failure in any role follows the same degrade path. On HTTP 429, HTTP 502, or a timeout the client retries that lane after 2, 4, and 8 seconds, but only when the next wait still fits inside the current step's deadline. The per-attempt timeout is the smaller of the chat client timeout and the time left in that budget. A backoff that would run past the deadline is skipped, and a call that is still running when its attempt timeout ends is abandoned rather than joined. The default lane order in `config/settings.py` is `nvidia/nemotron-3-super-120b-a12b`, then `meterless/auto`. Those strings are the request ids this repository sends. Both calls go through Nightshift. This path does not call the NVIDIA API directly. Nightshift may answer with a different `model` than the one requested. The trace of a live call stores that id. No committed file in this repository names one. HTTP 401 and 403 do not retry and do not move to the next lane. A lane that fails, including a persistent 429, goes into a 45-second cooldown (not a permanent per-run blacklist), so later steps skip it only while it cools down. When every lane is cooling down, the call waits up to 30 seconds and retries once before degrading. If every lane still fails, or the step budget runs out, the run uses the deterministic stand-in for that step, logs `PROVIDER_DEGRADED` and one `LLM_FALLBACK` line per attempt (lane, requested model, served model, reason), and still returns the policy verdict. It does not answer 502 with no verdict. Every LLM trace event stores `requested_model` and `served_model` (the response `model` field) on the line, so both are inside the hash chain. `scripts/render_trace.py` shows `served_model`, and the verdict text plus `metadata.llm.provenance` record it too.
+A Nightshift failure in any role follows the same degrade path. On HTTP 429, HTTP 502, or a timeout the client retries that lane after 2, 4, and 8 seconds, but only when the next wait still fits inside the current step's deadline. The per-attempt timeout is the smaller of the chat client timeout and the time left in that budget. A backoff that would run past the deadline is skipped, and a call that is still running when its attempt timeout ends is abandoned rather than joined. The configured lanes in `config/settings.py` are `nvidia/nemotron-3-super-120b-a12b` and `meterless/auto`. `build_llm` moves the requested model (`MODEL_NAME`, else `METERLESS_MODEL`, default `meterless/auto`) to the front, so with the defaults `meterless/auto` is tried first and the Nemotron lane second. Those strings are the request ids this repository sends. Both calls go through Nightshift. This path does not call the NVIDIA API directly. Nightshift may answer with a different `model` than the one requested. The trace of a live call stores that id. No committed file in this repository names one. HTTP 401 and 403 do not retry and do not move to the next lane. A lane that fails, including a persistent 429, goes into a 45-second cooldown (not a permanent per-run blacklist), so later steps skip it only while it cools down. When every lane is cooling down, the call waits up to 30 seconds and retries once before degrading. If every lane still fails, or the step budget runs out, the run uses the deterministic stand-in for that step, logs `PROVIDER_DEGRADED` and one `LLM_FALLBACK` line per attempt (lane, requested model, served model, reason), and still returns the policy verdict. It does not answer 502 with no verdict. Every LLM trace event stores `requested_model` and `served_model` (the response `model` field) on the line, so both are inside the hash chain. `scripts/render_trace.py` shows `served_model`, and the verdict text plus `metadata.llm.provenance` record it too.
 
 ## Architecture
 
@@ -199,7 +199,7 @@ Sample mode needs no accounts. From PowerShell in this repo:
 py -3 -m venv .venv
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 copy .env.example .env
 py -3 -m pytest -q
 py -3 run.py
@@ -353,7 +353,7 @@ No third-party dataset is vendored. The sample cache is not presented as GitHub 
 
 ## Libraries
 
-Python, FastAPI, Uvicorn, Pydantic, pydantic-settings, python-dotenv, httpx. Tests use pytest. No agent framework. HTTP clients are httpx. The Docker image installs `requirements.txt` during `docker build` and does not install packages on start.
+Python, FastAPI, Uvicorn, Pydantic, pydantic-settings, python-dotenv, httpx. Tests use pytest; CI also runs a minimal `ruff` gate (syntax errors, undefined names, redefinitions; see `ruff.toml`). No agent framework. HTTP clients are httpx. `requirements.txt` pins the runtime versions the suite last passed with; `requirements-dev.txt` adds pytest and ruff. The Docker image installs only `requirements.txt` during `docker build`, runs as an unprivileged user, and does not install packages on start.
 
 ## Pre-existing components
 
@@ -418,8 +418,9 @@ Loading those CSVs into the user's local Zetaris (Docker on Windows or WSL2, RES
 ## Tests
 
 ```powershell
+py -3 -m ruff check .
 py -3 -m pytest -q
 py -3 scripts/compliance_check.py
 ```
 
-CI runs both on Python 3.12.
+CI runs all three on Python 3.12.

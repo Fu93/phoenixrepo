@@ -9,10 +9,8 @@ evidence report. It never uses the repository's own stars or forks as evidence o
 from __future__ import annotations
 
 import argparse
-import base64
 import csv
 import json
-import os
 import re
 import sys
 import tempfile

@@ -30,9 +30,6 @@ sys.path.insert(0, str(ROOT))
 
 from app.agents.equivalence import evidence_from_rows  # noqa: E402
 from app.agents.market_filter import (  # noqa: E402
-    alternative_qualifies,
-    decide_discovery,
-    demand_qualifies,
     is_boilerplate,
     observed_days,
     split_terms,
@@ -52,12 +49,11 @@ from app.agents.relevance import (  # noqa: E402
     search_prior_art,
 )
 from app.agents.reinvestigate import reinvestigate  # noqa: E402
-from app.agents.subagents import SubAgentManager, is_candidate_repo_url  # noqa: E402
+from app.agents.subagents import is_candidate_repo_url  # noqa: E402
 from app.agents.venture import (  # noqa: E402
     CRITERIA_NAMES,
     Criterion,
     Scorecard,
-    review_scorecard,
     select_protagonist,
 )
 from app.prompts import load_prompt  # noqa: E402
@@ -80,7 +76,7 @@ from app.tools import (  # noqa: E402
     ZetarisSqlTool,
 )
 from app.trace_log import HackathonTrace  # noqa: E402
-from config.settings import Settings  # noqa: E402
+from config.settings import trace_secrets  # noqa: E402
 
 
 # Events that carry verified quotes must not be cut mid-JSON (the default trace summary limit is 500).
@@ -225,7 +221,7 @@ def compute_differentiation(
     relevance_client: RelevanceClient | None = None,
     fallback_caps: bool = False,
     accepted_demand_signals: list[dict[str, Any]] | None = None,
-) -> tuple[Criterion, str | None]:
+) -> Criterion:
     """Compute differentiation from extracted capabilities vs maintained free alternatives.
 
     Rules:
@@ -752,7 +748,7 @@ def score_all(
     now_iso = datetime.now(timezone.utc).isoformat()
     active_run_id = run_id or f"venture-{uuid.uuid4().hex[:12]}"
     active_log_dir = log_dir or (ROOT / "logs")
-    trace = HackathonTrace(run_id=active_run_id, log_dir=active_log_dir)
+    trace = HackathonTrace(run_id=active_run_id, log_dir=active_log_dir, secrets=trace_secrets())
 
     active_data_dir = snapshot if snapshot is not None else (data_dir or (ROOT / "data" / "real"))
     active_output_json = output_json or (ROOT / "docs" / "revival" / "venture_scores.json")

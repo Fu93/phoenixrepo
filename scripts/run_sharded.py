@@ -119,28 +119,43 @@ def count_unjudged(merged: dict) -> int:
 
 
 def run_round(args, shards: list[Path], suffix: str) -> tuple[list[dict], list[tuple[str, int]], list[str]]:
+    args.log_dir.mkdir(parents=True, exist_ok=True)
     procs = []
     for k, d in enumerate(shards):
         rid = f"{args.run_id}{suffix}-s{k}"
+        # A scores file left by an earlier run with the same run id would otherwise be merged
+        # even when this shard crashes before writing its own.
+        (args.log_dir / f"{rid}_scores.json").unlink(missing_ok=True)
+        (args.log_dir / f"{rid}_scores.md").unlink(missing_ok=True)
         cmd = [sys.executable, str(ROOT / "scripts" / "score_candidates.py"), "--snapshot", str(d), "--llm",
                "--max-calls", str(args.max_calls), "--max-seconds", str(args.max_seconds), "--run-id", rid,
                "--log-dir", str(args.log_dir), "--output-json", str(args.log_dir / f"{rid}_scores.json"),
                "--output-md", str(args.log_dir / f"{rid}_scores.md")]
-        out = open(args.log_dir / f"{rid}.out", "w", encoding="utf-8")
-        err = open(args.log_dir / f"{rid}.err", "w", encoding="utf-8")
-        procs.append((rid, subprocess.Popen(cmd, cwd=ROOT, stdout=out, stderr=err), out, err))
+        out = open(args.log_dir / f"{rid}.out", "w", encoding="utf-8")  # noqa: SIM115 — closed after wait()
+        err = open(args.log_dir / f"{rid}.err", "w", encoding="utf-8")  # noqa: SIM115
+        try:
+            proc = subprocess.Popen(cmd, cwd=ROOT, stdout=out, stderr=err)
+        except OSError:
+            out.close()
+            err.close()
+            raise
+        procs.append((rid, proc, out, err))
         time.sleep(5)
     failed = []
     for rid, p, out, err in procs:
         rc = p.wait()
-        out.close(); err.close()
+        out.close()
+        err.close()
         if rc != 0:
             failed.append((rid, rc))
     parts = []
     for rid, *_ in procs:
         f = args.log_dir / f"{rid}_scores.json"
         if f.exists():
-            parts.append(json.loads(f.read_text(encoding="utf-8")))
+            try:
+                parts.append(json.loads(f.read_text(encoding="utf-8")))
+            except ValueError:
+                failed.append((rid, -1))
     return parts, failed, [rid for rid, *_ in procs]
 
 
