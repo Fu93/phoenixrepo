@@ -34,7 +34,9 @@ from app.agents.market_filter import (  # noqa: E402
     observed_days,
     split_terms,
 )
+from app.agents.own_identity import build_identity, load_manifests, split_own  # noqa: E402
 from app.agents.relevance import (  # noqa: E402
+    InfraFallbackStop,
     RelevanceClient,
     RelevanceLLMError,
     broaden_queries,
@@ -976,6 +978,7 @@ def _do_score_candidates(
                     status="ok",
                 )
 
+                candidate["_manifest_texts"] = load_manifests(toolbox, repo_id)
                 search_results = search_prior_art(
                     candidate=candidate,
                     queries=queries,
@@ -1018,6 +1021,9 @@ def _do_score_candidates(
                             language=candidate.get("primary_language"),
                         )
                         search_results.extend(broader_results)
+                        search_results.own_filtered = list(getattr(search_results, "own_filtered", []) or []) + list(
+                            getattr(broader_results, "own_filtered", []) or []
+                        )
                         trace.event(
                             agent_name="orchestrator",
                             action="PRIOR_ART_SEARCH",
@@ -1030,6 +1036,19 @@ def _do_score_candidates(
                             status="ok",
                         )
 
+                own_filtered = list(getattr(search_results, "own_filtered", []) or [])
+                identity = build_identity(candidate)
+                prior_for_repo, prior_dropped = split_own(identity, list(prior_for_repo or []))
+                own_filtered.extend(prior_dropped)
+                if own_filtered:
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="own_identity",
+                        input_summary={"repo_id": repo_id},
+                        output_summary={"own_identity": own_filtered, "identities": identity.as_dict()},
+                        status="ok",
+                    )
+
                 # If after retry search_results is still 0 and no prior_for_repo from CSV:
                 if len(search_results) == 0 and len(prior_for_repo) == 0:
                     verdict = "NEEDS_PRIOR_ART"
@@ -1041,6 +1060,7 @@ def _do_score_candidates(
                         output_summary={"verdict": verdict, "reason": reason},
                         status="ok",
                     )
+                    candidate.pop("_manifest_texts", None)
                     ineligible_repos.append(
                         {
                             "repo_id": repo_id,
@@ -1061,6 +1081,7 @@ def _do_score_candidates(
                         search_results=search_results,
                         client=relevance_client,
                         trace=trace,
+                        candidate=candidate,
                     )
                     trace.event(
                         agent_name="orchestrator",
@@ -1107,6 +1128,21 @@ def _do_score_candidates(
                     verdict, reason = judged
                     judgement_evidence = list(getattr(judged, "evidence", []) or [])
                     must_beat = list(getattr(judged, "must_beat", []) or [])
+                except InfraFallbackStop as exc:
+                    verdict = "NEEDS_REVIEW"
+                    reason = str(exc)
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="DISCOVERY_FILTER",
+                        input_summary={"repo_id": repo_id},
+                        output_summary={"verdict": verdict, "reason": reason},
+                        status="ok",
+                    )
+                    candidate.pop("_manifest_texts", None)
+                    ineligible_repos.append(
+                        {"repo_id": repo_id, "verdict": verdict, "reason": reason, "eligibility": False}
+                    )
+                    continue
                 except RelevanceLLMError as exc:
                     if "refusing to score with a small local model" in str(exc):
                         raise
@@ -1121,6 +1157,7 @@ def _do_score_candidates(
                         output_summary={"verdict": verdict, "reason": reason},
                         status="ok",
                     )
+                    candidate.pop("_manifest_texts", None)
                     ineligible_repos.append(
                         {"repo_id": repo_id, "verdict": verdict, "reason": reason, "eligibility": False}
                     )
@@ -1143,6 +1180,8 @@ def _do_score_candidates(
 
         if verdict not in {"ALREADY_EXISTS", "NEEDS_REVIEW"}:
             judgement_evidence = []
+
+        candidate.pop("_manifest_texts", None)
 
         # Emit exactly one final DISCOVERY_FILTER event per repo
         trace.event(

@@ -668,13 +668,21 @@ class GitHubTool:
         query = str(args.get("query") or "")
         repo = str(args.get("repo") or "").strip()
 
+        if action == "file":
+            path = str(args.get("path") or "").strip().lstrip("/")
+            if not repo or not path:
+                return ToolResult(ok=False, data="", error="repo and path required for file", source_url="", fetched_at=now)
+            url = (
+                f"https://api.github.com/repos/{urllib.parse.quote(repo, safe='/')}"
+                f"/contents/{urllib.parse.quote(path, safe='/')}"
+            )
         # Queries come from model-extracted problem text ("C# tools", "Q&A bot"): an unencoded
         # '&', '#' or '+' silently cut or changed the search, so every value is URL-encoded.
-        if action in {"repositories", "search_repos", "search_repositories"}:
+        elif action in {"repositories", "search_repos", "search_repositories"}:
             q = urllib.parse.quote_plus(query)
             per_page = int(args.get("per_page") or 10)
             url = f"https://api.github.com/search/repositories?q={q}&per_page={per_page}"
-        elif action == "issues" or (query and action != "repo" and action != "readme"):
+        elif action == "issues" or (query and action not in {"repo", "readme", "file"}):
             q = urllib.parse.quote_plus(query or f"repo:{repo}")
             url = f"https://api.github.com/search/issues?q={q}"
         elif action == "readme" or args.get("kind") == "readme":
@@ -707,8 +715,8 @@ class GitHubTool:
                     )
                 payload = resp.json()
 
-                # If README was requested and content is base64 encoded
-                if "/readme" in url and isinstance(payload, dict) and "content" in payload:
+                # README and contents responses carry the file as base64.
+                if isinstance(payload, dict) and "content" in payload and ("/readme" in url or "/contents/" in url):
                     try:
                         raw_content = base64.b64decode(payload["content"]).decode("utf-8", errors="replace")
                         payload["decoded_text"] = raw_content[:10000]
