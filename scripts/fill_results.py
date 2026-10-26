@@ -269,8 +269,17 @@ def per_case_table(data: dict[str, Any]) -> str:
             f"| `{case['repo_id']}` | {' or '.join(case['acceptable'])} | {case['verdict'] or 'none'} | {case['outcome']} "
             f"| {by} | {nemo} | {prov} | {chain} | {_cell(case['reason'])} |"
         )
+    refuse = [c for c in data["per_case"] if set(c["acceptable"]) == {"ALREADY_EXISTS"} and c["outcome"] != "not judged"]
+    if refuse:
+        tally: dict[str, int] = {}
+        for c in refuse:
+            tally[c["verdict"] or "none"] = tally.get(c["verdict"] or "none", 0) + 1
+        parts = ", ".join(f"{n} `{v}`" for v, n in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0])))
+        lines.append("")
+        lines.append(f"Of the {len(refuse)} judged cases the label says to refuse: {parts}. A `CANDIDATE` among them is a false pass that gate 2 would act on.")
     lines.append("")
-    lines.append("Each row's trace is `logs/trace-<run_id>.jsonl` on the author's machine; the chain column is `scripts/verify_trace.py` on that file.")
+    lines.append("Each row's trace is `logs/trace-<run_id>.jsonl` on the author's machine; the chain column is `scripts/verify_trace.py` on that file. "
+                 "`(missing)` in a served-model count is a call that failed or was discarded before any answer, not an answer used.")
     return "\n".join(lines)
 
 
