@@ -15,6 +15,12 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Run as an unprivileged user. Only the directories the API writes to are owned by it.
 RUN useradd --create-home --uid 10001 phoenix
 COPY . .
+# Replay page (static HTML, no build) and the committed data/replays catalog.
+COPY app/ui/index.html /app/app/ui/index.html
+COPY data/replays /app/data/replays
+RUN test -s /app/app/ui/index.html \
+    && test -s /app/data/replays/manifest.json \
+    && test -s /app/data/replays/invoice-already-exists/trace.jsonl
 RUN mkdir -p /app/logs /app/data/hmem /app/run_artifacts \
     && chown -R phoenix:phoenix /app/logs /app/data/hmem /app/run_artifacts
 USER phoenix

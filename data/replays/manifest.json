@@ -1,0 +1,53 @@
+{
+  "replays": [
+    {
+      "id": "invoice-already-exists",
+      "title": "Invoice generator — recorded ALREADY_EXISTS",
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "data_class": "RECORDED",
+      "trace_class": "SAMPLE",
+      "summary": "Deterministic score run venture-019ca0071780 refused the invoice generator. The chain is a SAMPLE seal over that record."
+    },
+    {
+      "id": "hygen-already-exists-quote",
+      "title": "Hygen — human label ALREADY_EXISTS with a verbatim quote",
+      "repo_id": "Fu93/hygen",
+      "data_class": "HUMAN_LABEL",
+      "trace_class": "SAMPLE",
+      "summary": "Human label in data/eval/gate1_labels.json. No model score for Fu93/hygen is in venture_scores.json."
+    },
+    {
+      "id": "mirrormate-human-label",
+      "title": "Mirrormate — human label, not a model NEEDS_REVIEW verdict",
+      "repo_id": "orangekame3/mirrormate",
+      "data_class": "HUMAN_LABEL",
+      "trace_class": "SAMPLE",
+      "summary": "Human label says CANDIDATE or NEEDS_REVIEW would be acceptable. No committed file records a model verdict of NEEDS_REVIEW."
+    },
+    {
+      "id": "invoice-gate2-sample",
+      "title": "Invoice generator — SAMPLE gate 2 blocked",
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "data_class": "RECORDED",
+      "trace_class": "SAMPLE",
+      "summary": "Local revive() short-circuit. State NOT_ATTEMPTED_GATE1 comes from the function, not from a past run."
+    }
+  ],
+  "missing": [
+    {
+      "id": "needs-review-model-trace",
+      "title": "No recorded NEEDS_REVIEW model verdict",
+      "reason": "No committed JSON file contains a model verdict of NEEDS_REVIEW. data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score. No trace jsonl is committed on any branch (logs/ is gitignored)."
+    },
+    {
+      "id": "historical-gate2-trace",
+      "title": "No historical NOT_ATTEMPTED_GATE1 trace",
+      "reason": "No committed revive trace records NOT_ATTEMPTED_GATE1. reports/ is not in git. invoice-gate2-sample is a SAMPLE produced by calling revive() locally."
+    },
+    {
+      "id": "mismatch-and-source-error-trace",
+      "title": "No committed MODEL_MISMATCH or SOURCE_ERROR trace",
+      "reason": "The timeline shows MODEL_MISMATCH and SOURCE_ERROR when a trace line contains them. No committed jsonl has those flags. The player does not invent a model name or a duration."
+    }
+  ]
+}

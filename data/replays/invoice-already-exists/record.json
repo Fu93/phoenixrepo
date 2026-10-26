@@ -1,0 +1,72 @@
+{
+  "id": "invoice-already-exists",
+  "title": "Invoice generator — recorded ALREADY_EXISTS",
+  "repo_id": "tharani-2006/Invoice-generator-application",
+  "repo_url": "https://github.com/tharani-2006/Invoice-generator-application",
+  "data_class": "RECORDED",
+  "trace_class": "SAMPLE",
+  "banner": "SAMPLE hash chain. The rows are copies of committed files. This JSONL is not logs/trace-venture-019ca0071780.jsonl. The recorded run hash 322ce42a3527a7c4a719853e61b5c2842833653fb5384f0726ed83856d475551 cannot be recomputed from this file.",
+  "summary": "Deterministic score run venture-019ca0071780 refused the invoice generator. The chain is a SAMPLE seal over that record.",
+  "model_verdict_recorded": false,
+  "sources": [
+    "docs/revival/venture_scores.json",
+    "data/real/prior_art.csv",
+    "data/real/discovery_candidates.csv",
+    "data/eval/gate1_labels.json",
+    "README.md"
+  ],
+  "recorded_run": {
+    "run_id": "venture-019ca0071780",
+    "run_hash": "322ce42a3527a7c4a719853e61b5c2842833653fb5384f0726ed83856d475551",
+    "date": "2026-10-22T22:09:00.336503+00:00",
+    "llm_used": false,
+    "source": "docs/revival/venture_scores.json",
+    "jsonl_committed": false
+  },
+  "rescue_inputs": {
+    "stargazers_count": 0,
+    "forks_count": 0,
+    "open_issues": 0,
+    "pushed_at": "2026-02-28T17:11:12Z",
+    "days_since_push": "236",
+    "as_of": "2026-10-22",
+    "source": "data/real/discovery_candidates.csv"
+  },
+  "verdict": {
+    "verdict": "ALREADY_EXISTS",
+    "verdict_kind": "recorded_score",
+    "reason": "al1abb/invoify (https://github.com/al1abb/invoify) is a maintained free OSS alternative (MIT, pushed 2026-08-24T02:55:34Z, 59 days before collection) whose excerpt contains every required term (invoice, pdf). Excerpt: Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF. Method: phrase/keyword.",
+    "quote": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF.",
+    "quote_source_url": "https://github.com/al1abb/invoify",
+    "quote_source_path": "data/real/prior_art.csv",
+    "alternatives": [
+      {
+        "name": "al1abb/invoify",
+        "url": "https://github.com/al1abb/invoify",
+        "quote": "Invoify is a free, web-based invoice generator built with Next.js, TypeScript, React and the shadcn/ui library. Fill in a form, pick a template, and get a real PDF.",
+        "origin": "data/real/prior_art.csv",
+        "stars": "6376",
+        "pushed_at": "2026-08-24T02:55:34Z",
+        "licence_spdx": "MIT"
+      },
+      {
+        "name": "InvoicePlane/InvoicePlane",
+        "url": "https://github.com/InvoicePlane/InvoicePlane",
+        "quote": "InvoicePlane: 3,258 stars, pushed 2026-10-25, self-hosted. Same job: create, manage and send invoices.",
+        "origin": "data/eval/gate1_labels.json",
+        "stars": 3258,
+        "overlap": "full",
+        "note": "Human audit blocker dated 2026-10-25. Not the alternative named in docs/revival/venture_scores.json. phoenix_overrefusal_audit.md is not in this repository."
+      }
+    ],
+    "acceptable": null,
+    "gate2": {
+      "state": null,
+      "historical_trace": false,
+      "rule_quote": "**Gate 2 only runs if gate 1 said `CANDIDATE`.** This is a hard precondition (commit `aa48ca7`). For any other gate-1 verdict the state is `NOT_ATTEMPTED_GATE1`, the trace records `REVIVE_BLOCKED_BY_GATE1`, and nothing is cloned, installed or patched.",
+      "rule_source": "README.md",
+      "sample_replay_id": "invoice-gate2-sample",
+      "why": "No revive trace for this repository is committed (logs/ is gitignored and reports/ is not in git). README.md says a gate-1 verdict other than CANDIDATE ends as NOT_ATTEMPTED_GATE1 and nothing is cloned. The recorded verdict in docs/revival/venture_scores.json is ALREADY_EXISTS. invoice-gate2-sample is a SAMPLE call of revive() with that verdict, not a historical run."
+    }
+  }
+}

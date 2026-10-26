@@ -5,7 +5,7 @@ import os
 import uvicorn
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.errors import InvestigationError
 from app.investigation import InvestigationOrchestrator
@@ -93,6 +93,51 @@ def judge_endpoint(request: JudgeRequest):
         return JSONResponse(status_code=422, content={"error": {"type": "CannotJudge", "message": str(exc)}})
     except RelevanceLLMError as exc:
         return JSONResponse(status_code=502, content={"error": {"type": "LLMUnavailable", "message": str(exc)}})
+
+
+@app.get("/ui")
+def replay_ui():
+    """Static replay page. No build step and no external assets."""
+
+    from app.replay_ui import ui_path
+
+    return FileResponse(ui_path(), media_type="text/html; charset=utf-8")
+
+
+@app.get("/api/replays")
+def list_replays():
+    from app.replay_ui import catalog
+
+    return catalog()
+
+
+@app.get("/api/replays/{replay_id}")
+def get_replay(replay_id: str):
+    from app.replay_ui import ReplayError, replay_payload
+
+    try:
+        return replay_payload(replay_id)
+    except ReplayError as exc:
+        return JSONResponse(status_code=exc.status, content={"error": {"type": "Replay", "message": str(exc)}})
+
+
+@app.post("/api/replays/{replay_id}/tamper")
+def tamper_replay_endpoint(replay_id: str):
+    """Verify a one-character copy of the committed trace. The file is left as committed."""
+
+    from app.replay_ui import ReplayError, tamper_replay
+
+    try:
+        return tamper_replay(replay_id)
+    except ReplayError as exc:
+        return JSONResponse(status_code=exc.status, content={"error": {"type": "Replay", "message": str(exc)}})
+
+
+@app.get("/api/live")
+def live_status():
+    from app.replay_ui import live_status as status
+
+    return status(get_settings())
 
 
 @app.exception_handler(InvestigationError)

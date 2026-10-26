@@ -1,0 +1,58 @@
+{
+  "id": "mirrormate-human-label",
+  "title": "Mirrormate — human label, not a model NEEDS_REVIEW verdict",
+  "repo_id": "orangekame3/mirrormate",
+  "repo_url": "https://github.com/orangekame3/mirrormate",
+  "data_class": "HUMAN_LABEL",
+  "trace_class": "SAMPLE",
+  "banner": "SAMPLE hash chain over a human label copied from data/eval/gate1_labels.json. This is not a Nightshift trace and not a model verdict.",
+  "summary": "Human label says CANDIDATE or NEEDS_REVIEW would be acceptable. No committed file records a model verdict of NEEDS_REVIEW.",
+  "model_verdict_recorded": false,
+  "sources": [
+    "data/eval/gate1_labels.json"
+  ],
+  "recorded_run": null,
+  "rescue_inputs": null,
+  "verdict": {
+    "verdict": null,
+    "verdict_kind": "human_label",
+    "reason": "The repository's own README says the agent lives in a mirror and is not a browser chat UI. A browser voice assistant that does not say it runs in a mirror is not full overlap.",
+    "quote": "A voice-first AI designed to live in a mirror",
+    "quote_source_url": "https://raw.githubusercontent.com/orangekame3/mirrormate/develop/README.md",
+    "quote_source_path": "data/eval/gate1_labels.json",
+    "alternatives": [
+      {
+        "name": "candidate",
+        "url": "https://raw.githubusercontent.com/orangekame3/mirrormate/develop/README.md",
+        "quote": "A voice-first AI designed to live in a mirror",
+        "origin": "data/eval/gate1_labels.json"
+      },
+      {
+        "name": "candidate",
+        "url": "https://raw.githubusercontent.com/orangekame3/mirrormate/develop/README.md",
+        "quote": "Not another chat UI in a browser",
+        "origin": "data/eval/gate1_labels.json"
+      },
+      {
+        "name": "counterexample",
+        "url": "https://raw.githubusercontent.com/open-webui/open-webui/main/README.md",
+        "quote": "Integrated voice and video calls with multiple Speech-to-Text providers (Local Whisper, OpenAI, Deepgram, Azure)",
+        "origin": "data/eval/gate1_labels.json"
+      }
+    ],
+    "acceptable": [
+      "CANDIDATE",
+      "NEEDS_REVIEW"
+    ],
+    "forbidden": [
+      "ALREADY_EXISTS"
+    ],
+    "gate2": {
+      "state": null,
+      "historical_trace": false,
+      "rule_quote": "**Gate 2 only runs if gate 1 said `CANDIDATE`.** This is a hard precondition (commit `aa48ca7`). For any other gate-1 verdict the state is `NOT_ATTEMPTED_GATE1`, the trace records `REVIVE_BLOCKED_BY_GATE1`, and nothing is cloned, installed or patched.",
+      "rule_source": "README.md",
+      "why": "No gate-2 trace is committed for this repository. NOT_ATTEMPTED_GATE1 applies when a recorded gate-1 verdict is not CANDIDATE. This card is a human label, so that state was not recorded here."
+    }
+  }
+}
