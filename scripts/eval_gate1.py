@@ -187,6 +187,7 @@ def evaluate(
     resume: dict[str, Any] | None = None,
     on_progress: Callable[[dict[str, Any]], None] | None = None,
     clock: Callable[[], float] | None = None,
+    rejudge: set[str] | None = None,
 ) -> dict[str, Any]:
     """Validate the labels and, with a token, judge each case live.
 
@@ -235,6 +236,7 @@ def evaluate(
         for row in ((resume or {}).get("results") or [])
         if isinstance(row, dict) and row.get("verdict")
         and not is_infra_review({"verdict": row.get("verdict"), "reason": row.get("reason") or ""})
+        and str(row.get("verdict")) not in (rejudge or set())
     }
     cases = list(payload["cases"])
     if audit_only:
@@ -349,6 +351,11 @@ def main() -> int:
     parser.add_argument("--audit-only", action="store_true", help="Only the audited ALREADY_EXISTS cases.")
     parser.add_argument("--repo", action="append", default=[], help="Only this repo id (repeatable).")
     parser.add_argument("--resume", type=Path, default=None, help="An earlier --out report; its judged cases are reused.")
+    parser.add_argument(
+        "--rejudge", action="append", default=[],
+        help="With --resume, judge again the cases whose earlier verdict is this one (repeatable), e.g. CANDIDATE "
+        "from a run before the budget-truncation fix.",
+    )
     args = parser.parse_args()
 
     def write(report: dict[str, Any]) -> None:
@@ -359,7 +366,7 @@ def main() -> int:
     resume = json.loads(args.resume.read_text(encoding="utf-8")) if args.resume and args.resume.is_file() else None
     report = evaluate(
         args.labels, deadline_s=args.deadline, only=args.repo or None, audit_only=args.audit_only,
-        resume=resume, on_progress=write,
+        resume=resume, on_progress=write, rejudge={v.strip().upper() for v in args.rejudge if v.strip()} or None,
     )
     text = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
     write(report)

@@ -972,10 +972,14 @@ def _do_score_candidates(
             summary_limit=ZETARIS_QUERY_LIMIT,
         )
 
-    # Proportionally scale tool budget (e.g. 8 tool calls per candidate capped)
-    per_candidate_calls = 8
+    # Tool budget per candidate. The clock starts here, before problem extraction, and a slow
+    # Nightshift can spend minutes per model call, so 30 s per candidate cut the prior-art
+    # search short. One full search is about 8 queries x (GitHub + web) + 3 npm + README
+    # fetches. A search the budget still cuts short is NEEDS_REVIEW, never CANDIDATE.
+    per_candidate_calls = int(_env_number("PHOENIX_TOOL_CALLS_PER_CANDIDATE", 40))
+    per_candidate_seconds = _env_number("PHOENIX_TOOL_SECONDS_PER_CANDIDATE", 1200.0)
     scaled_calls = max(max_calls, len(candidates_raw) * per_candidate_calls)
-    scaled_seconds = max(max_seconds, len(candidates_raw) * 30.0)
+    scaled_seconds = max(max_seconds, len(candidates_raw) * per_candidate_seconds)
     toolbox = custom_toolbox or build_default_toolbox(
         max_calls=scaled_calls, max_seconds=scaled_seconds, trace=trace
     )
@@ -1830,6 +1834,15 @@ def _render_markdown(data: dict[str, Any]) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def _env_number(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    try:
+        value = float(raw) if raw else default
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def _evidence_mode(explicit: str | None) -> str:

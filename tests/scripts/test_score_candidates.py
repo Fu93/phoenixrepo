@@ -95,7 +95,9 @@ def _create_mock_toolbox(gh_status: int = 200, gh_body: dict | None = None) -> T
         "web_fetch": WebFetchTool(transport=transport),
         "zetaris_sql": ZetarisSqlTool(),
     }
-    return ToolBox(tools=tools, budget=Budget(max_calls=40, max_seconds=300.0))
+    # Room for two full prior-art searches. With 40 calls the second repository's search was cut
+    # short, which used to pass silently as CANDIDATE and is now (correctly) NEEDS_REVIEW.
+    return ToolBox(tools=tools, budget=Budget(max_calls=200, max_seconds=300.0))
 
 
 def _create_mock_relevance_client(tmp_path: Path) -> RelevanceClient:
