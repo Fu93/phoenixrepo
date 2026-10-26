@@ -92,7 +92,9 @@ def markdown(summary: dict[str, Any], source: str) -> str:
         f"| Model answers used that NVIDIA Nemotron wrote | {share} |",
     ]
     if s["served_models"]:
-        lines.append("| Served models | " + ", ".join(f"`{name}` {calls}" for name, calls in s["served_models"].items()) + " |")
+        lines.append("| Served models (all LLM call lines) | " + ", ".join(
+            f"`{name}` {calls}" + (" (failed or discarded calls with no answer, not answers used)" if name == "(missing)" else "")
+            for name, calls in s["served_models"].items()) + " |")
     lines += ["", f"Source: `{source}`, summarised by `scripts/eval_summary.py`. A live run on one machine, not a stored accuracy."]
     if s["not_started"]:
         lines.append(f"Not started before the deadline: {', '.join(s['not_started'])}.")

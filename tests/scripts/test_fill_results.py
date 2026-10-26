@@ -89,3 +89,18 @@ def test_nemotron_evidence_counts_tiers_latency_and_failures(tmp_path: Path):
     assert f"| `{NEMO}` | 3 | 30 | 90 |" in out
     assert "reasoning kept in the trace: **1** of **1**" in out
     assert "failed (timeout, HTTP 5xx or non-Nemotron answer): **1**" in out and "(`nvidia-direct`): **1**" in out
+
+
+def test_per_case_table_counts_false_passes_by_verdict(tmp_path: Path):
+    labels = {"cases": [
+        {"repo_id": "a/one", "acceptable": ["ALREADY_EXISTS"], "audit": {"class": "LEGIT"}},
+        {"repo_id": "b/two", "acceptable": ["ALREADY_EXISTS"], "audit": {"class": "LEGIT"}},
+        {"repo_id": "c/three", "acceptable": ["ALREADY_EXISTS"], "audit": {"class": "LEGIT"}},
+    ]}
+    report = {"results": [
+        {"repo_id": "a/one", "verdict": "CANDIDATE", "reason": "x", "run_id": "n1"},
+        {"repo_id": "b/two", "verdict": "ALREADY_EXISTS", "reason": "x", "run_id": "n2"},
+        {"repo_id": "c/three", "verdict": "UNJUDGED", "reason": "Nightshift 502", "run_id": "n3"},
+    ]}
+    table = fr.per_case_table(fr.collect(report, labels, tmp_path))
+    assert "Of the 2 judged cases the label says to refuse: 1 `ALREADY_EXISTS`, 1 `CANDIDATE`." in table

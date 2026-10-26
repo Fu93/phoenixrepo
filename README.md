@@ -80,7 +80,7 @@ python scripts/eval_summary.py logs/eval-nemotron-v3.json --markdown
 python scripts/fill_results.py logs/eval-nemotron-v3.json --write
 ```
 
-A live run on one machine, not a stored accuracy. "False pass" here means the case was not refused automatically; on this run every such case went to `NEEDS_REVIEW` for a person, unless the per-case table says otherwise.
+A live run on one machine, not a stored accuracy. "False pass" means a case the human label says to refuse was not refused. The line under the per-case table says how many of those came back `CANDIDATE`, which would let gate 2 plan a revival of an idea that already exists.
 
 <!-- BEGIN numbers: eval-summary-table -->
 **TBD.**
