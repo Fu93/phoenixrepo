@@ -275,6 +275,118 @@ def test_judge_discovery_already_exists_missing_prior_repo_needs_review(tmp_path
     assert "unverified LLM quote" in reason
 
 
+def _already_exists_llm(alternative_repo: str, alternative_quote: str):
+    def fake_llm(prompt: str, sys: str) -> str:
+        return json.dumps(
+            {
+                "verdict": "ALREADY_EXISTS",
+                "reason": "An alternative already does this.",
+                "problem_quote": "self-hosted backend for app data",
+                "alternative_repo": alternative_repo,
+                "alternative_quote": alternative_quote,
+            }
+        )
+
+    return fake_llm
+
+
+_PARA_QUOTE = "Para is a multitenant backend framework for the cloud."
+
+
+def _para_row(*, stars: int) -> dict:
+    return {
+        "alternative_id": "Erudika/para",
+        "url": "https://github.com/Erudika/para",
+        "description": _PARA_QUOTE,
+        "excerpt": _PARA_QUOTE,
+        "licence_spdx": "Apache-2.0",
+        "stars": stars,
+        "pushed_at": "2026-09-01T00:00:00Z",
+        "archived": False,
+        "same_problem": True,
+        "overlap": "full",
+        "quotes": [_PARA_QUOTE],
+        "quote_verified": True,
+        "source": "github",
+    }
+
+
+def test_unmatched_llm_name_still_uses_a_verified_blocking_alternative(tmp_path: Path):
+    """SelfDB: the model named a repo that is not in prior art, but Erudika/para already blocks."""
+    candidate = {
+        "repo_id": "selfdb/selfdb",
+        "description": "A self-hosted backend for app data.",
+        "readme_excerpt": "self-hosted backend for app data",
+        "stars": 3,
+    }
+    client = RelevanceClient(
+        cache_dir=tmp_path / "blocks",
+        mock_handler=_already_exists_llm("not-in-the-list/missing", "this quote is not on any row"),
+    )
+    verdict, reason = judge_discovery(
+        candidate,
+        prior_rows=[_para_row(stars=574)],
+        demand_rows=[],
+        client=client,
+    )
+    assert verdict == "ALREADY_EXISTS"
+    assert "Erudika/para" in reason
+    assert _PARA_QUOTE in reason
+
+    immature = RelevanceClient(
+        cache_dir=tmp_path / "immature",
+        mock_handler=_already_exists_llm("not-in-the-list/missing", "this quote is not on any row"),
+    )
+    held, held_reason = judge_discovery(
+        candidate,
+        prior_rows=[_para_row(stars=2)],
+        demand_rows=[],
+        client=immature,
+    )
+    assert held == "NEEDS_REVIEW"
+    assert "not found in candidate prior-art" in held_reason
+
+
+def test_web_hostname_match_is_only_an_aid_and_still_needs_a_verified_quote(tmp_path: Path):
+    """appwrite/appwrite can select the appwrite.io web row, and cannot block without that row's quote."""
+    candidate = {
+        "repo_id": "selfdb/selfdb",
+        "description": "A self-hosted backend for app data.",
+        "readme_excerpt": "self-hosted backend for app data",
+        "stars": 3,
+    }
+    page = "Appwrite is an open-source backend server for web and mobile developers."
+    web_row = {
+        "alternative_id": "web:https://appwrite.io/docs",
+        "url": "https://appwrite.io/docs",
+        "description": f"Appwrite - {page}",
+        "excerpt": page,
+        "readme": page,
+        "source": "web",
+        "same_problem": True,
+        "overlap": "full",
+        "stars": None,
+        "pushed_at": "",
+        "licence_spdx": "",
+    }
+    matched = RelevanceClient(
+        cache_dir=tmp_path / "quote-ok",
+        mock_handler=_already_exists_llm("appwrite/appwrite", "open-source backend server for web and mobile developers"),
+    )
+    verdict, reason = judge_discovery(candidate, prior_rows=[web_row], demand_rows=[], client=matched)
+    assert verdict != "ALREADY_EXISTS"
+    assert "not found in candidate prior-art" not in reason
+
+    missed = RelevanceClient(
+        cache_dir=tmp_path / "quote-bad",
+        mock_handler=_already_exists_llm("appwrite/appwrite", "a sentence that does not appear on the page"),
+    )
+    refused, refused_reason = judge_discovery(candidate, prior_rows=[web_row], demand_rows=[], client=missed)
+    assert refused == "NEEDS_REVIEW"
+    assert "alternative_quote" in refused_reason
+    assert "ALREADY_EXISTS" not in refused_reason
+
+
 def test_served_local_runtime_model_raises_and_not_cached(tmp_path: Path):
     # 1. Test via mock handler
     cache_dir = tmp_path / "cache1"

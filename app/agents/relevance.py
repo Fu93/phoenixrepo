@@ -1583,6 +1583,85 @@ def _evidence_rows(rows: list[dict[str, Any]] | None) -> list[dict[str, str]]:
     return out
 
 
+_GENERIC_WEB_HOSTS = (
+    "github.com",
+    "gitlab.com",
+    "codeberg.org",
+    "bitbucket.org",
+    "npmjs.com",
+    "pypi.org",
+    "readthedocs.io",
+    "medium.com",
+    "wikipedia.org",
+    "reddit.com",
+    "youtube.com",
+    "youtu.be",
+    "news.ycombinator.com",
+    "dev.to",
+    "stackoverflow.com",
+    "github.io",
+)
+_HOST_PREFIXES = {"www", "docs", "doc", "developer", "developers", "api", "app", "blog", "help", "support"}
+_PUBLIC_SUFFIXES = {"com", "org", "io", "net", "dev", "app", "co", "ai", "sh", "so", "me", "cloud", "uk"}
+
+
+def _alt_name_tokens(alt_repo: str) -> list[str]:
+    raw = str(alt_repo or "").strip()
+    if not raw or "://" in raw or ":" in raw:
+        return []
+    if raw.count("/") == 1:
+        owner, name = raw.split("/")
+        parts = [name, owner]
+    elif "/" in raw:
+        return []
+    else:
+        parts = [raw]
+    tokens: list[str] = []
+    for part in parts:
+        token = part.casefold().strip()
+        if len(token) >= 3 and token not in tokens:
+            tokens.append(token)
+    return tokens
+
+
+def _web_host_label(url: str) -> str:
+    from urllib.parse import urlparse
+
+    host = (urlparse(str(url or "")).hostname or "").casefold()
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        return ""
+    if host in _GENERIC_WEB_HOSTS or any(host == suffix or host.endswith("." + suffix) for suffix in _GENERIC_WEB_HOSTS):
+        return ""
+    labels = [part for part in host.split(".") if part]
+    while labels and labels[0] in _HOST_PREFIXES:
+        labels = labels[1:]
+    while len(labels) > 1 and labels[-1] in _PUBLIC_SUFFIXES:
+        labels = labels[:-1]
+    return labels[0] if labels else ""
+
+
+def _web_identity_match(alt_repo: str, row: dict[str, Any]) -> bool:
+    """Select a web row when the model named its product. Quote verification still decides."""
+    if str(row.get("source") or "") != "web" and not str(row.get("alternative_id") or "").startswith("web:"):
+        return False
+    tokens = _alt_name_tokens(alt_repo)
+    if not tokens:
+        return False
+    label = _web_host_label(str(row.get("url") or ""))
+    if not label:
+        raw_id = str(row.get("alternative_id") or "")
+        label = _web_host_label(raw_id[4:] if raw_id.startswith("web:") else raw_id)
+    if label and label in tokens:
+        return True
+    title = str(row.get("title") or "")
+    if not title:
+        title = str(row.get("description") or "").split(" - ", 1)[0]
+    words = set(re.findall(r"[a-z0-9]+", title.casefold()))
+    return tokens[0] in words
+
+
 def judge_discovery(
     candidate: dict[str, Any],
     prior_rows: list[dict[str, Any]],
@@ -1843,12 +1922,25 @@ def judge_discovery(
                     or r_id.casefold() in alt_repo.casefold()
                     or (r_url and alt_repo.casefold() in r_url.casefold())
                     or (r_desc and alt_repo.casefold() in r_desc.casefold())
+                    or _web_identity_match(alt_repo, r)
                 ):
                     matched_row = r
                     break
         if matched_row is None:
-            verdict = "NEEDS_REVIEW"
-            reason = f"unverified LLM quote: alternative_repo '{alt_repo}' not found in candidate prior-art"
+            if blocking_full:
+                # The name the model gave is not a row. A different alternative was already
+                # verified and passes the maturity rule, so that one is the refusal.
+                m = blocking_full[0]
+                quotes = [str(q) for q in (m.get("quotes") or []) if str(q).strip()]
+                verdict = "ALREADY_EXISTS"
+                reason = (
+                    f"verified full-overlap alternative {m.get('url') or m.get('alternative_id')} already solves the same problem"
+                    + (f" (quote: '{quotes[0]}')" if quotes else "")
+                )
+                picked = [{**m, "quotes": quotes, "overlap": "full", "reason": reason}]
+            else:
+                verdict = "NEEDS_REVIEW"
+                reason = f"unverified LLM quote: alternative_repo '{alt_repo}' not found in candidate prior-art"
         else:
             alt_text = f"{matched_row.get('excerpt', '')} {matched_row.get('description', '')} {matched_row.get('text', '')} {matched_row.get('readme', '')}"
             if not alt_quote or not quote_in_text(alt_quote, alt_text):
