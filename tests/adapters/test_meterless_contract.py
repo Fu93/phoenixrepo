@@ -166,6 +166,9 @@ def test_nvidia_is_secondary_and_omits_meterless_headers():
             return
 
         def do_POST(self):
+            # Read the request body before answering. Closing a socket with unread bytes makes
+            # Windows send a TCP reset, which the client sees as a random connection error.
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
             seen["app"] = self.headers.get("meterless-app")
             seen["auth"] = self.headers.get("Authorization")
             body = json.dumps({"choices": [{"message": {"content": "nvidia"}}]}).encode()
@@ -192,3 +195,4 @@ def test_nvidia_is_secondary_and_omits_meterless_headers():
         assert normalize_nvidia_base_url("https://integrate.api.nvidia.com/v1") == "https://integrate.api.nvidia.com/v1"
     finally:
         server.shutdown()
+        server.server_close()

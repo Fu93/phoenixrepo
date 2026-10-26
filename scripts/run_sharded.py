@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -134,7 +135,9 @@ def run_round(args, shards: list[Path], suffix: str) -> tuple[list[dict], list[t
         out = open(args.log_dir / f"{rid}.out", "w", encoding="utf-8")  # noqa: SIM115 — closed after wait()
         err = open(args.log_dir / f"{rid}.err", "w", encoding="utf-8")  # noqa: SIM115
         try:
-            proc = subprocess.Popen(cmd, cwd=ROOT, stdout=out, stderr=err)
+            # UTF-8 in the shard's stdout/stderr files whatever the Windows code page is.
+            child_env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+            proc = subprocess.Popen(cmd, cwd=ROOT, stdout=out, stderr=err, env=child_env)
         except OSError:
             out.close()
             err.close()
@@ -199,4 +202,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    from app.console import ensure_utf8_stdio
+
+    ensure_utf8_stdio()
     raise SystemExit(main())

@@ -291,4 +291,7 @@ def emit_result(payload: dict, keys: tuple[str, ...]) -> None:
 
 
 if __name__ == "__main__":
+    from app.console import ensure_utf8_stdio
+
+    ensure_utf8_stdio()
     raise SystemExit(main())
