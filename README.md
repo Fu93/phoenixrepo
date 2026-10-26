@@ -36,6 +36,19 @@ Three rules carry the design:
 2. **A failure is never "no competition".** A search error, a Nightshift 502, an expired token or a stopped Zetaris gives `NEEDS_REVIEW` or `UNJUDGED`, never `CANDIDATE`. Gate 2 cannot run without a `CANDIDATE`.
 3. **Every claim can be checked.** Each step is a line in a hash-chained trace with the model requested and the model that actually answered; `scripts/verify_trace.py` fails if one character changes, and with `--require-nemotron` also fails unless every answer used was Nemotron's.
 
+## The decision, read as VRIO
+
+The two gates follow the VRIO test from strategic management (Barney), applied to an abandoned project's idea instead of a firm's resource. Each question is answered by a check in the code, not by the model's opinion, and each answer leads to a verdict:
+
+| VRIO question | What PhoenixRepo checks | If the answer is no |
+| --- | --- | --- |
+| **Valuable**: does it do a real job for someone? | The problem, stated with a quote found verbatim in the repository's own text, and external demand signals. The repository's own stars are never used as demand. | `NO_GO` |
+| **Rare**: is that job not already done well? | Prior-art search on GitHub, npm and the web. An alternative that does the same job for the same user (the Jobs-to-be-Done test), is maintained, mature or official, and is backed by a verbatim quote makes the idea not rare. | `ALREADY_EXISTS` |
+| **Inimitable**: what gap would a revival own? | Alternatives that overlap only partly, or are too small to block, are kept as "must beat", with the reason each did not block (another setting, a paid-only feature, no self-hosting). That gap is the revival's position. | `CANDIDATE`, with the gap to beat stated |
+| **Organized**: can it actually be brought back? | Gate 2: the repository's own tests run, a model drafts patches, and a result counts only when those tests pass and an independent check finds no weakened test. | `RESURRECTION_FAILED` or `NEEDS_REVIEW` |
+
+Evidence that is missing or failed (a search error, a model outage, a search cut short) answers no question, so it gives `NEEDS_REVIEW`, the Stage-Gate "hold". Open-source code is cheap to copy, so "inimitable" here means the user, setting or access the alternatives leave open, not secrecy; the gate does not claim a lasting advantage.
+
 ## Sponsor technology
 
 | Sponsor | What it does here | Where |
