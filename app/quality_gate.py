@@ -673,11 +673,13 @@ def _outcome_banner(payload: dict[str, Any]) -> str:
         missing = "none recorded"
     label = str(payload.get("label") or "")
     label_html = f"<p>Label: {_cell(label)}</p>" if label else ""
+    empty = "<p>Nothing could be verified automatically.</p>" if status == "NO_TESTS_TO_VERIFY" else ""
     return (
         "<section class=\"outcome\">"
         "<h2>Outcome</h2>"
         f"<p><strong>{_cell(status)}</strong></p>"
         f"{label_html}"
+        f"{empty}"
         f"<p>Changed: {_cell(changed)} ({_cell(lines)} lines).</p>"
         f"<p>Tests: {_cell(left)} -&gt; {_cell(right)}.</p>"
         f"<p>Not verified: {_cell(missing)}</p>"

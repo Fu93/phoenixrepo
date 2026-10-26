@@ -392,6 +392,7 @@ def test_heartbeat_writes_until_stopped():
 def test_prescreen_ranks_and_continues_after_a_failure(tmp_path):
     clone_timeouts = []
     runner_timeouts = []
+    calls = []
 
     def cloner(repo_id, dest, timeout):
         clone_timeouts.append((repo_id, timeout))
@@ -403,13 +404,24 @@ def test_prescreen_ranks_and_continues_after_a_failure(tmp_path):
             (dest / "package.json").write_text("{}", encoding="utf-8")
             return
         (dest / "package.json").write_text(json.dumps({"scripts": {"test": "node t.js"}}), encoding="utf-8")
+        (dest / "t.js").write_text("test('adds', () => {});\n", encoding="utf-8")
 
     def runner(cmd, cwd, timeout):
+        calls.append(cmd)
         runner_timeouts.append(timeout)
         assert 1 <= timeout <= 180
+        assert cwd.name == "good__repo"
+        if "npm install" in cmd or cmd.startswith("npm ci"):
+            return rl.CmdResult(cmd, 0, "installed", 0.2)
+        if "--listTests" in cmd:
+            return rl.CmdResult(cmd, 0, str(cwd / "t.js") + "\n", 0.1)
+        if "npm audit" in cmd:
+            return rl.CmdResult(cmd, 0, json.dumps({"metadata": {"vulnerabilities": {"high": 0, "critical": 0}}}), 0.1)
         if "outdated" in cmd:
             return rl.CmdResult(cmd, 1, json.dumps({"left-pad": {"current": "1.0.0"}, "ms": {"current": "2.0.0"}}), 0.2)
-        return rl.CmdResult(cmd, 1, "1 failing", 0.4)
+        if "npm test" in cmd:
+            return rl.CmdResult(cmd, 1, "FAIL t.js\nAssertionError expected 2\nTests: 1 failed, 1 total", 0.4)
+        return rl.CmdResult(cmd, 1, "unexpected " + cmd, 0.1)
 
     scores = {
         "ineligible": [
@@ -429,21 +441,324 @@ def test_prescreen_ranks_and_continues_after_a_failure(tmp_path):
     assert by_repo["good/repo"]["language"] == "javascript"
     assert by_repo["good/repo"]["has_tests"] is True
     assert by_repo["good/repo"]["install"]
+    assert by_repo["good/repo"]["baseline_status"] == "RED"
     assert by_repo["good/repo"]["baseline_code"] == 1
+    assert by_repo["good/repo"]["collected"] == 1
+    assert by_repo["good/repo"]["failed"] == 1
+    assert "AssertionError" in by_repo["good/repo"]["first_failure"]
     assert by_repo["good/repo"]["outdated"] == 2
-    assert by_repo["good/repo"]["score"] == 6
+    assert by_repo["good/repo"]["score"] == 12
+    assert by_repo["good/repo"]["reason"].startswith("RED:")
     assert by_repo["good/repo"]["error"] == ""
+    install_at = next(i for i, cmd in enumerate(calls) if "npm install" in cmd or cmd.startswith("npm ci"))
+    baseline_at = next(i for i, cmd in enumerate(calls) if "npm test" in cmd and "--listTests" not in cmd)
+    assert install_at < baseline_at
     assert by_repo["bad/repo"]["score"] == 0
     assert "TimeoutError" in by_repo["bad/repo"]["error"]
     assert by_repo["bad/repo"]["language"] == "python"
     assert by_repo["empty/repo"]["has_tests"] is False
+    assert by_repo["empty/repo"]["baseline_status"] == "NO_TESTS"
     assert by_repo["empty/repo"]["score"] == 0
+    assert by_repo["empty/repo"]["reason"].startswith("NO_TESTS:")
     text = screen.render_markdown(rows)
     assert text.index("good/repo") < text.index("bad/repo")
     assert text.index("bad/repo") < text.index("empty/repo")
     assert "| Rank |" in text
     assert clone_timeouts and runner_timeouts
     assert screen.clone_command("good/repo", tmp_path / "x")[:4] == ["git", "clone", "--depth", "1"]
+
+
+def _js_clone(repo_id, dest, timeout):
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "package.json").write_text(json.dumps({"scripts": {"test": "node t.js"}}), encoding="utf-8")
+
+
+def test_prescreen_pytest_exit_5_is_no_tests(tmp_path):
+    calls = []
+
+    def cloner(repo_id, dest, timeout):
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "requirements.txt").write_text("requests==2.25.0\n", encoding="utf-8")
+        (dest / "pwgen.py").write_text("x = 1\n", encoding="utf-8")
+
+    def runner(cmd, cwd, timeout):
+        calls.append(cmd)
+        if "--collect-only" in cmd:
+            return rl.CmdResult(cmd, 5, "no tests ran in 0.01s", 0.03)
+        raise AssertionError("exit 5 must not install or run a baseline: " + cmd)
+
+    rows = screen.screen_repos(
+        [{"repo_id": "jocxfin/pwgen", "verdict": "NEEDS_REVIEW"}],
+        tmp_path / "w",
+        cloner=cloner,
+        runner=runner,
+    )
+    row = rows[0]
+    assert row["baseline_status"] == "NO_TESTS"
+    assert row["has_tests"] is False
+    assert row["collected"] == 0
+    assert row["score"] == 0
+    assert row["reason"].startswith("NO_TESTS:")
+    assert calls and all("--collect-only" in cmd for cmd in calls)
+    assert "yes" not in screen.render_markdown(rows).split("jocxfin/pwgen")[1].split("|")[1]
+
+
+def test_prescreen_install_failure_is_not_a_red_baseline(tmp_path):
+    calls = []
+
+    def cloner(repo_id, dest, timeout):
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "requirements.txt").write_text("requests==2.25.0\n", encoding="utf-8")
+        (dest / "test_pwgen.py").write_text("def test_len():\n    assert False\n", encoding="utf-8")
+
+    def runner(cmd, cwd, timeout):
+        calls.append(cmd)
+        if " -m venv " in cmd:
+            return rl.CmdResult(cmd, 0, "venv", 0.1)
+        if "pip install" in cmd:
+            return rl.CmdResult(cmd, 1, "Could not find a version that satisfies the requirement requests", 0.2)
+        if "--collect-only" in cmd:
+            return rl.CmdResult(cmd, 1, "No module named pytest", 0.02)
+        raise AssertionError(cmd)
+
+    rows = screen.screen_repos(
+        [{"repo_id": "o/needs-deps", "verdict": "NEEDS_REVIEW"}],
+        tmp_path / "w",
+        cloner=cloner,
+        runner=runner,
+    )
+    row = rows[0]
+    assert row["baseline_status"] == "INSTALL_FAILED"
+    assert row["score"] == 0
+    assert row["has_tests"] is False
+    assert row["reason"].startswith("INSTALL_FAILED:")
+    assert "requests" in row["reason"]
+    assert not any("--collect-only" not in cmd and "pytest -q" in cmd for cmd in calls)
+    assert any(" -m venv " in cmd for cmd in calls)
+    assert str(tmp_path) in row["install"] or ".venv" in row["install"]
+
+
+def test_prescreen_red_outranks_green_with_outdated_deps(tmp_path):
+    def runner(cmd, cwd, timeout):
+        name = cwd.name
+        if "npm install" in cmd or cmd.startswith("npm ci"):
+            return rl.CmdResult(cmd, 0, "installed", 0.1)
+        if "--listTests" in cmd:
+            return rl.CmdResult(cmd, 0, str(cwd / "a.test.js") + "\n", 0.05)
+        if "npm audit" in cmd:
+            high = 1 if "debt" in name else 0
+            body = json.dumps({"metadata": {"vulnerabilities": {"high": high, "critical": 0}}})
+            return rl.CmdResult(cmd, 0, body, 0.05)
+        if "outdated" in cmd:
+            if "debt" in name:
+                return rl.CmdResult(cmd, 1, json.dumps({"left-pad": {"current": "1.0.0"}}), 0.1)
+            return rl.CmdResult(cmd, 0, "{}", 0.1)
+        if name.startswith("red"):
+            return rl.CmdResult(cmd, 1, "FAIL a.test.js\nAssertionError boom\n1 failed", 0.3)
+        return rl.CmdResult(cmd, 0, "3 passed", 0.2)
+
+    rows = screen.screen_repos(
+        [
+            {"repo_id": "green/clean", "verdict": "NEEDS_REVIEW"},
+            {"repo_id": "green/debt", "verdict": "NEEDS_REVIEW"},
+            {"repo_id": "red/stalled", "verdict": "NEEDS_REVIEW"},
+        ],
+        tmp_path / "w",
+        cloner=_js_clone,
+        runner=runner,
+    )
+    by_repo = {row["repo"]: row for row in rows}
+    assert by_repo["red/stalled"]["baseline_status"] == "RED"
+    assert by_repo["red/stalled"]["has_tests"] is True
+    assert by_repo["red/stalled"]["collected"] == 1
+    assert by_repo["red/stalled"]["failed"] == 1
+    assert by_repo["red/stalled"]["score"] == 10
+    assert by_repo["green/debt"]["baseline_status"] == "GREEN"
+    assert by_repo["green/debt"]["passed"] == 3
+    assert by_repo["green/debt"]["outdated"] == 1
+    assert by_repo["green/debt"]["vulnerable"] == 1
+    assert by_repo["green/debt"]["score"] == 7
+    assert by_repo["green/clean"]["baseline_status"] == "GREEN"
+    assert by_repo["green/clean"]["score"] == 1
+    text = screen.render_markdown(rows)
+    assert text.index("red/stalled") < text.index("green/debt") < text.index("green/clean")
+    assert "RED:" in by_repo["red/stalled"]["reason"]
+    assert "outdated 1" in by_repo["green/debt"]["reason"]
+    assert "dependencies current" in by_repo["green/clean"]["reason"]
+
+
+def test_prescreen_timeout_is_not_ranked_as_a_failure(tmp_path):
+    def runner(cmd, cwd, timeout):
+        if "npm install" in cmd or cmd.startswith("npm ci"):
+            return rl.CmdResult(cmd, 0, "installed", 0.1)
+        if "--listTests" in cmd:
+            return rl.CmdResult(cmd, 0, str(cwd / "a.test.js") + "\n", 0.05)
+        return rl.CmdResult(cmd, 124, "TIMEOUT after 1s", 1.0)
+
+    rows = screen.screen_repos(
+        [{"repo_id": "slow/repo", "verdict": "NEEDS_REVIEW"}],
+        tmp_path / "w",
+        cloner=_js_clone,
+        runner=runner,
+    )
+    row = rows[0]
+    assert row["baseline_status"] == "TIMEOUT"
+    assert row["has_tests"] is True
+    assert row["collected"] == 1
+    assert row["score"] == 0
+    assert row["reason"].startswith("TIMEOUT:")
+
+
+def test_prescreen_python_baseline_runs_in_the_clone_venv(tmp_path):
+    calls = []
+
+    def cloner(repo_id, dest, timeout):
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "requirements.txt").write_text("requests==2.25.0\n", encoding="utf-8")
+        (dest / "test_app.py").write_text("def test_len():\n    assert False\n", encoding="utf-8")
+
+    def runner(cmd, cwd, timeout):
+        calls.append(cmd)
+        if " -m venv " in cmd or "pip install" in cmd:
+            return rl.CmdResult(cmd, 0, "ok", 0.1)
+        if "--collect-only" in cmd and ".venv" not in cmd:
+            return rl.CmdResult(cmd, 1, "No module named pytest", 0.02)
+        if "--collect-only" in cmd:
+            return rl.CmdResult(cmd, 0, "1 test collected in 0.01s\n", 0.05)
+        if "pip list --outdated" in cmd:
+            return rl.CmdResult(cmd, 0, json.dumps([{"name": "requests", "version": "2.25.0", "latest_version": "2.31.0"}]), 0.1)
+        if "pytest" in cmd:
+            return rl.CmdResult(cmd, 1, "FAILED test_app.py::test_len - AssertionError\n1 failed", 0.2)
+        raise AssertionError(cmd)
+
+    rows = screen.screen_repos(
+        [{"repo_id": "o/py", "verdict": "NEEDS_REVIEW"}],
+        tmp_path / "w",
+        cloner=cloner,
+        runner=runner,
+    )
+    row = rows[0]
+    assert row["baseline_status"] == "RED"
+    assert row["collected"] == 1
+    assert row["failed"] == 1
+    assert row["outdated"] == 1
+    assert row["score"] == 12
+    assert ".venv" in row["install"]
+    assert str((tmp_path / "w" / "o__py" / ".venv")) in row["install"]
+    baseline = next(cmd for cmd in calls if "-m pytest" in cmd and "--collect-only" not in cmd)
+    assert ".venv" in baseline and "-m pytest -q" in baseline
+    assert calls.index(next(cmd for cmd in calls if " -m venv " in cmd)) < calls.index(baseline)
+
+
+def test_real_pytest_collect_only_counts_a_function(tmp_path):
+    import subprocess
+    import sys
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    (empty / "app.py").write_text("x = 1\n", encoding="utf-8")
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "--noconftest",
+        "--rootdir",
+        str(empty),
+        "-o",
+        "testpaths=.",
+        str(empty),
+    ]
+    proc = subprocess.run(command, capture_output=True, text=True)
+    output = proc.stdout + proc.stderr
+    assert proc.returncode == 5
+    assert screen.parse_collected("python -m pytest --collect-only -q", output, proc.returncode) == 0
+    assert screen.explicit_no_tests("python -m pytest --collect-only -q", output, proc.returncode)
+    assert rl.is_no_tests("python -m pytest -q", output, proc.returncode)
+
+    repo = tmp_path / "has"
+    repo.mkdir()
+    (repo / "test_app.py").write_text("def test_greet():\n    assert True\n", encoding="utf-8")
+    command[command.index(str(empty))] = str(repo)
+    command[-1] = str(repo)
+    proc = subprocess.run(command, capture_output=True, text=True)
+    output = proc.stdout + proc.stderr
+    assert proc.returncode == 0, output
+    assert screen.parse_collected("python -m pytest --collect-only -q", output, proc.returncode) == 1
+
+
+def test_revive_no_tests_to_verify_stops_before_the_model(tmp_path):
+    repo = tmp_path / "pwgen"
+    repo.mkdir()
+    (repo / "requirements.txt").write_text("requests==2.25.0\n", encoding="utf-8")
+    (repo / "pwgen.py").write_text("x = 1\n", encoding="utf-8")
+    prompts = []
+
+    class Client:
+        def complete_json(self, prompt, system_prompt="", repo_id="", step="", attempts=3, validate=None):
+            prompts.append(step)
+            return {"approve": True, "issues": []}, "", "m", "m"
+
+    def runner(cmd, cwd, timeout):
+        if "pip install" in cmd:
+            return rl.CmdResult(cmd, 0, "installed")
+        if "pytest" in cmd:
+            return rl.CmdResult(cmd, 5, "no tests ran in 0.01s", 0.03)
+        return rl.CmdResult(cmd, 0, "")
+
+    res = rl.revive(repo, Client(), _Trace(), "jocxfin/pwgen", runner=runner, test_timeout=30)
+    assert res.state == "NO_TESTS_TO_VERIFY"
+    assert res.terminal == "NO_TESTS_TO_VERIFY"
+    assert res.state != "RESURRECTED"
+    assert prompts == []
+    prd.write_reports(tmp_path / "out", res, "jocxfin/pwgen", "no-tests")
+    html = (tmp_path / "out" / "evidence.html").read_text(encoding="utf-8")
+    assert "NO_TESTS_TO_VERIFY" in html
+    assert "Nothing could be verified automatically." in html
+
+
+def test_revive_green_empty_suite_is_not_a_docs_success(tmp_path):
+    repo = tmp_path / "empty"
+    repo.mkdir()
+    (repo / "go.mod").write_text("module example.com/empty\n\ngo 1.21\n", encoding="utf-8")
+    (repo / "main.go").write_text("package main\nfunc main() {}\n", encoding="utf-8")
+    called = []
+
+    class Client:
+        def complete_json(self, prompt, system_prompt="", repo_id="", step="", attempts=3, validate=None):
+            called.append(step)
+            docs = {
+                "problem": "docs",
+                "target_user": "users",
+                "scope": ["main.go"],
+                "non_goals": ["Do not add features."],
+                "upgrade_items": [],
+                "refactor_items": [],
+                "docs_items": [{"id": "d1", "title": "Write a guide", "files": ["README.md"], "acceptance_command": "go test ./...", "expected": "exit code 0"}],
+                "original_intent": "(no README or description)",
+                "diagnosis": "The baseline exits 0 with no test files.",
+                "work_items": [{"id": "docs", "kind": "docs", "title": "Write a guide", "acceptance_command": "go test ./...", "expected": "exit code 0", "files": ["main.go"]}],
+                "acceptance_criteria": [
+                    {"id": "ac-tests", "statement": "The test command exits 0.", "check_id": "tests"},
+                    {"id": "ac-diff", "statement": "The diff touches at most 8 files and does not edit tests.", "check_id": "diff_scope"},
+                    {"id": "ac-audit", "statement": "High and critical audit findings stay at 0.", "check_id": "audit"},
+                ],
+                "risks": ["A docs-only edit can look like a revival."],
+            }
+            return docs, "", "m", "m"
+
+    def runner(cmd, cwd, timeout):
+        if cmd.startswith("go mod"):
+            return rl.CmdResult(cmd, 0, "downloaded")
+        return rl.CmdResult(cmd, 0, "?   \texample.com/empty\t[no test files]", 0.04)
+
+    res = rl.revive(repo, Client(), _Trace(), "o/empty", runner=runner, test_timeout=30)
+    assert res.state == "NO_TESTS_TO_VERIFY"
+    assert res.state != "RESURRECTED"
+    assert called == []
 
 
 def test_prescreen_ignores_a_snapshot_without_verdicts(tmp_path, capsys):

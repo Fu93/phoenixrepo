@@ -480,12 +480,27 @@ def decode_output(raw: bytes | None) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def shell_runner(cmd: str, cwd: Path, timeout: int) -> CmdResult:
+_NO_TESTS_TEXT = re.compile(
+    r"no tests ran|no tests collected|collected 0 items|\[no test files\]|Tests:\s+0 total|\b0 tests collected\b",
+    re.IGNORECASE,
+)
+
+
+def is_no_tests(cmd: str, output: str, code: int) -> bool:
+    """True when the command collected nothing. pytest exit 5 is never a pass."""
+    if _NO_TESTS_TEXT.search(output or ""):
+        return True
+    return code == 5 and "pytest" in (cmd or "")
+
+
+def shell_runner(cmd: str, cwd: Path, timeout: int, *, environ: dict[str, str] | None = None) -> CmdResult:
     """Run one command non-interactively (CI=1, no stdin) and kill the whole process tree on timeout."""
     import os
     import time
 
     env = dict(os.environ, CI="1", NO_COLOR="1", FORCE_COLOR="0", PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+    if environ:
+        env.update({str(key): str(value) for key, value in environ.items()})
     started = time.monotonic()
     proc = subprocess.Popen(cmd, cwd=str(cwd), shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     try:
@@ -1083,6 +1098,8 @@ def apply_terminal(result: ReviveResult) -> None:
 
 def unverified_lines(result: ReviveResult) -> list[str]:
     lines = ["fork CI was not run"]
+    if result.state == "NO_TESTS_TO_VERIFY" or result.terminal == "NO_TESTS_TO_VERIFY":
+        lines.insert(0, "nothing could be verified automatically")
     if result.infrastructure_failures:
         lines.append("a model step hit an infrastructure error and was not treated as a verdict")
     for row in (result.quality or {}).get("after") or []:
@@ -1300,6 +1317,22 @@ def revive(
             _install(install)
         baseline = _ensure()
         trace.event(agent_name="validator", action="REVIVE_BASELINE", input_summary=test, output_summary={"exit": baseline.code, "tail": tail(baseline.output, 400)}, status="ok" if baseline.ok else "failed")
+        if is_no_tests(baseline.cmd, baseline.output, baseline.code):
+            result = ReviveResult(
+                "NO_TESTS_TO_VERIFY",
+                "no tests were collected, so nothing could be verified automatically",
+                baseline=baseline,
+                final=baseline,
+            )
+            trace.event(
+                agent_name="orchestrator",
+                action="REVIVE_RESULT",
+                input_summary=repo_id,
+                output_summary={"state": result.state, "reason": result.reason, "terminal": result.state},
+                status="failed",
+            )
+            _finish(result)
+            return result
         if time.monotonic() >= deadline_at:
             stopped["phase"] = stopped["phase"] or "baseline"
         prd = draft_prd(client, repo, repo_id, description, baseline) if not stopped["phase"] else minimal_prd(repo, repo_id, baseline, "deadline reached before the model was called")
