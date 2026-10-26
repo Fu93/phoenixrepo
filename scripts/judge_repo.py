@@ -149,6 +149,11 @@ def judge(url: str, out_dir: Path | None = None, use_llm: bool = True, run_id: s
             run_id=rid,
             log_dir=logs,
             command_str=f"phoenix judge {url}",
+            # One repository fetched live from the GitHub API a moment ago. It is not a row in the
+            # curated phoenix.* views, so asking Zetaris for it could only return "no row" and turn
+            # every single-repo judgement into NEEDS_REVIEW. The row is read from the snapshot this
+            # function just wrote, and the trace records evidence_source=csv.
+            evidence_source="csv",
         )
         if scorer is None:
             from app.agents.repo_facts import RepoFactsClient
