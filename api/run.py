@@ -95,6 +95,74 @@ def judge_endpoint(request: JudgeRequest):
         return JSONResponse(status_code=502, content={"error": {"type": "LLMUnavailable", "message": str(exc)}})
 
 
+@app.get("/ui")
+def replay_page():
+    """Self-contained replay page. No CDN and no build step."""
+    from fastapi.responses import HTMLResponse
+
+    from app.replay import ui_html
+
+    return HTMLResponse(ui_html())
+
+
+@app.get("/ui/live")
+def replay_live():
+    from app.replay import live_judge_status
+
+    return live_judge_status()
+
+
+@app.get("/ui/runs")
+def replay_runs():
+    from app.replay import list_runs
+
+    return {"runs": list_runs()}
+
+
+@app.get("/ui/runs/{run_id}")
+def replay_run(run_id: str):
+    from app.replay import run_detail
+
+    detail = run_detail(run_id)
+    if detail is None:
+        return JSONResponse(status_code=404, content={"error": {"type": "UnknownRun", "message": "No committed recording uses that id."}})
+    return detail
+
+
+@app.post("/ui/runs/{run_id}/verify")
+async def replay_verify(run_id: str, request: Request):
+    import json
+
+    from app.replay import verify_run
+
+    raw = await request.body()
+    text = None
+    if raw.strip():
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return JSONResponse(status_code=422, content={"error": {"type": "InvalidJSON", "message": "verify body must be a JSON object"}})
+        if not isinstance(payload, dict) or "trace" not in payload or not isinstance(payload.get("trace"), str):
+            return JSONResponse(status_code=422, content={"error": {"type": "InvalidJSON", "message": "verify body must include a trace string"}})
+        text = payload["trace"]
+        if len(text) > 2_000_000:
+            return JSONResponse(status_code=413, content={"error": {"type": "TraceTooLarge", "message": "trace text is over 2 MB"}})
+    result = verify_run(run_id, text)
+    if result is None:
+        return JSONResponse(status_code=404, content={"error": {"type": "UnknownRun", "message": "No committed recording uses that id."}})
+    return result
+
+
+@app.post("/ui/runs/{run_id}/tamper")
+def replay_tamper(run_id: str):
+    from app.replay import tamper_run
+
+    result = tamper_run(run_id)
+    if result is None:
+        return JSONResponse(status_code=404, content={"error": {"type": "UnknownRun", "message": "No committed recording uses that id."}})
+    return result
+
+
 @app.exception_handler(InvestigationError)
 def investigation_error(_: Request, exc: InvestigationError) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content=exc.body())

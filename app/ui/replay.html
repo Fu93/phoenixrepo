@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhoenixRepo replay</title>
+<style>
+:root {
+  --paper: #f3ecdf;
+  --ink: #1b1714;
+  --muted: #5e564c;
+  --panel: #fffaf2;
+  --line: #d8cbb8;
+  --stamp: #8f1d1d;
+  --ok: #0d6a3e;
+  --focus: #1d4e89;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% -10%, #fff 0, transparent 42%),
+    var(--paper);
+  font: 16px/1.45 "Segoe UI", "Helvetica Neue", sans-serif;
+}
+header, main { padding: 1rem 1.25rem; }
+header { padding-bottom: 0; }
+h1 { font-family: Georgia, "Iowan Old Style", Palatino, serif; font-size: 1.8rem; margin: 0.15rem 0; font-weight: 600; }
+h2 { font-family: Georgia, "Iowan Old Style", Palatino, serif; font-size: 1.15rem; margin: 0 0 0.6rem; }
+.kicker { margin: 0; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.75rem; color: var(--stamp); }
+.lede, .hint, .meta { color: var(--muted); margin: 0.2rem 0 0; }
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 1rem;
+  align-items: start;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.9rem 1rem 1rem;
+}
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: end; margin-bottom: 0.6rem; }
+label { display: grid; gap: 0.2rem; font-size: 0.85rem; color: var(--muted); }
+select, input[type="url"] {
+  font: inherit;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  min-width: 16rem;
+}
+button {
+  font: inherit;
+  background: var(--ink);
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.transport, .checks-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+ol.steps { list-style: none; margin: 0; padding: 0; max-height: calc(100vh - 240px); overflow: auto; }
+ol.steps li { margin: 0 0 0.4rem; }
+ol.steps button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+}
+ol.steps button.current { border-color: var(--focus); background: #f4f7fb; }
+.event { font-weight: 650; display: block; }
+.row-meta { display: block; color: var(--muted); font-size: 0.82rem; }
+.card h3 {
+  margin: 0.2rem 0 0.4rem;
+  font-family: Georgia, "Iowan Old Style", Palatino, serif;
+  font-size: 1.7rem;
+  color: var(--stamp);
+}
+.card dl { margin: 0.7rem 0 0; }
+.card dt { font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin-top: 0.7rem; }
+.card dd { margin: 0.15rem 0 0; }
+blockquote {
+  margin: 0.3rem 0;
+  padding: 0.45rem 0.7rem;
+  border-left: 4px solid var(--stamp);
+  background: #fbf6ee;
+}
+a { color: var(--focus); }
+.alt { margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px solid var(--line); }
+.checks, #live { margin: 0 1.25rem 1rem; }
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #1b1714;
+  color: #f3ecdf;
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  min-height: 3rem;
+}
+.pass { color: #b6f0cf; }
+.fail { color: #ffb4b4; }
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; }
+  ol.steps { max-height: 24rem; }
+  select, input[type="url"] { min-width: 0; width: 100%; }
+}
+</style>
+</head>
+<body>
+<header>
+  <p class="kicker">PhoenixRepo</p>
+  <h1>Replay a recorded judgement</h1>
+  <p class="lede">Numbers come from committed files. A field the file does not contain says “not recorded”. Replay does not call Nightshift.</p>
+</header>
+<main class="layout">
+  <section class="panel" aria-label="Timeline">
+    <div class="toolbar">
+      <label>Recorded run
+        <select id="run"></select>
+      </label>
+      <div class="transport">
+        <button type="button" id="back" class="secondary">Step back</button>
+        <button type="button" id="play">Play</button>
+        <button type="button" id="pause" class="secondary">Pause</button>
+        <button type="button" id="forward" class="secondary">Step forward</button>
+      </div>
+    </div>
+    <p id="run-note" class="meta"></p>
+    <p id="position" class="meta"></p>
+    <ol id="steps" class="steps"></ol>
+  </section>
+  <aside class="panel card" id="card" aria-live="polite"></aside>
+</main>
+<section class="panel checks">
+  <h2>Trace integrity</h2>
+  <p class="hint">Verify trace runs the same hash-chain check as scripts/verify_trace.py. Tamper one character edits a copy in the browser and leaves the committed file alone.</p>
+  <div class="checks-actions">
+    <button type="button" id="verify">Verify trace</button>
+    <button type="button" id="tamper" class="secondary">Tamper one character</button>
+  </div>
+  <pre id="check-result"></pre>
+</section>
+<section class="panel" id="live">
+  <h2>Live judge</h2>
+  <p id="live-message" class="lede"></p>
+  <form id="live-form">
+    <label>GitHub repository URL
+      <input id="live-url" name="url" type="url" placeholder="https://github.com/owner/name" autocomplete="off">
+    </label>
+    <p><button type="submit" id="live-submit">POST /judge</button></p>
+  </form>
+  <pre id="live-out"></pre>
+</section>
+<script>
+const MISSING = "not recorded";
+const state = { runs: [], detail: null, index: 0, timer: null, original: "" };
+
+function text(value) {
+  if (value === null || value === undefined || value === "") return MISSING;
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function el(tag, className, content) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (content !== undefined) node.textContent = content;
+  return node;
+}
+
+function clearTimer() {
+  if (state.timer) {
+    clearInterval(state.timer);
+    state.timer = null;
+  }
+}
+
+function tamperCopy(source) {
+  const chars = Array.from(source);
+  for (let i = 0; i < chars.length; i += 1) {
+    const ch = chars[i];
+    if (ch >= "a" && ch <= "z") {
+      chars[i] = ch.toUpperCase();
+      return { text: chars.join(""), index: i, before: ch, after: chars[i] };
+    }
+    if (ch >= "A" && ch <= "Z") {
+      chars[i] = ch.toLowerCase();
+      return { text: chars.join(""), index: i, before: ch, after: chars[i] };
+    }
+  }
+  return { text: source + " ", index: source.length, before: "", after: " " };
+}
+
+function renderCard(step) {
+  const card = document.getElementById("card");
+  card.replaceChildren();
+  const data = step.card || {};
+  card.append(el("h2", "", "Verdict"));
+  if (data.verdict !== MISSING) {
+    card.append(el("h3", "", text(data.verdict)));
+  } else if (data.audit_class) {
+    card.append(el("h3", "", text(data.audit_class)));
+  } else {
+    card.append(el("h3", "", MISSING));
+  }
+  const meta = el("p", "meta");
+  meta.textContent = [step.repo_id ? step.repo_id : "", "event " + text(step.event)].filter(Boolean).join(" · ");
+  card.append(meta);
+  const list = document.createElement("dl");
+  function add(term, value) {
+    list.append(el("dt", "", term));
+    const dd = document.createElement("dd");
+    if (value instanceof Node) dd.append(value);
+    else dd.textContent = text(value);
+    list.append(dd);
+  }
+  add("Verdict", data.verdict);
+  if (data.audit_class) add("Audit class", data.audit_class);
+  if (Array.isArray(data.acceptable)) add("Acceptable labels", data.acceptable.join(", "));
+  if (Array.isArray(data.forbidden) && data.forbidden.length) add("Forbidden labels", data.forbidden.join(", "));
+  const alts = data.alternatives;
+  if (alts === MISSING || !Array.isArray(alts)) {
+    add("Blocking alternative", MISSING);
+  } else {
+    const wrap = document.createElement("div");
+    alts.forEach(function (alt) {
+      const block = el("div", "alt");
+      block.append(el("div", "", text(alt.name)));
+      block.append(el("div", "", "stars: " + text(alt.stars)));
+      block.append(el("div", "", "last push: " + text(alt.last_push)));
+      const url = text(alt.url);
+      if (url.startsWith("https://") || url.startsWith("http://")) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.textContent = url;
+        link.rel = "noopener";
+        link.target = "_blank";
+        block.append(link);
+      } else {
+        block.append(el("div", "", "url: " + url));
+      }
+      wrap.append(block);
+    });
+    add("Blocking alternative", wrap);
+  }
+  const quotes = data.quotes;
+  if (!Array.isArray(quotes)) {
+    add("Verbatim quote", MISSING);
+  } else {
+    const wrap = document.createElement("div");
+    quotes.forEach(function (quote) {
+      wrap.append(el("blockquote", "", quote));
+    });
+    add("Verbatim quote", wrap);
+  }
+  add("Verified", data.verified);
+  add("Source error", data.source_error);
+  add("Rescue score", data.rescue_score);
+  add("Rescue components", data.rescue_components);
+  add("Recorded explanation", data.reason);
+  card.append(list);
+}
+
+function renderSteps() {
+  const detail = state.detail;
+  const list = document.getElementById("steps");
+  list.replaceChildren();
+  detail.steps.forEach(function (step) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    if (step.index === state.index) button.className = "current";
+    button.append(el("span", "event", text(step.event) + (step.repo_id ? " · " + step.repo_id : "")));
+    button.append(el("span", "row-meta", "agent: " + text(step.agent) + " · status: " + text(step.status)));
+    button.append(el("span", "row-meta", "requested: " + text(step.requested_model) + " · served: " + text(step.served_model)));
+    button.append(el("span", "row-meta", "duration: " + text(step.duration)));
+    button.addEventListener("click", function () {
+      clearTimer();
+      select(step.index);
+    });
+    item.append(button);
+    list.append(item);
+  });
+  const current = list.querySelector(".current");
+  if (current) current.scrollIntoView({ block: "nearest" });
+  document.getElementById("position").textContent = "Step " + (state.index + 1) + " of " + detail.steps.length;
+  renderCard(detail.steps[state.index]);
+}
+
+function select(index) {
+  const steps = state.detail.steps;
+  state.index = Math.max(0, Math.min(steps.length - 1, index));
+  renderSteps();
+}
+
+function showRunNote() {
+  const detail = state.detail;
+  const parts = ["Source: " + detail.source, "Trace: " + detail.trace];
+  if (detail.date && detail.date !== MISSING) parts.push("Date: " + detail.date);
+  if (detail.llm_used !== MISSING) parts.push("llm_used: " + String(detail.llm_used));
+  if (detail.recorded_run_hash !== MISSING) parts.push("Recorded run hash: " + detail.recorded_run_hash);
+  if (detail.trace_seal) parts.push("Trace seal: " + detail.trace_seal);
+  if (detail.note && detail.note !== MISSING) parts.push(detail.note);
+  if (detail.recorded_run_hash && detail.recorded_run_hash !== MISSING && detail.trace_seal && detail.recorded_run_hash !== detail.trace_seal) {
+    parts.push("The score file records a run hash. The trace seal is the hash of this committed JSONL. They are different values because the original JSONL was not in the repository.");
+  }
+  document.getElementById("run-note").textContent = parts.join(" ");
+}
+
+async function loadRun(id) {
+  clearTimer();
+  const response = await fetch("/ui/runs/" + encodeURIComponent(id));
+  if (!response.ok) {
+    document.getElementById("run-note").textContent = "Could not load " + id;
+    return;
+  }
+  state.detail = await response.json();
+  state.original = state.detail.trace_text || "";
+  state.index = state.detail.start_index || 0;
+  showRunNote();
+  renderSteps();
+  document.getElementById("check-result").textContent = "";
+}
+
+async function loadList() {
+  const response = await fetch("/ui/runs");
+  const payload = await response.json();
+  state.runs = payload.runs || [];
+  const selectBox = document.getElementById("run");
+  selectBox.replaceChildren();
+  let chosen = "";
+  state.runs.forEach(function (run) {
+    const option = document.createElement("option");
+    option.value = run.id;
+    option.textContent = run.id + " — " + run.source;
+    if (run.default) chosen = run.id;
+    selectBox.append(option);
+  });
+  if (!chosen && state.runs.length) chosen = state.runs[0].id;
+  if (chosen) {
+    selectBox.value = chosen;
+    await loadRun(chosen);
+  }
+}
+
+async function postVerify(trace) {
+  const options = { method: "POST" };
+  if (trace !== undefined) {
+    options.headers = { "Content-Type": "application/json" };
+    options.body = JSON.stringify({ trace: trace });
+  }
+  const response = await fetch("/ui/runs/" + encodeURIComponent(state.detail.id) + "/verify", options);
+  return response.json();
+}
+
+document.getElementById("run").addEventListener("change", function (event) {
+  loadRun(event.target.value);
+});
+document.getElementById("play").addEventListener("click", function () {
+  clearTimer();
+  state.timer = setInterval(function () {
+    if (!state.detail || state.index >= state.detail.steps.length - 1) {
+      clearTimer();
+      return;
+    }
+    select(state.index + 1);
+  }, 900);
+});
+document.getElementById("pause").addEventListener("click", clearTimer);
+document.getElementById("back").addEventListener("click", function () { clearTimer(); select(state.index - 1); });
+document.getElementById("forward").addEventListener("click", function () { clearTimer(); select(state.index + 1); });
+document.getElementById("verify").addEventListener("click", async function () {
+  const result = await postVerify();
+  const node = document.getElementById("check-result");
+  node.className = result.ok ? "pass" : "fail";
+  node.textContent = "Committed file: " + result.result + "\n" + (result.detail || "");
+});
+document.getElementById("tamper").addEventListener("click", async function () {
+  const changed = tamperCopy(state.original);
+  const result = await postVerify(changed.text);
+  const node = document.getElementById("check-result");
+  node.className = result.ok ? "pass" : "fail";
+  node.textContent = "Tampered copy: " + result.result + "\n" + (result.detail || "")
+    + "\nChanged index " + changed.index + " from " + JSON.stringify(changed.before) + " to " + JSON.stringify(changed.after)
+    + "\nThe committed file was not modified.";
+});
+
+async function refreshLive() {
+  const status = await fetch("/ui/live").then(function (response) { return response.json(); });
+  document.getElementById("live-message").textContent = status.message || "";
+  document.getElementById("live-submit").disabled = !status.configured;
+}
+
+document.getElementById("live-form").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  const status = await fetch("/ui/live").then(function (response) { return response.json(); });
+  document.getElementById("live-message").textContent = status.message || "";
+  if (!status.configured) {
+    document.getElementById("live-submit").disabled = true;
+    document.getElementById("live-out").textContent = status.message || "";
+    return;
+  }
+  const url = document.getElementById("live-url").value;
+  const response = await fetch("/judge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: url, use_llm: true })
+  });
+  document.getElementById("live-out").textContent = response.status + "\n" + await response.text();
+});
+
+loadList();
+refreshLive();
+</script>
+</body>
+</html>
