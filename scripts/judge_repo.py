@@ -169,14 +169,14 @@ def judge(url: str, out_dir: Path | None = None, use_llm: bool = True, run_id: s
         else:
             results = scorer(**score_kwargs)
     repo_id = row["repo_id"]
+    events = evidence_report.load_events(logs, run_ids=[rid])
     verdict, reason = "NEEDS_REVIEW", "no verdict was recorded"
     for c in results.get("candidates") or []:
         if c.get("repo_id") == repo_id:
-            verdict, reason = "CANDIDATE", str(c.get("reason") or "all guards passed")
+            verdict, reason = "CANDIDATE", _candidate_reason(c, events, repo_id)
     for r in results.get("ineligible") or []:
         if r.get("repo_id") == repo_id:
             verdict, reason = str(r.get("verdict")), str(r.get("reason") or "")
-    events = evidence_report.load_events(logs, run_ids=[rid])
     model_rows = evidence_report.served_model_rows(events)
     report = out / "report.html"
     report.write_text(
@@ -203,6 +203,46 @@ def judge(url: str, out_dir: Path | None = None, use_llm: bool = True, run_id: s
         "answers_used": used,
         "answers_by_nemotron": by_nemotron,
     }
+
+
+def _candidate_reason(candidate: dict[str, Any], events: list[dict[str, Any]], repo_id: str) -> str:
+    """Reason printed for a CANDIDATE row. The row often has none; the trace does."""
+    stated = str(candidate.get("reason") or "").strip()
+    if stated:
+        return stated
+    filt: dict[str, Any] = {}
+    for event in events:
+        if event.get("action") != "DISCOVERY_FILTER":
+            continue
+        inp = event.get("input_summary")
+        if not isinstance(inp, dict) or inp.get("repo_id") != repo_id:
+            continue
+        out = event.get("output_summary")
+        if isinstance(out, dict):
+            filt = out
+    reason = str(filt.get("reason") or "").strip()
+    beats = filt.get("must_beat")
+    if not isinstance(beats, list):
+        beats = candidate.get("must_beat")
+    extras: list[str] = []
+    folded = reason.casefold()
+    for item in beats or []:
+        if not isinstance(item, dict):
+            continue
+        alt = str(item.get("alternative") or item.get("alternative_id") or item.get("url") or "").strip()
+        if alt and alt.casefold() in folded:
+            continue
+        why = str(item.get("reason") or "").strip()
+        overlap = str(item.get("overlap") or "").strip()
+        bit = f"must beat {alt}" if alt else "must beat"
+        if overlap:
+            bit += f" ({overlap})"
+        if why:
+            bit += f": {why}"
+        extras.append(bit)
+        folded += " " + bit.casefold()
+    parts = [part for part in (reason, *extras) if part]
+    return "; ".join(parts) if parts else "no discovery reason recorded"
 
 
 def main() -> int:

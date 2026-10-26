@@ -106,6 +106,52 @@ def test_judge_end_to_end_with_fake_scorer(tmp_path):
     assert Path(res["report"]).read_text(encoding="utf-8").count("ALREADY_EXISTS") >= 1
 
 
+def test_candidate_without_reason_uses_discovery_filter_chain(tmp_path):
+    def scorer(snapshot, output_json, output_md, use_llm, run_id, log_dir, command_str, evidence_source=None):
+        event = {
+            "action": "DISCOVERY_FILTER",
+            "input_summary": json.dumps({"repo_id": "a/b"}),
+            "output_summary": json.dumps({
+                "verdict": "CANDIDATE",
+                "reason": "Unique feature mix.",
+                "must_beat": [
+                    {
+                        "alternative": "screenforge",
+                        "overlap": "partial",
+                        "quote": "record the screen",
+                        "reason": "did not block: stars=0, candidate_stars=3",
+                    },
+                    {
+                        "alternative": "groktocrawl",
+                        "overlap": "full",
+                        "quote": "crawl a site",
+                        "reason": "did not block: not maintained",
+                    },
+                ],
+            }),
+            "line_hash": "h-filter",
+        }
+        Path(log_dir).mkdir(parents=True, exist_ok=True)
+        (Path(log_dir) / f"trace-{run_id}.jsonl").write_text(json.dumps(event) + "\n", encoding="utf-8")
+        return {"candidates": [{"repo_id": "a/b"}], "ineligible": [], "run_hash": "RH"}
+
+    res = jr.judge("https://github.com/a/b", out_dir=tmp_path / "o", run_id="jt", log_dir=tmp_path, getter=_fake_getter, scorer=scorer)
+    assert res["verdict"] == "CANDIDATE"
+    assert "all guards passed" not in res["reason"]
+    assert res["reason"].startswith("Unique feature mix.")
+    assert "must beat screenforge (partial): did not block: stars=0, candidate_stars=3" in res["reason"]
+    assert "must beat groktocrawl (full): did not block: not maintained" in res["reason"]
+    assert "Unique feature mix." in Path(res["report"]).read_text(encoding="utf-8")
+
+
+def test_candidate_reason_on_the_row_is_kept(tmp_path):
+    def scorer(snapshot, output_json, output_md, use_llm, run_id, log_dir, command_str, evidence_source=None):
+        return {"candidates": [{"repo_id": "a/b", "reason": "kept on purpose"}], "ineligible": [], "run_hash": "RH"}
+
+    res = jr.judge("https://github.com/a/b", out_dir=tmp_path / "o", run_id="jt2", log_dir=tmp_path, getter=_fake_getter, scorer=scorer)
+    assert res["reason"] == "kept on purpose"
+
+
 def test_judge_endpoint_maps_errors(monkeypatch):
     from fastapi.testclient import TestClient
 
