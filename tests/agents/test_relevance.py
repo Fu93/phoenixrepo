@@ -403,6 +403,10 @@ def test_full_overlap_verified_alternative_leads_to_already_exists(tmp_path: Pat
             "excerpt": "Free open-source web app to generate PDF invoices directly from your browser.",
             "overlap": "full",
             "same_problem": True,
+            "stars": 800,
+            "pushed_at": "2026-09-01T00:00:00Z",
+            "archived": False,
+            "page_kind": "product",
         }
     ]
 
@@ -577,6 +581,10 @@ def test_judge_discovery_verifies_against_union_of_prior_art_csv_and_problem_sea
             "url": "https://github.com/al1abb/invoify",
             "licence_spdx": "MIT",
             "excerpt": "Invoify is a free, web-based invoice generator built with Next.js",
+            "stars": 6376,
+            "pushed_at": "2026-08-24T02:55:34Z",
+            "archived": False,
+            "page_kind": "product",
         }
     ]
     # (b) alternative from problem-based search
@@ -685,7 +693,11 @@ def test_mocked_live_call_with_latency_is_not_cache_hit_until_second_call(tmp_pa
 
 
 def test_ytkb_regression_with_fixtures_becomes_already_exists(tmp_path: Path):
-    """Task 6: ytkb regression: fixtures containing yt-cli snippet -> ytkb must become ALREADY_EXISTS."""
+    """A zero-star docs hit with a verified quote does not refuse the repository.
+
+    The quote is still checked. Without maintenance and maturity facts the alternative
+    is recorded as something to beat, not as ALREADY_EXISTS.
+    """
     fixtures_dir = Path(__file__).resolve().parent.parent / "fixtures" / "prior_art"
     ddg_html = (fixtures_dir / "ddg_search_results.html").read_text(encoding="utf-8")
     npm_json = (fixtures_dir / "npm_search_results.json").read_text(encoding="utf-8")
@@ -767,7 +779,7 @@ def test_ytkb_regression_with_fixtures_becomes_already_exists(tmp_path: Path):
     )
     assert len(problem_alts) > 0
 
-    verdict, reason = judge_discovery(
+    judged = judge_discovery(
         candidate=candidate,
         prior_rows=[],
         demand_rows=[],
@@ -777,8 +789,11 @@ def test_ytkb_regression_with_fixtures_becomes_already_exists(tmp_path: Path):
         source_counts=search_results.source_counts,
         insufficient_coverage=search_results.insufficient_coverage,
     )
-    assert verdict == "ALREADY_EXISTS"
-    assert "yt-cli" in reason
+    verdict, reason = judged
+    assert verdict != "ALREADY_EXISTS"
+    assert judged.must_beat
+    assert any("yt-cli" in str(item.get("alternative")) for item in judged.must_beat)
+    assert "did not block" in reason or "did not block" in judged.must_beat[0]["reason"]
 
 
 def test_zero_results_across_all_sources_yields_needs_review_insufficient_coverage(tmp_path: Path):
@@ -930,6 +945,13 @@ def test_verified_already_exists_survives_one_source_error(tmp_path: Path):
             "readme": "Fetch an article's content from YouTrack and save it to a local markdown file.",
             "overlap": "full",
             "same_problem": True,
+            "stars": 400,
+            "pushed_at": "2026-08-01T00:00:00Z",
+            "archived": False,
+            "licence_spdx": "MIT",
+            "free_tier": True,
+            "page_kind": "product",
+            "host": "other",
         }
     ]
 
@@ -1035,6 +1057,15 @@ def test_web_same_problem_partial_overlap_blocks_candidate(tmp_path: Path):
         "same_problem": True,
         "overlap": "partial",
         "excerpt": "Built-in invoice automation.",
+        "official": True,
+        "commercial": True,
+        "pricing_page": True,
+        "free_tier": True,
+        "released_at": "2026-09-01",
+        "page_checked_at": "2026-10-01",
+        "page_kind": "product",
+        "archived": False,
+        "host": "web",
     }
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
     verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[web_alt])
@@ -1118,12 +1149,16 @@ def test_batch_one_call_and_quotes_verified_per_item(tmp_path: Path):
         ]})
 
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=llm)
-    rows = filter_relevant_alternatives(_PROB, "me/cand", _ALTS, client=client)
+    # Two alternatives fit in one chunk. A third would be a separate call.
+    rows = filter_relevant_alternatives(_PROB, "me/cand", _ALTS[:2], client=client)
     assert len(calls) == 1 and "BATCH MODE" in calls[0]
     assert [r["alternative_id"] for r in rows] == ["a/one"]
 
 
-def test_batch_missing_index_falls_back_to_per_item_calls(tmp_path: Path):
+def test_batch_missing_index_retries_only_the_missing_items(tmp_path: Path):
+    """A reply that judges one index is kept. Only the indexes it omitted are retried."""
+    from app.agents.relevance import judge_alternatives_batch
+
     calls = []
 
     def llm(prompt: str, sys: str) -> str:
@@ -1133,9 +1168,13 @@ def test_batch_missing_index_falls_back_to_per_item_calls(tmp_path: Path):
         return json.dumps({"same_problem": False, "overlap": "none", "reason": "no", "quotes": []})
 
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=llm)
-    rows = filter_relevant_alternatives(_PROB, "me/cand", _ALTS, client=client)
+    rows = judge_alternatives_batch(_PROB, "me/cand", _ALTS, client=client)
     assert rows == []
-    assert calls[0] == "batch" and calls.count("single") == 3
+    # Index 0 was parsed, so it is not sent to a single call. Indexes 1 and 2 share one
+    # smaller batch; that reply still has no usable index, so only those two go per-item.
+    assert calls[0] == "batch"
+    assert calls.count("single") == 2
+    assert calls.count("batch") == 2
 
 
 def test_complete_json_retries_unusable_answer_and_never_caches_it(tmp_path):
@@ -1243,6 +1282,63 @@ def test_batch_gives_up_after_two_transient_errors(tmp_path):
     assert judge_alternatives_batch(_PROB, "cand/x", _ALTS[:2], client=client) is None
 
 
+def test_truncated_batch_reply_keeps_closed_objects_and_retries_the_rest(tmp_path):
+    """A reply cut off inside a later object must not discard the objects that already closed."""
+    from app.agents.relevance import extract_result_entries, judge_alternatives_batch
+
+    truncated = (
+        '{"results": ['
+        '{"index": 0, "same_problem": true, "overlap": "full", "reason": "same", '
+        '"quotes": ["Sync YouTrack articles to markdown files"]},'
+        '{"index": 1, "same_problem": false, "overlap": "none", "reason": "no", "quotes": []},'
+        '{"index": 2, "same_problem": true, "overlap": "par'
+    )
+    assert [e["index"] for e in extract_result_entries(truncated)] == [0, 1]
+    calls = []
+
+    def llm(prompt, sys):
+        calls.append(prompt)
+        if len(calls) == 1:
+            return truncated
+        return json.dumps({"same_problem": False, "overlap": "none", "reason": "cut off", "quotes": []})
+
+    client = RelevanceClient(mock_handler=llm, cache_dir=tmp_path / "c", mock_served_model="served-batch")
+    rows = judge_alternatives_batch(_PROB, "cand/x", _ALTS, client=client)
+    assert [r["alternative_id"] for r in rows] == ["a/one"]
+    assert len(calls) == 2
+    # The follow-up is only the alternative whose object was cut off.
+    assert "b/two" in calls[1]
+    assert "a/one" not in calls[1]
+    assert "vendor.example" not in calls[1]
+
+
+def test_every_batch_call_is_traced_with_served_model(tmp_path):
+    from app.agents.relevance import judge_alternatives_batch
+
+    events = []
+
+    class T:
+        def event(self, **kw):
+            events.append(kw)
+
+    def llm(prompt, sys):
+        if "BATCH MODE" in sys and prompt.count("Alternative:") > 1:
+            return (
+                '{"results": ['
+                '{"index": 0, "same_problem": false, "overlap": "none", "reason": "x", "quotes": []},'
+                '{"index": 1, "same_problem": false, "overlap": "none", "reason": "y", "quotes": []}'
+            )
+        return json.dumps({"same_problem": False, "overlap": "none", "reason": "z", "quotes": []})
+
+    client = RelevanceClient(mock_handler=llm, cache_dir=tmp_path / "c", mock_served_model="served-batch")
+    assert judge_alternatives_batch(_PROB, "cand/x", _ALTS, client=client, trace=T()) == []
+    calls = [e for e in events if e["action"] in {"ALTERNATIVE_BATCH_CALL", "ALTERNATIVE_CALL"}]
+    assert calls
+    assert all(e["llm"]["served_model"] == "served-batch" for e in calls)
+    assert any(e["action"] == "ALTERNATIVE_BATCH_CALL" for e in calls)
+    assert any(e["action"] == "ALTERNATIVE_CALL" for e in calls)
+
+
 def test_build_search_queries_adds_product_discovery_queries_early():
     from app.agents.relevance import build_search_queries
 
@@ -1266,6 +1362,15 @@ def test_web_full_overlap_with_quote_overrides_llm_candidate(tmp_path: Path):
         "overlap": "full",
         "quotes": ["Built-in invoice automation"],
         "excerpt": "Built-in invoice automation.",
+        "official": True,
+        "commercial": True,
+        "pricing_page": True,
+        "free_tier": True,
+        "released_at": "2026-09-01",
+        "page_checked_at": "2026-10-01",
+        "page_kind": "product",
+        "archived": False,
+        "host": "web",
     }
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
     verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[web_alt])
@@ -1280,6 +1385,11 @@ def test_github_full_overlap_with_quote_overrides_llm_candidate(tmp_path: Path):
         "same_problem": True,
         "overlap": "full",
         "quotes": ["sync local Markdown files with YouTrack Knowledge Base articles"],
+        "stars": 250,
+        "pushed_at": "2026-09-15T00:00:00Z",
+        "archived": False,
+        "licence_spdx": "MIT",
+        "page_kind": "product",
     }
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
     verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[gh_alt])
@@ -1288,7 +1398,17 @@ def test_github_full_overlap_with_quote_overrides_llm_candidate(tmp_path: Path):
 
 
 def test_github_partial_overlap_blocks_candidate(tmp_path: Path):
-    gh_alt = {"alternative_id": "someone/tool", "url": "https://github.com/someone/tool", "same_problem": True, "overlap": "partial"}
+    gh_alt = {
+        "alternative_id": "someone/tool",
+        "url": "https://github.com/someone/tool",
+        "same_problem": True,
+        "overlap": "partial",
+        "stars": 250,
+        "pushed_at": "2026-09-15T00:00:00Z",
+        "archived": False,
+        "licence_spdx": "MIT",
+        "page_kind": "product",
+    }
     client = RelevanceClient(cache_dir=tmp_path, mock_handler=_cand_llm)
     verdict, reason = judge_discovery(_CAND, prior_rows=[], demand_rows=[], client=client, problem_alternatives=[gh_alt])
     assert verdict == "NEEDS_REVIEW"

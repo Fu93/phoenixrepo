@@ -231,6 +231,16 @@ def test_score_all_offline_selects_protagonist_and_verifies_trace(tmp_path):
     invoice = next(item for item in ineligible if item["repo_id"] == "tharani-2006/Invoice-generator-application")
     assert invoice["verdict"] == "ALREADY_EXISTS"
     assert "invoify" in invoice["reason"]
+    evidence = invoice.get("decision_evidence") or []
+    assert evidence and evidence[0]["alternative"] == "al1abb/invoify"
+    assert evidence[0]["overlap"] == "full"
+    assert "Invoify is a free, web-based invoice generator" in evidence[0]["quote"]
+    assert evidence[0]["reason"]
+    assert invoice["rescue_potential"]["changes_verdict"] is False
+    assert "score" in invoice["rescue_potential"]
+    ytkb = next(item for item in results["candidates"] if item["repo_id"] == "SergioMendolia/ytkb")
+    assert ytkb["rescue_potential"]["changes_verdict"] is False
+    assert invoice["verdict"] == "ALREADY_EXISTS"
 
     # 4. JSON structure & run hash
     saved_json = json.loads(output_json.read_text(encoding="utf-8"))
@@ -252,6 +262,7 @@ def test_score_all_offline_selects_protagonist_and_verifies_trace(tmp_path):
     assert "SergioMendolia/ytkb" in md_text
     assert "tharani-2006/Invoice-generator-application" in md_text
     assert "ALREADY_EXISTS" in md_text
+    assert "This score does not change the verdict. A refused repository stays refused." in md_text
     assert "selection is trivial: only one eligible candidate" in md_text
 
     # 7. Criteria rationales contain required quotes and checks

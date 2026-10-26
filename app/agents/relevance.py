@@ -106,6 +106,73 @@ def extract_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _matching_brace(raw: str, start: int) -> int | None:
+    """Index of the `}` that closes the object starting at `start`, or None if it was cut off."""
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(raw)):
+        ch = raw[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+    return None
+
+
+def extract_result_entries(text: str) -> list[dict[str, Any]]:
+    """Complete objects from a batch `results` array.
+
+    A Nightshift reply often starts with a reasoning preamble and is cut at `max_tokens`
+    (4096 on this client) before the array closes. `extract_json_object` then fails on the
+    whole reply. Objects that already closed are still usable, so they are kept and the
+    caller retries only the alternatives that were not in the prefix.
+    """
+    obj = extract_json_object(text)
+    if isinstance(obj, dict) and isinstance(obj.get("results"), list):
+        return [e for e in obj["results"] if isinstance(e, dict)]
+    raw = str(text or "")
+    idx = raw.find('"results"')
+    if idx == -1:
+        return []
+    bracket = raw.find("[", idx)
+    if bracket == -1:
+        return []
+    entries: list[dict[str, Any]] = []
+    i = bracket + 1
+    n = len(raw)
+    while i < n:
+        while i < n and raw[i] in " \t\r\n,":
+            i += 1
+        if i >= n or raw[i] == "]":
+            break
+        if raw[i] != "{":
+            break
+        end = _matching_brace(raw, i)
+        if end is None:
+            break
+        try:
+            parsed = json.loads(raw[i : end + 1])
+        except json.JSONDecodeError:
+            break
+        if isinstance(parsed, dict):
+            entries.append(parsed)
+        i = end + 1
+    return entries
+
+
 def _complete_json(client, prompt, system_prompt, repo_id, step, validate=None):
     """Use client.complete_json when available (retries unusable answers), else one plain call."""
     fn = getattr(client, "complete_json", None)
@@ -903,6 +970,49 @@ def broaden_queries(queries: list[str], category: str = "", candidate_repo_id: s
     return dedup_broader
 
 
+class DiscoveryDecision(tuple):
+    """`(verdict, reason)` plus the alternatives that decided an ALREADY_EXISTS or NEEDS_REVIEW.
+
+    Callers unpack two strings. `evidence` is the list a report shows: alternative name,
+    overlap, the quote that was checked, and the reason.
+    """
+
+    def __new__(
+        cls,
+        verdict: str,
+        reason: str,
+        evidence: list[dict[str, str]] | None = None,
+        must_beat: list[dict[str, str]] | None = None,
+    ):
+        self = super().__new__(cls, (verdict, reason))
+        self.evidence = list(evidence or [])
+        self.must_beat = list(must_beat or [])
+        return self
+
+
+def _evidence_rows(rows: list[dict[str, Any]] | None) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        quotes = [str(q).strip() for q in (r.get("quotes") or []) if str(q).strip()]
+        if not quotes and str(r.get("quote") or "").strip():
+            quotes = [str(r.get("quote")).strip()]
+        name = str(r.get("alternative_id") or r.get("alternative") or r.get("url") or "").strip()
+        overlap = str(r.get("overlap") or "").strip()
+        why = str(r.get("reason") or "").strip()
+        quote = quotes[0] if quotes else ""
+        if not name and not quote:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"alternative": name, "overlap": overlap, "quote": quote, "reason": why})
+    return out
+
+
 def judge_discovery(
     candidate: dict[str, Any],
     prior_rows: list[dict[str, Any]],
@@ -915,7 +1025,10 @@ def judge_discovery(
 ) -> tuple[str, str]:
     """Judge whether candidate is CANDIDATE, ALREADY_EXISTS, or NO_GO using LLM with deterministic quote verification.
 
-    Never uses repository stars or forks.
+    A verified full overlap refuses the repository only when the alternative also passes the
+    maturity rule (maintained, mature or official, matching access). Stars are used for that
+    rule, not as demand. An alternative that fails it is recorded on ``must_beat`` and does
+    not refuse the repository.
     Verifies alternative_repo against the union of prior_rows and problem_alternatives.
     Falls back to phrase/keyword decide_discovery when no RelevanceClient is configured.
     Enforces that absence is not evidence: insufficient coverage blocks CANDIDATE verdict.
@@ -1050,24 +1163,51 @@ def judge_discovery(
     alt_repo = str(obj.get("alternative_repo") or "").strip() if obj.get("alternative_repo") else None
     alt_quote = str(obj.get("alternative_quote") or "").strip() if obj.get("alternative_quote") else None
 
-    # Deterministic verification
+    # Deterministic verification. `picked` is what the report shows for a refusal or a review.
+    picked: list[dict[str, Any]] = []
+    from datetime import date as _date
+
+    from app.agents.blocker import evaluate_blocker
+
+    must_beat: list[dict[str, str]] = []
+
+    def _blocker(row: dict[str, Any]) -> dict[str, Any]:
+        return evaluate_blocker(candidate, row, as_of=_date.today())
+
+    def _must(row: dict[str, Any], decision: dict[str, Any]) -> dict[str, str]:
+        quotes = [str(q).strip() for q in (row.get("quotes") or []) if str(q).strip()]
+        return {
+            "alternative": str(row.get("alternative_id") or row.get("url") or ""),
+            "overlap": str(row.get("overlap") or ""),
+            "quote": quotes[0] if quotes else "",
+            "reason": "did not block: " + "; ".join(decision.get("reasons") or []),
+        }
+
+    blocking_full: list[dict[str, Any]] = []
+    for row in full_overlap_rows:
+        decision = _blocker(row)
+        if decision["blocks"]:
+            blocking_full.append(row)
+        else:
+            must_beat.append(_must(row, decision))
+
     if has_source_error and raw_verdict != "ALREADY_EXISTS":
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
     elif zero_results:
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
-    elif raw_verdict == "CANDIDATE" and full_overlap_rows:
-        # The LLM called it novel, but a web alternative with a verified quote (checked against that
-        # alternative's own text) already solves the same core problem in full. A unique feature
-        # mix does not outweigh verified prior art, so the LLM's CANDIDATE is overridden.
-        m = full_overlap_rows[0]
+    elif raw_verdict == "CANDIDATE" and blocking_full:
+        # The LLM called it novel, but a verified full-overlap alternative also passes the
+        # maturity rule. A quote is still required: it was checked when the alternative was judged.
+        m = blocking_full[0]
         quotes = [str(q) for q in (m.get("quotes") or []) if str(q).strip()]
         verdict = "ALREADY_EXISTS"
         reason = (
             f"verified full-overlap alternative {m.get('url') or m.get('alternative_id')} already solves the same "
             f"problem" + (f" (quote: '{quotes[0]}')" if quotes else "") + "; overrides LLM CANDIDATE"
         )
+        picked = [{**m, "quotes": quotes, "overlap": "full", "reason": reason}]
     elif raw_verdict == "CANDIDATE":
         if coverage_blocked:
             verdict = "NEEDS_REVIEW"
@@ -1075,24 +1215,28 @@ def judge_discovery(
         elif not problem_quote or not quote_in_text(problem_quote, cand_text):
             verdict = "NEEDS_REVIEW"
             reason = f"unverified LLM quote: problem_quote '{problem_quote}' not found in candidate README or description"
-        elif github_partial_rows and not mainstream_overlap:
+        elif github_partial_rows and not mainstream_overlap and _blocker(github_partial_rows[0])["role"] == "mature_partial":
             m = github_partial_rows[0]
             verdict = "NEEDS_REVIEW"
             reason = (
                 f"ALTERNATIVE_OVERLAP: repo {m.get('url') or m.get('alternative_id')} solves the same problem "
                 f"(overlap partial); a human must confirm the remaining gap before CANDIDATE"
             )
-        elif mainstream_overlap:
-            # An official feature, doc page or commercial product on the web solves the
-            # same problem. A unique feature mix is not proof of novelty: a human must
-            # confirm the remaining gap before this repo can be a CANDIDATE.
+            picked = [{**m, "reason": reason}]
+        elif mainstream_overlap and _blocker(mainstream_overlap[0])["role"] == "mature_partial":
+            # A maintained official or mature product on the web solves the same problem in part.
             m = mainstream_overlap[0]
             verdict = "NEEDS_REVIEW"
             reason = (
                 f"MAINSTREAM_OVERLAP: web result {m.get('url') or m.get('alternative_id')} solves the same problem "
                 f"(overlap {m.get('overlap')}); a human must confirm the remaining gap before CANDIDATE"
             )
+            picked = [{**m, "reason": reason}]
         else:
+            for row in list(github_partial_rows) + list(mainstream_overlap):
+                decision = _blocker(row)
+                if decision["role"] != "mature_partial":
+                    must_beat.append(_must(row, decision))
             verdict = "CANDIDATE"
     elif raw_verdict == "ALREADY_EXISTS":
         # Check alternative repo matches one in combined_priors
@@ -1121,14 +1265,48 @@ def judge_discovery(
             if not alt_quote or not quote_in_text(alt_quote, alt_text):
                 verdict = "NEEDS_REVIEW"
                 reason = f"unverified LLM quote: alternative_quote '{alt_quote}' not found in alternative {matched_row.get('alternative_id')} text"
+                picked = [{**matched_row, "reason": reason}]
             elif matched_row.get("overlap") and matched_row.get("overlap") != "full":
                 verdict = "NEEDS_REVIEW"
                 reason = f"unverified ALREADY_EXISTS: alternative '{matched_row.get('alternative_id')}' has overlap '{matched_row.get('overlap')}', requires verified full overlap"
+                picked = [{**matched_row, "quotes": [alt_quote] if alt_quote else [], "reason": reason}]
             elif any(r.get("overlap") for r in combined_priors) and not any(r.get("overlap") == "full" for r in combined_priors) and matched_row.get("overlap") != "full" and not matched_row.get("licence_spdx"):
                 verdict = "NEEDS_REVIEW"
                 reason = "unverified ALREADY_EXISTS: requires at least one verified full-overlap alternative"
+                picked = [{**matched_row, "quotes": [alt_quote] if alt_quote else [], "reason": reason}]
             else:
-                verdict = "ALREADY_EXISTS"
+                named = {
+                    **matched_row,
+                    "overlap": matched_row.get("overlap") or "full",
+                    "same_problem": True if matched_row.get("same_problem") is None else matched_row.get("same_problem"),
+                    "quotes": [alt_quote] if alt_quote else list(matched_row.get("quotes") or []),
+                }
+                # The discovery judge already called this the same product. A-E still have to pass.
+                if named.get("same_job") is None and named.get("overlap") == "full":
+                    named["same_job"] = True
+                decision = _blocker(named)
+                if decision["blocks"]:
+                    verdict = "ALREADY_EXISTS"
+                    picked = [{**named, "reason": reason}]
+                elif blocking_full:
+                    m = blocking_full[0]
+                    quotes = [str(q) for q in (m.get("quotes") or []) if str(q).strip()]
+                    verdict = "ALREADY_EXISTS"
+                    reason = (
+                        f"verified full-overlap alternative {m.get('url') or m.get('alternative_id')} already solves the same problem"
+                        + (f" (quote: '{quotes[0]}')" if quotes else "")
+                    )
+                    picked = [{**m, "quotes": quotes, "overlap": "full", "reason": reason}]
+                else:
+                    must_beat.append(_must(named, decision))
+                    why = "did not block: " + "; ".join(decision.get("reasons") or [])
+                    if problem_quote and quote_in_text(problem_quote, cand_text):
+                        verdict = "CANDIDATE"
+                        reason = f"must beat {named.get('alternative_id')}: {why}"
+                    else:
+                        verdict = "NEEDS_REVIEW"
+                        reason = f"must beat {named.get('alternative_id')}: {why}"
+                        picked = [{**named, "reason": reason}]
     elif raw_verdict == "NO_GO":
         if problem_quote and problem_quote.casefold() not in {"unknown", "none", "null", ""}:
             if not quote_in_text(problem_quote, cand_text):
@@ -1144,7 +1322,20 @@ def judge_discovery(
 
     clean_reason = reason.rstrip().rstrip(".")
     labeled_reason = f"{clean_reason}. Method: llm+verified quote (requested={req_m}, served={srv_m})."
-    return verdict, labeled_reason
+    show = _evidence_rows(picked) if verdict in {"ALREADY_EXISTS", "NEEDS_REVIEW"} else []
+    blocked_names = {
+        str(p.get("alternative_id") or p.get("alternative") or p.get("url") or "").casefold()
+        for p in picked
+    }
+    deduped: list[dict[str, str]] = []
+    seen_beat: set[str] = set()
+    for item in must_beat:
+        key = str(item.get("alternative") or "").casefold()
+        if not key or key in seen_beat or key in blocked_names:
+            continue
+        seen_beat.add(key)
+        deduped.append(item)
+    return DiscoveryDecision(verdict, labeled_reason, show, deduped)
 
 
 def extract_problem_statement(
@@ -1597,12 +1788,148 @@ BATCH_INSTRUCTION = (
     "with the rules above. Output strict JSON only, in the form "
     '{"results": [{"index": <number>, "same_problem": true|false, "overlap": "full"|"partial"|"none", '
     '"reason": "...", "quotes": ["verbatim quote from THAT alternative\'s text"]}]} '
-    "with exactly one entry per alternative index."
+    "with exactly one entry per alternative index. Use the index numbers shown in brackets. Do not renumber."
+)
+
+# Why a chunk used to fall back to one call per alternative (42 times on one 30-repo run):
+# 1. Chunks were 5 items, each up to 900 characters, and Nightshift replies often open with a
+#    reasoning preamble. This client caps the reply at max_tokens 4096 and the call at a 120s
+#    wall clock, so the JSON was truncated or the call returned HTTP 502 (calls took 7-280s).
+# 2. The reply was kept only when every index was present. A cut-off array, or one omitted
+#    index, threw away the objects that had already parsed.
+# 3. The caller then re-judged every alternative in the chunk on its own.
+# Chunks of 2 fit that budget. A partial reply keeps every object that closed, and only the
+# indexes that did not parse are retried.
+BATCH_CALL_ATTEMPTS = 2
+ALTERNATIVE_CHUNK_SIZE = 2
+_BATCH_RETRY_NOTE = (
+    "\n\n(Retry: your previous reply could not be used. Reply with ONLY one strict JSON object "
+    "of the form {\"results\": [{\"index\": <number>, \"same_problem\": true|false, "
+    "\"overlap\": \"full\"|\"partial\"|\"none\", \"reason\": \"...\", \"quotes\": [\"...\"]}]}. "
+    "No prose and no code fences.)"
 )
 
 
-BATCH_CALL_ATTEMPTS = 2
-ALTERNATIVE_CHUNK_SIZE = 5
+def _trace_llm(trace: Any | None, action: str, repo_id: str, requested: str, served: str, info: dict[str, Any], status: str = "ok") -> None:
+    """One trace line per model call. served_model is a top-level field, inside the hash chain."""
+    if trace is None:
+        return
+    trace.event(
+        agent_name="orchestrator",
+        action=action,
+        input_summary={"repo_id": repo_id, "indexes": info.get("indexes"), "alternative": info.get("alternative")},
+        output_summary={
+            "requested_model": requested or "",
+            "served_model": served or "",
+            "parsed_indexes": info.get("parsed_indexes"),
+            "reason": info.get("reason"),
+        },
+        llm={"requested_model": requested or "", "served_model": served or ""},
+        status=status,
+    )
+
+
+def _batch_prompt(problem_statement: dict[str, Any], items: list[tuple[int, dict[str, Any], str]], max_chars: int) -> str:
+    blocks = []
+    for i, res, text in items:
+        blocks.append(
+            f"[{i}] Alternative: {res.get('alternative_id', '')}\nURL: {res.get('url', '')}\n"
+            f"Description and README Excerpt:\n```\n{text[:max_chars]}\n```"
+        )
+    return (
+        f"Candidate Problem: {problem_statement.get('problem', '')}\n"
+        f"Target User: {problem_statement.get('target_user', '')}\n"
+        f"Category: {problem_statement.get('category', '')}\n\n"
+        + "\n\n".join(blocks)
+        + "\n\nFor every alternative index, judge whether it solves the same core user problem, the overlap "
+        "degree (full, partial, none), and give verbatim supporting quotes. Output strict JSON."
+    )
+
+
+def _index_map(entries: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    by_index: dict[int, dict[str, Any]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            by_index[int(entry.get("index"))] = entry
+        except (TypeError, ValueError):
+            continue
+    return by_index
+
+
+def _row_from_entry(
+    candidate_repo_id: str,
+    res: dict[str, Any],
+    rtext: str,
+    entry: dict[str, Any],
+    problem_statement: dict[str, Any],
+    trace: Any | None,
+) -> dict[str, Any] | None:
+    """A verified same-problem row, or None when the entry is not same-problem or its quote fails.
+
+    The entry was judged either way. A failed quote is not sent back to the model: the guard
+    already rejected it.
+    """
+    if not bool(entry.get("same_problem")):
+        return None
+    alt_id = str(res.get("alternative_id") or "").strip()
+    quotes = entry.get("quotes") or []
+    bad = None
+    if not isinstance(quotes, list) or not quotes:
+        bad = "no quotes provided for same_problem alternative"
+    else:
+        for q in quotes:
+            q_str = str(q or "").strip()
+            if not q_str or not quote_in_text(q_str, rtext):
+                bad = f"unverified quote '{q_str}' not found in alternative text"
+                break
+    if bad:
+        if trace is not None:
+            trace.event(
+                agent_name="orchestrator",
+                action="UNVERIFIED_ALTERNATIVE_QUOTE",
+                input_summary={"alternative": alt_id, "mode": "batch"},
+                output_summary={"error": bad},
+                status="error",
+            )
+        return None
+    return {
+        "repo_id": candidate_repo_id,
+        "alternative_id": alt_id,
+        "url": str(res.get("url") or f"https://github.com/{alt_id}"),
+        "licence_spdx": str(res.get("licence_spdx") or ""),
+        "stars": res.get("stars", 0),
+        "pushed_at": str(res.get("pushed_at") or ""),
+        "excerpt": rtext[:1000],
+        "candidate_excerpt": str(problem_statement.get("problem") or ""),
+        "required_terms": "",
+        "same_problem": True,
+        "overlap": str(entry.get("overlap") or "none").strip().lower(),
+        "reason": str(entry.get("reason") or "").strip(),
+        "quotes": [str(q).strip() for q in quotes if str(q).strip()],
+        "source": str(res.get("source") or ""),
+    }
+
+
+def _apply_entries(
+    entries: list[dict[str, Any]],
+    pending: list[tuple[int, dict[str, Any], str]],
+    candidate_repo_id: str,
+    problem_statement: dict[str, Any],
+    trace: Any | None,
+) -> tuple[list[dict[str, Any]], list[tuple[int, dict[str, Any], str]]]:
+    by_index = _index_map(entries)
+    verified: list[dict[str, Any]] = []
+    missing: list[tuple[int, dict[str, Any], str]] = []
+    for i, res, rtext in pending:
+        if i not in by_index:
+            missing.append((i, res, rtext))
+            continue
+        row = _row_from_entry(candidate_repo_id, res, rtext, by_index[i], problem_statement, trace)
+        if row is not None:
+            verified.append(row)
+    return verified, missing
 
 
 def judge_alternatives_batch(
@@ -1613,12 +1940,12 @@ def judge_alternatives_batch(
     trace: Any | None = None,
     max_chars_per_item: int = 900,
 ) -> list[dict[str, Any]] | None:
-    """Judge all alternatives in ONE LLM call (step="alternative_batch").
+    """Judge alternatives in one call (step="alternative_batch").
 
-    Same deterministic rules as judge_alternative_relevance: a same_problem verdict is kept
-    only if every quote is found verbatim in that alternative's own text. Returns the list
-    of verified same-problem rows, or None when the batch answer is unusable (exception,
-    invalid JSON, missing indexes) so the caller can fall back to one call per alternative.
+    A same_problem verdict is kept only when every quote is in that alternative's own text.
+    Returns the verified same-problem rows. Returns None only when the chunk produced no
+    parseable entry after retries, so the caller can judge each item on its own. A reply that
+    parses for some indexes is kept: only the missing indexes are retried.
     """
     if client is None:
         client = RelevanceClient()
@@ -1631,34 +1958,9 @@ def judge_alternatives_batch(
         return []
 
     prompt_record = load_prompt("relevance_alternative")
-    blocks = []
-    for i, res, text in items:
-        blocks.append(
-            f"[{i}] Alternative: {res.get('alternative_id', '')}\nURL: {res.get('url', '')}\n"
-            f"Description and README Excerpt:\n```\n{text[:max_chars_per_item]}\n```"
-        )
-    user_prompt = (
-        f"Candidate Problem: {problem_statement.get('problem', '')}\n"
-        f"Target User: {problem_statement.get('target_user', '')}\n"
-        f"Category: {problem_statement.get('category', '')}\n\n"
-        + "\n\n".join(blocks)
-        + "\n\nFor every alternative index, judge whether it solves the same core user problem, the overlap "
-        "degree (full, partial, none), and give verbatim supporting quotes. Output strict JSON."
-    )
-    wanted = {i for i, _, _ in items}
-
-    def _batch_ok(o: dict[str, Any]) -> bool:
-        rs = o.get("results")
-        if not isinstance(rs, list):
-            return False
-        got = set()
-        for e in rs:
-            if isinstance(e, dict):
-                try:
-                    got.add(int(e.get("index")))
-                except (TypeError, ValueError):
-                    pass
-        return wanted <= got
+    system = prompt_record.text + BATCH_INSTRUCTION
+    base_prompt = _batch_prompt(problem_statement, items, max_chars_per_item)
+    indexes = [i for i, _, _ in items]
 
     def _fallback(reason: str) -> None:
         if trace is not None:
@@ -1666,90 +1968,136 @@ def judge_alternatives_batch(
                 agent_name="orchestrator",
                 action="ALTERNATIVE_BATCH_FALLBACK",
                 input_summary={"repo_id": candidate_repo_id, "alternatives": len(items)},
-                output_summary={"reason": reason},
+                output_summary={"reason": reason, "requested_model": client.model, "served_model": ""},
+                llm={"requested_model": client.model, "served_model": ""},
                 status="error",
             )
 
-    obj = None
-    for attempt in range(BATCH_CALL_ATTEMPTS):
+    def _call(prompt: str, which: list[int]) -> list[dict[str, Any]] | None:
+        """One model call. None means the transport failed. [] means the reply had no complete objects."""
         try:
-            obj, text, req_m, srv_m = _complete_json(
-                client, user_prompt, prompt_record.text + BATCH_INSTRUCTION, candidate_repo_id, "alternative_batch",
-                validate=_batch_ok,
+            text, req_m, srv_m = client.complete(
+                prompt, system, repo_id=candidate_repo_id, step="alternative_batch"
             )
-            break
         except Exception as exc:
             if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
                 raise
+            _trace_llm(
+                trace, "ALTERNATIVE_BATCH_CALL", candidate_repo_id, client.model, "",
+                {"indexes": which, "reason": str(exc)[:160]}, status="error",
+            )
+            raise
+        entries = extract_result_entries(text)
+        _trace_llm(
+            trace, "ALTERNATIVE_BATCH_CALL", candidate_repo_id, req_m, srv_m,
+            {"indexes": which, "parsed_indexes": sorted(_index_map(entries))},
+            status="ok" if entries else "error",
+        )
+        if not entries:
+            client.discard_last()
+        return entries
+
+    entries: list[dict[str, Any]] | None = None
+    last_exc: Exception | None = None
+    for attempt in range(BATCH_CALL_ATTEMPTS):
+        prompt = base_prompt if attempt == 0 else base_prompt + _BATCH_RETRY_NOTE
+        try:
+            entries = _call(prompt, indexes)
+        except RelevanceLLMError as exc:
+            if "refusing to score with a small local model" in str(exc):
+                raise
+            last_exc = exc
+            entries = None
             if attempt + 1 < BATCH_CALL_ATTEMPTS:
-                # A transient provider error (for example HTTP 502) is retried once before the
-                # much slower one-call-per-alternative fallback.
                 if trace is not None:
                     trace.event(
                         agent_name="orchestrator",
                         action="ALTERNATIVE_BATCH_RETRY",
-                        input_summary={"repo_id": candidate_repo_id, "attempt": attempt + 1},
-                        output_summary={"reason": str(exc)[:160]},
+                        input_summary={"repo_id": candidate_repo_id, "attempt": attempt + 1, "indexes": indexes},
+                        output_summary={"reason": str(exc)[:160], "requested_model": client.model, "served_model": ""},
+                        llm={"requested_model": client.model, "served_model": ""},
                         status="error",
                     )
                 continue
             _fallback(f"batch call failed after {BATCH_CALL_ATTEMPTS} attempts: {str(exc)[:160]}")
             return None
-    if obj is None:
-        _fallback("batch answer unusable after retries (invalid JSON or missing indexes)")
-        return None
-    by_index: dict[int, dict[str, Any]] = {}
-    for entry in obj["results"]:
-        if isinstance(entry, dict):
-            try:
-                by_index[int(entry.get("index"))] = entry
-            except (TypeError, ValueError):
+        except Exception as exc:
+            last_exc = exc
+            entries = None
+            if attempt + 1 < BATCH_CALL_ATTEMPTS:
+                if trace is not None:
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="ALTERNATIVE_BATCH_RETRY",
+                        input_summary={"repo_id": candidate_repo_id, "attempt": attempt + 1, "indexes": indexes},
+                        output_summary={"reason": str(exc)[:160], "requested_model": client.model, "served_model": ""},
+                        llm={"requested_model": client.model, "served_model": ""},
+                        status="error",
+                    )
                 continue
-    if any(i not in by_index for i, _, _ in items):
+            _fallback(f"batch call failed after {BATCH_CALL_ATTEMPTS} attempts: {str(exc)[:160]}")
+            return None
+        if entries:
+            break
+    if not entries:
+        why = "batch answer unusable after retries (invalid JSON or missing indexes)"
+        if last_exc is not None:
+            why = f"batch call failed after {BATCH_CALL_ATTEMPTS} attempts: {str(last_exc)[:160]}"
+        _fallback(why)
         return None
 
-    verified: list[dict[str, Any]] = []
-    for i, res, rtext in items:
-        entry = by_index[i]
-        if not bool(entry.get("same_problem")):
-            continue
-        alt_id = str(res.get("alternative_id") or "").strip()
-        quotes = entry.get("quotes") or []
-        bad = None
-        if not isinstance(quotes, list) or not quotes:
-            bad = "no quotes provided for same_problem alternative"
-        else:
-            for q in quotes:
-                q_str = str(q or "").strip()
-                if not q_str or not quote_in_text(q_str, rtext):
-                    bad = f"unverified quote '{q_str}' not found in alternative text"
-                    break
-        if bad:
-            if trace is not None:
-                trace.event(
-                    agent_name="orchestrator",
-                    action="UNVERIFIED_ALTERNATIVE_QUOTE",
-                    input_summary={"alternative": alt_id, "mode": "batch"},
-                    output_summary={"error": bad},
-                    status="error",
-                )
-            continue
-        verified.append({
-            "repo_id": candidate_repo_id,
-            "alternative_id": alt_id,
-            "url": str(res.get("url") or f"https://github.com/{alt_id}"),
-            "licence_spdx": str(res.get("licence_spdx") or ""),
-            "stars": res.get("stars", 0),
-            "pushed_at": str(res.get("pushed_at") or ""),
-            "excerpt": rtext[:1000],
-            "candidate_excerpt": str(problem_statement.get("problem") or ""),
-            "required_terms": "",
-            "same_problem": True,
-            "overlap": str(entry.get("overlap") or "none").strip().lower(),
-            "reason": str(entry.get("reason") or "").strip(),
-            "quotes": [str(q).strip() for q in quotes if str(q).strip()],
-            "source": str(res.get("source") or ""),
-        })
+    verified, missing = _apply_entries(entries, items, candidate_repo_id, problem_statement, trace)
+    if missing:
+        # One follow-up for the indexes the first reply did not contain. A single missing
+        # item goes straight to the per-item judge; two or more share one smaller batch.
+        if len(missing) >= 2:
+            follow_prompt = _batch_prompt(problem_statement, missing, max_chars_per_item)
+            try:
+                follow = _call(follow_prompt, [i for i, _, _ in missing])
+            except RelevanceLLMError as exc:
+                if "refusing to score with a small local model" in str(exc):
+                    raise
+                follow = None
+                if trace is not None:
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="ALTERNATIVE_BATCH_RETRY",
+                        input_summary={"repo_id": candidate_repo_id, "indexes": [i for i, _, _ in missing]},
+                        output_summary={"reason": str(exc)[:160], "requested_model": client.model, "served_model": ""},
+                        llm={"requested_model": client.model, "served_model": ""},
+                        status="error",
+                    )
+            except Exception as exc:
+                follow = None
+                if trace is not None:
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="ALTERNATIVE_BATCH_RETRY",
+                        input_summary={"repo_id": candidate_repo_id, "indexes": [i for i, _, _ in missing]},
+                        output_summary={"reason": str(exc)[:160], "requested_model": client.model, "served_model": ""},
+                        llm={"requested_model": client.model, "served_model": ""},
+                        status="error",
+                    )
+            if follow:
+                more, missing = _apply_entries(follow, missing, candidate_repo_id, problem_statement, trace)
+                verified.extend(more)
+        for _i, res, _rtext in missing:
+            alt_row, meta = judge_alternative_relevance(
+                problem_statement=problem_statement,
+                candidate_repo_id=candidate_repo_id,
+                search_result=res,
+                client=client,
+                trace=trace,
+            )
+            _trace_llm(
+                trace, "ALTERNATIVE_CALL", candidate_repo_id,
+                str(meta.get("requested_model") or client.model),
+                str(meta.get("served_model") or ""),
+                {"alternative": res.get("alternative_id"), "indexes": [_i], "reason": meta.get("error") or meta.get("reason")},
+                status="error" if meta.get("error") or meta.get("fallback") else "ok",
+            )
+            if alt_row is not None and alt_row.get("same_problem"):
+                verified.append(alt_row)
     return verified
 
 
@@ -1762,13 +2110,11 @@ def filter_relevant_alternatives(
 ) -> list[dict[str, Any]]:
     """Evaluate candidate search results and return only those with same_problem=true and verified quotes.
 
-    Tries one batched LLM call first; falls back to one call per alternative when the batch
-    answer is unusable.
+    Tries one batched LLM call per chunk of ALTERNATIVE_CHUNK_SIZE. A chunk that returns no
+    parseable entry falls back to one call per alternative for that chunk only. A chunk that
+    parses in part is finished inside judge_alternatives_batch, which retries only the missing items.
     """
     verified_alts: list[dict[str, Any]] = []
-    # Chunks keep each LLM answer short enough to finish inside the wall-clock cap (one call with
-    # 15 alternatives timed out every time on Nightshift); a failed chunk falls back to one call
-    # per alternative for THAT chunk only, so no alternative is ever skipped.
     for start in range(0, len(search_results), ALTERNATIVE_CHUNK_SIZE):
         chunk = search_results[start:start + ALTERNATIVE_CHUNK_SIZE]
         if len(chunk) > 1:
@@ -1783,6 +2129,13 @@ def filter_relevant_alternatives(
                 search_result=res,
                 client=client,
                 trace=trace,
+            )
+            _trace_llm(
+                trace, "ALTERNATIVE_CALL", candidate_repo_id,
+                str(meta.get("requested_model") or ""),
+                str(meta.get("served_model") or ""),
+                {"alternative": res.get("alternative_id"), "reason": meta.get("error") or meta.get("reason")},
+                status="error" if meta.get("error") or meta.get("fallback") else "ok",
             )
             if alt_row is not None and alt_row.get("same_problem"):
                 verified_alts.append(alt_row)

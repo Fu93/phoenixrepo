@@ -20,6 +20,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def make_shards(snapshot: Path, out_dir: Path, n: int) -> list[Path]:
@@ -81,6 +83,33 @@ def render_md(m: dict) -> str:
     for r in m["ineligible"]:
         reason = str(r.get("reason") or "").replace("|", "/").replace("\n", " ")
         lines.append(f"| `{r.get('repo_id')}` | `{r.get('verdict')}` | {reason[:300]} |")
+    from scripts.evidence_report import format_decision_lines
+
+    lines += ["", "## Why a repository was refused or sent to review", ""]
+    shown = False
+    for r in m["ineligible"]:
+        block = format_decision_lines(
+            str(r.get("repo_id") or ""),
+            str(r.get("verdict") or ""),
+            str(r.get("reason") or ""),
+            r.get("decision_evidence"),
+        )
+        if block:
+            shown = True
+            lines.extend(block)
+    if not shown:
+        lines.append("No ALREADY_EXISTS or NEEDS_REVIEW row was recorded.")
+        lines.append("")
+    lines += ["", "## Rescue potential", "", "This score does not change the verdict.", ""]
+    lines += ["| Repository | Verdict | Score | Stars | Stale days | CI |", "| :--- | :---: | :---: | :---: | :---: | :--- |"]
+    ranked = list(m.get("candidates") or []) + list(m.get("ineligible") or [])
+    ranked.sort(key=lambda row: -float(((row.get("rescue_potential") or {}).get("score") or 0)))
+    for row in ranked:
+        rescue = row.get("rescue_potential") or {}
+        comp = rescue.get("components") or {}
+        lines.append(
+            f"| `{row.get('repo_id')}` | `{row.get('verdict')}` | {rescue.get('score', '')} | {comp.get('stars', '')} | {comp.get('staleness_days', '')} | {comp.get('ci_state', '')} |"
+        )
     lines += ["", m["protagonist_note"], ""]
     return "\n".join(lines)
 

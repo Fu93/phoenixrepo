@@ -29,6 +29,25 @@ def test_report_escapes_html_and_shows_quotes(tmp_path):
     assert "<script>x</script>" not in page and "&lt;script&gt;" in page
     assert "exports articles" in page and "JetBrains/youtrack-cli" in page
     assert "SEALHASH" in page and "ALREADY_EXISTS" in page
+    assert "Why this verdict" in page
+    assert "Overlap" in page and "Verified quote" in page and "full" in page and "does the same" in page
+
+
+def test_needs_review_report_shows_the_recorded_evidence():
+    ev = {
+        "decision_evidence": [
+            {
+                "alternative": "browser/voice",
+                "overlap": "partial",
+                "quote": "voice calls in the browser",
+                "reason": "different form factor",
+            }
+        ]
+    }
+    page = er.render_repo_html("orangekame3/mirrormate", "NEEDS_REVIEW", "partial overlap", ev, run_id="run2")
+    assert "Why this verdict" in page
+    assert "browser/voice" in page and "partial" in page
+    assert "voice calls in the browser" in page and "different form factor" in page
 
 
 def test_report_without_trace_still_renders_verdict():

@@ -746,6 +746,7 @@ def score_all(
     command_str: str = "",
     snapshot: Path | None = None,
     relevance_client: RelevanceClient | None = None,
+    facts_client: Any | None = None,
 ) -> dict[str, Any]:
     """Main execution pipeline for candidate scoring and protagonist selection."""
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -772,6 +773,7 @@ def score_all(
             relevance_client=relevance_client,
             trace=trace,
             now_iso=now_iso,
+            facts_client=facts_client,
         )
     except RelevanceLLMError as exc:
         trace.event(
@@ -809,6 +811,7 @@ def _do_score_candidates(
     relevance_client: RelevanceClient | None,
     trace: HackathonTrace,
     now_iso: str,
+    facts_client: Any | None = None,
 ) -> dict[str, Any]:
     require_llm = use_llm and ("--llm" in (command_str or "").split())
     llm_bound = None
@@ -886,11 +889,38 @@ def _do_score_candidates(
 
     eligible_candidates: list[dict[str, Any]] = []
     ineligible_repos: list[dict[str, Any]] = []
+    rescue_by_repo: dict[str, dict[str, Any]] = {}
 
     for candidate in candidates_raw:
         repo_id = candidate["repo_id"]
         prior_for_repo = [r for r in prior_raw if r["repo_id"] == repo_id]
         demand_for_repo = [r for r in demand_raw if r["repo_id"] == repo_id]
+        if facts_client is not None:
+            prior_for_repo = [facts_client.fetch_alternative(r) for r in prior_for_repo]
+        from datetime import date as _rescue_date
+
+        from app.agents.rescue import from_candidate_row, rescue_potential
+
+        if facts_client is not None and hasattr(facts_client, "fetch_rescue"):
+            rescue_facts = facts_client.fetch_rescue(repo_id, default_branch=str(candidate.get("default_branch") or ""))
+            if rescue_facts.get("fetch_status") == "ok":
+                rescue = rescue_potential(rescue_facts, as_of=_rescue_date.today())
+            else:
+                rescue = from_candidate_row(candidate, as_of=_rescue_date.today())
+                rescue["source"] = "snapshot"
+                rescue["fetch_status"] = "source_error"
+        else:
+            rescue = from_candidate_row(candidate, as_of=_rescue_date.today())
+        rescue_by_repo[repo_id] = rescue
+        must_beat = []
+        judgement_evidence = []
+        trace.event(
+            agent_name="orchestrator",
+            action="RESCUE_POTENTIAL",
+            input_summary={"repo_id": repo_id},
+            output_summary=rescue,
+            status="ok",
+        )
 
         if is_client_configured(relevance_client):
             problem_stmt, meta_prob = extract_problem_statement(candidate, client=relevance_client)
@@ -1025,6 +1055,8 @@ def _do_score_candidates(
                     )
                     continue
 
+                problem_alternatives = None
+                judgement_evidence: list[dict[str, Any]] = []
                 try:
                     # Alternative relevance step
                     problem_alternatives = filter_relevant_alternatives(
@@ -1056,6 +1088,8 @@ def _do_score_candidates(
                     )
 
                     # Combined union of prior_art.csv rows and problem_alternatives
+                    if facts_client is not None and problem_alternatives:
+                        problem_alternatives = [facts_client.fetch_alternative(r) for r in problem_alternatives]
                     combined_priors = []
                     seen_alts = set()
                     for r in list(prior_for_repo or []) + list(problem_alternatives or []):
@@ -1064,7 +1098,7 @@ def _do_score_candidates(
                             seen_alts.add(ak)
                             combined_priors.append(r)
 
-                    verdict, reason = judge_discovery(
+                    judged = judge_discovery(
                         candidate,
                         combined_priors,
                         demand_for_repo,
@@ -1074,6 +1108,9 @@ def _do_score_candidates(
                         source_counts=getattr(search_results, "source_counts", None),
                         insufficient_coverage=getattr(search_results, "insufficient_coverage", False),
                     )
+                    verdict, reason = judged
+                    judgement_evidence = list(getattr(judged, "evidence", []) or [])
+                    must_beat = list(getattr(judged, "must_beat", []) or [])
                 except RelevanceLLMError as exc:
                     if "refusing to score with a small local model" in str(exc):
                         raise
@@ -1097,21 +1134,28 @@ def _do_score_candidates(
                     reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: absence of alternatives is not evidence of no competition"
                 prior_for_repo = combined_priors
         else:
-            verdict, reason = judge_discovery(
+            judged = judge_discovery(
                 candidate, prior_for_repo, demand_for_repo, client=relevance_client
             )
+            verdict, reason = judged
+            judgement_evidence = list(getattr(judged, "evidence", []) or [])
+            must_beat = list(getattr(judged, "must_beat", []) or [])
 
         if verdict == "CANDIDATE" and len(prior_for_repo) == 0:
             verdict = "NEEDS_PRIOR_ART"
             reason = "Zero alternatives checked in prior-art search."
+
+        if verdict not in {"ALREADY_EXISTS", "NEEDS_REVIEW"}:
+            judgement_evidence = []
 
         # Emit exactly one final DISCOVERY_FILTER event per repo
         trace.event(
             agent_name="orchestrator",
             action="DISCOVERY_FILTER",
             input_summary={"repo_id": repo_id},
-            output_summary={"verdict": verdict, "reason": reason},
+            output_summary={"verdict": verdict, "reason": reason, "evidence": judgement_evidence, "must_beat": must_beat},
             status="ok",
+            summary_limit=EVIDENCE_SUMMARY_LIMIT,
         )
 
         if verdict == "CANDIDATE":
@@ -1122,17 +1166,21 @@ def _do_score_candidates(
                     "demand_rows": demand_for_repo,
                     "verdict": verdict,
                     "reason": reason,
+                    "must_beat": must_beat,
                 }
             )
         else:
-            ineligible_repos.append(
-                {
-                    "repo_id": repo_id,
-                    "verdict": verdict,
-                    "reason": reason,
-                    "eligibility": False,
-                }
-            )
+            row = {
+                "repo_id": repo_id,
+                "verdict": verdict,
+                "reason": reason,
+                "eligibility": False,
+            }
+            if verdict in {"ALREADY_EXISTS", "NEEDS_REVIEW"}:
+                row["decision_evidence"] = judgement_evidence
+            if must_beat:
+                row["must_beat"] = must_beat
+            ineligible_repos.append(row)
 
     evaluated_scorecards: list[Scorecard] = []
     candidates_output: list[dict[str, Any]] = []
@@ -1370,6 +1418,7 @@ def _do_score_candidates(
                     }
                     for e in final_evidence_items
                 ],
+                "must_beat": item.get("must_beat") or [],
             }
         )
 
@@ -1434,6 +1483,11 @@ def _do_score_candidates(
 
     # 6. Seal trace
     run_hash = trace.seal()
+
+    for row in ineligible_repos:
+        row["rescue_potential"] = rescue_by_repo.get(str(row.get("repo_id") or ""))
+    for row in candidates_output:
+        row["rescue_potential"] = rescue_by_repo.get(str(row.get("repo_id") or ""))
 
     # 7. Render JSON and Markdown
     results_json = {
@@ -1556,6 +1610,69 @@ def _render_markdown(data: dict[str, Any]) -> str:
     for inel in data.get("ineligible") or []:
         lines.append(f"| [`{inel['repo_id']}`](https://github.com/{inel['repo_id']}) | `{inel['verdict']}` | {inel['reason']} |")
     lines.append("")
+    from scripts.evidence_report import format_decision_lines
+
+    lines.append("## Rescue potential")
+    lines.append("")
+    lines.append("This score does not change the verdict. A refused repository stays refused.")
+    lines.append("")
+    lines.append("| Repository | Verdict | Score | Stars | Stale days | Stars vs staleness | CI | External breakage | Dependabot | Renovate |")
+    lines.append("| :--- | :---: | :---: | :---: | :---: | :---: | :--- | :---: | :---: | :---: |")
+    ranked = list(data.get("candidates") or []) + list(data.get("ineligible") or [])
+    ranked.sort(key=lambda row: -float(((row.get("rescue_potential") or {}).get("score") or 0)))
+    for row in ranked:
+        rescue = row.get("rescue_potential") or {}
+        comp = rescue.get("components") or {}
+        lines.append(
+            "| `{repo}` | `{verdict}` | {score} | {stars} | {stale} | {svs} | {ci} | {brk} | {dep} | {ren} |".format(
+                repo=row.get("repo_id"),
+                verdict=row.get("verdict"),
+                score=rescue.get("score", ""),
+                stars=comp.get("stars", ""),
+                stale=comp.get("staleness_days", ""),
+                svs=comp.get("stars_vs_staleness", ""),
+                ci=comp.get("ci_state", ""),
+                brk=comp.get("external_breakage", ""),
+                dep=comp.get("dependabot_open", ""),
+                ren=comp.get("renovate_open", ""),
+            )
+        )
+    lines.append("")
+    lines.append("## Why a repository was refused or sent to review")
+    lines.append("")
+    shown = False
+    for inel in data.get("ineligible") or []:
+        block = format_decision_lines(
+            str(inel.get("repo_id") or ""),
+            str(inel.get("verdict") or ""),
+            str(inel.get("reason") or ""),
+            inel.get("decision_evidence"),
+        )
+        if block:
+            shown = True
+            lines.extend(block)
+    if not shown:
+        lines.append("No ALREADY_EXISTS or NEEDS_REVIEW row was recorded.")
+        lines.append("")
+    lines.append("## Alternatives that did not block")
+    lines.append("")
+    beat = False
+    for row in list(data.get("candidates") or []) + list(data.get("ineligible") or []):
+        notes = row.get("must_beat") or []
+        if not notes:
+            continue
+        beat = True
+        lines.append(f"### `{row.get('repo_id')}`")
+        lines.append("")
+        lines.append("| Alternative | Overlap | Verified quote | Why it did not block |")
+        lines.append("| :--- | :--- | :--- | :--- |")
+        for note in notes:
+            cells = [str(note.get(k) or "").replace("|", "/").replace("\n", " ") for k in ("alternative", "overlap", "quote", "reason")]
+            lines.append("| " + " | ".join(cells) + " |")
+        lines.append("")
+    if not beat:
+        lines.append("None.")
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -1579,6 +1696,9 @@ def main() -> int:
     parser.add_argument("--log-dir", type=Path, default=ROOT / "logs", help="Directory for trace logs.")
     args = parser.parse_args()
 
+    from app.agents.repo_facts import RepoFactsClient
+
+    facts_dir = (args.snapshot or args.data_dir) / ".cache" / "repo_facts"
     try:
         results = score_all(
             data_dir=args.data_dir,
@@ -1591,6 +1711,7 @@ def main() -> int:
             run_id=args.run_id,
             log_dir=args.log_dir,
             command_str=" ".join(sys.argv),
+            facts_client=RepoFactsClient(cache_dir=facts_dir),
         )
     except SystemExit as exc:
         return exc.code if isinstance(exc.code, int) else 2

@@ -143,7 +143,7 @@ def judge(url: str, out_dir: Path | None = None, use_llm: bool = True, run_id: s
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="phoenix-judge-") as tmp:
         snap = write_snapshot(row, Path(tmp))
-        results = (scorer or score_candidates.score_all)(
+        score_kwargs = dict(
             snapshot=snap,
             output_json=out / "scores.json",
             output_md=out / "scores.md",
@@ -152,6 +152,13 @@ def judge(url: str, out_dir: Path | None = None, use_llm: bool = True, run_id: s
             log_dir=logs,
             command_str=f"phoenix judge {url}",
         )
+        if scorer is None:
+            from app.agents.repo_facts import RepoFactsClient
+
+            score_kwargs["facts_client"] = RepoFactsClient(cache_dir=snap / ".cache" / "repo_facts")
+            results = score_candidates.score_all(**score_kwargs)
+        else:
+            results = scorer(**score_kwargs)
     repo_id = row["repo_id"]
     verdict, reason = "NEEDS_REVIEW", "no verdict was recorded"
     for c in results.get("candidates") or []:
