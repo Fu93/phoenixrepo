@@ -88,6 +88,7 @@ EVIDENCE_SUMMARY_LIMIT = 20000
 # zetaris_query stores the exact SQL text. A 500-character cut would drop the statement.
 ZETARIS_QUERY_LIMIT = 20000
 
+
 def _read_csv(path: Path, expected_columns: tuple[str, ...]) -> list[dict[str, str]]:
     if not path.exists():
         return []
@@ -274,12 +275,7 @@ def compute_differentiation(
             caps = []
 
         if not caps and candidate.get("core_terms"):
-            cand_text = str(
-                (evidence_index.get(cand_ev_id) or {}).get("text")
-                or candidate.get("description")
-                or candidate.get("readme_excerpt")
-                or ""
-            )
+            cand_text = str((evidence_index.get(cand_ev_id) or {}).get("text") or candidate.get("description") or candidate.get("readme_excerpt") or "")
             for t in split_terms(candidate.get("core_terms")):
                 if t and t.lower() in cand_text.lower():
                     q = extract_exact_quote(cand_text, t) or t
@@ -369,13 +365,15 @@ def compute_differentiation(
                 for c in uncovered_caps:
                     if c["name"].lower() in d_text.lower():
                         dem_q = extract_exact_quote(d_text, c["name"]) or d_text[:100]
-                        demanded_uncovered.append({
-                            "capability": c["name"],
-                            "quote": dem_q,
-                            "url": d.get("url", ""),
-                            "signal_id": d.get("signal_id", ""),
-                            "evidence_id": f"demand:{d.get('signal_id', '')}",
-                        })
+                        demanded_uncovered.append(
+                            {
+                                "capability": c["name"],
+                                "quote": dem_q,
+                                "url": d.get("url", ""),
+                                "signal_id": d.get("signal_id", ""),
+                                "evidence_id": f"demand:{d.get('signal_id', '')}",
+                            }
+                        )
                         break
 
     if num_uncovered == 0:
@@ -405,11 +403,15 @@ def compute_differentiation(
     alts_str = "; ".join(alts_checked_desc) if alts_checked_desc else "none"
 
     if score == 0:
-        rationale = f"Score 0: No missing capabilities. All extracted capabilities ({', '.join(c['name'] for c in caps)}) are covered by maintained free OSS alternatives. Alternatives checked: {alts_str}."
+        rationale = (
+            f"Score 0: No missing capabilities. All extracted capabilities ({', '.join(c['name'] for c in caps)}) are covered by maintained free OSS alternatives. Alternatives checked: {alts_str}."
+        )
     elif score == 1:
         rationale = f"Score 1: Missing capabilities: {missing_str} (1 not covered by any maintained free OSS alternative). Alternatives checked: {alts_str}. Candidate quote: {quotes_str}."
     elif score == 2:
-        rationale = f"Score 2: Missing capabilities: {missing_str} ({num_uncovered} not covered by any maintained free OSS alternative). Alternatives checked: {alts_str}. Candidate quotes: {quotes_str}."
+        rationale = (
+            f"Score 2: Missing capabilities: {missing_str} ({num_uncovered} not covered by any maintained free OSS alternative). Alternatives checked: {alts_str}. Candidate quotes: {quotes_str}."
+        )
     else:
         dem_item = demanded_uncovered[0]
         rationale = f"Score 3: Missing capabilities: {missing_str} ({num_uncovered} not covered by any maintained free OSS alternative with external user demand pull). Alternatives checked: {alts_str}. Candidate quotes: {quotes_str}. External user demand quote for '{dem_item.get('capability')}': \"{dem_item.get('quote')}\" ({dem_item.get('url')})."
@@ -496,9 +498,7 @@ def evaluate_demand_evidence(
     llm_fallback_occurred = False
 
     for sig in signals_to_judge:
-        judgment, meta = judge_demand(
-            caps, sig, candidate_repo_id=repo_id, client=relevance_client
-        )
+        judgment, meta = judge_demand(caps, sig, candidate_repo_id=repo_id, client=relevance_client)
         if meta.get("fallback"):
             llm_fallback_occurred = True
             continue
@@ -555,12 +555,11 @@ def evaluate_demand_evidence(
             seen_ev.add(eid)
             dedup_eids.append(eid)
 
-    quotes_str = "; ".join(
-        f'"{s["quote"]}" ({s["url"]}) [for \'{s["capability"]}\']' for s in accepted_signals[:3]
-    )
+    quotes_str = "; ".join(f"\"{s['quote']}\" ({s['url']}) [for '{s['capability']}']" for s in accepted_signals[:3])
     rationale = f"Verified external demand pull ({score}/3) from {num_sources} source(s): {quotes_str}"
 
     return Criterion(score=score, evidence_ids=dedup_eids, rationale=rationale), accepted_signals
+
 
 def deterministic_baseline_analyst(
     candidate: dict[str, Any],
@@ -895,9 +894,7 @@ def _do_score_candidates(
                     cache_dir=active_data_dir / ".cache" / "relevance" if active_data_dir.exists() else None,
                 )
             except Exception:
-                relevance_client = RelevanceClient(
-                    cache_dir=active_data_dir / ".cache" / "relevance" if active_data_dir.exists() else None
-                )
+                relevance_client = RelevanceClient(cache_dir=active_data_dir / ".cache" / "relevance" if active_data_dir.exists() else None)
         if use_llm:
             try:
                 from config.settings import Settings
@@ -980,9 +977,7 @@ def _do_score_candidates(
     per_candidate_seconds = _env_number("PHOENIX_TOOL_SECONDS_PER_CANDIDATE", 1200.0)
     scaled_calls = max(max_calls, len(candidates_raw) * per_candidate_calls)
     scaled_seconds = max(max_seconds, len(candidates_raw) * per_candidate_seconds)
-    toolbox = custom_toolbox or build_default_toolbox(
-        max_calls=scaled_calls, max_seconds=scaled_seconds, trace=trace
-    )
+    toolbox = custom_toolbox or build_default_toolbox(max_calls=scaled_calls, max_seconds=scaled_seconds, trace=trace)
     if custom_toolbox is not None and custom_toolbox.trace is None:
         custom_toolbox.trace = trace
 
@@ -1035,6 +1030,7 @@ def _do_score_candidates(
         rescue_by_repo[repo_id] = rescue
         must_beat = []
         judgement_evidence = []
+        unknown_blocker = None
         trace.event(
             agent_name="orchestrator",
             action="RESCUE_POTENTIAL",
@@ -1144,9 +1140,7 @@ def _do_score_candidates(
                             language=candidate.get("primary_language"),
                         )
                         search_results.extend(broader_results)
-                        search_results.own_filtered = list(getattr(search_results, "own_filtered", []) or []) + list(
-                            getattr(broader_results, "own_filtered", []) or []
-                        )
+                        search_results.own_filtered = list(getattr(search_results, "own_filtered", []) or []) + list(getattr(broader_results, "own_filtered", []) or [])
                         trace.event(
                             agent_name="orchestrator",
                             action="PRIOR_ART_SEARCH",
@@ -1247,10 +1241,12 @@ def _do_score_candidates(
                         source_status=getattr(search_results, "source_status", None),
                         source_counts=getattr(search_results, "source_counts", None),
                         insufficient_coverage=getattr(search_results, "insufficient_coverage", False),
+                        trace=trace,
                     )
                     verdict, reason = judged
                     judgement_evidence = list(getattr(judged, "evidence", []) or [])
                     must_beat = list(getattr(judged, "must_beat", []) or [])
+                    unknown_blocker = getattr(judged, "unknown_blocker", None) or None
                 except InfraFallbackStop as exc:
                     judged = verdict_for_infra_stop(candidate, exc, facts_client)
                     verdict, reason = judged
@@ -1273,21 +1269,18 @@ def _do_score_candidates(
                         status="ok",
                     )
                     candidate.pop("_manifest_texts", None)
-                    ineligible_repos.append(
-                        {"repo_id": repo_id, "verdict": verdict, "reason": reason, "eligibility": False}
-                    )
+                    ineligible_repos.append({"repo_id": repo_id, "verdict": verdict, "reason": reason, "eligibility": False})
                     continue
                 if verdict == "CANDIDATE" and getattr(search_results, "insufficient_coverage", False) and len(combined_priors) == 0:
                     verdict = "NEEDS_REVIEW"
                     reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: absence of alternatives is not evidence of no competition"
                 prior_for_repo = combined_priors
         else:
-            judged = judge_discovery(
-                candidate, prior_for_repo, demand_for_repo, client=relevance_client
-            )
+            judged = judge_discovery(candidate, prior_for_repo, demand_for_repo, client=relevance_client, trace=trace)
             verdict, reason = judged
             judgement_evidence = list(getattr(judged, "evidence", []) or [])
             must_beat = list(getattr(judged, "must_beat", []) or [])
+            unknown_blocker = getattr(judged, "unknown_blocker", None) or None
 
         if verdict == "CANDIDATE" and len(prior_for_repo) == 0:
             verdict = "NEEDS_PRIOR_ART"
@@ -1304,7 +1297,12 @@ def _do_score_candidates(
             action="DISCOVERY_FILTER",
             input_summary={"repo_id": repo_id},
             output_summary=_discovery_output(
-                verdict, reason, evidence_mode, evidence=judgement_evidence, must_beat=must_beat
+                verdict,
+                reason,
+                evidence_mode,
+                evidence=judgement_evidence,
+                must_beat=must_beat,
+                unknown_blocker=unknown_blocker,
             ),
             status="ok",
             summary_limit=EVIDENCE_SUMMARY_LIMIT,
@@ -1380,8 +1378,7 @@ def _do_score_candidates(
                         {"role": "system", "content": llm_prompt.text},
                         {
                             "role": "user",
-                            "content": f"ROLE: venture_analyst\nREPO: {repo_id}\nEVIDENCE:\n"
-                            + json.dumps(evidence_items, ensure_ascii=False),
+                            "content": f"ROLE: venture_analyst\nREPO: {repo_id}\nEVIDENCE:\n" + json.dumps(evidence_items, ensure_ascii=False),
                         },
                     ]
                     raw_reply = llm_bound.complete(messages)
@@ -1496,9 +1493,7 @@ def _do_score_candidates(
 
             return analyst, lambda: curr_accepted
 
-        analyst_callable, get_curr_accepted = make_analyst(
-            criteria_map, candidate, prior_rows, demand_rows, cand_caps, relevance_client, fallback_caps
-        )
+        analyst_callable, get_curr_accepted = make_analyst(criteria_map, candidate, prior_rows, demand_rows, cand_caps, relevance_client, fallback_caps)
         reinvestigation = reinvestigate(
             scorecard=scorecard,
             evidence=evidence_items,
@@ -1637,10 +1632,7 @@ def _do_score_candidates(
     # remembered one. It never changes a verdict and never stops the run (app/verdict_memory.py).
     from app.verdict_memory import remember as hmem_remember, served_model_from_reason
 
-    hmem_rows = [
-        {"repo_id": r.get("repo_id"), "verdict": r.get("verdict"), "reason": r.get("reason")}
-        for r in [*ineligible_repos, *candidates_output]
-    ]
+    hmem_rows = [{"repo_id": r.get("repo_id"), "verdict": r.get("verdict"), "reason": r.get("reason")} for r in [*ineligible_repos, *candidates_output]]
     served_by_repo: dict[str, str] = {}
     for row in ineligible_repos:
         repo_key = str(row.get("repo_id") or "").strip()
@@ -1652,7 +1644,11 @@ def _do_score_candidates(
             served_by_repo[repo_key] = served_model_from_reason(item.get("reason"))
     try:
         hmem_summary = hmem_remember(
-            hmem_rows, trace=trace, log_dir=active_log_dir, run_id=active_run_id, served_by_repo=served_by_repo,
+            hmem_rows,
+            trace=trace,
+            log_dir=active_log_dir,
+            run_id=active_run_id,
+            served_by_repo=served_by_repo,
         )
     except Exception as exc:
         # remember() already catches its own failures. This is the last guard so a
@@ -1897,12 +1893,15 @@ def _discovery_output(
     evidence_mode: str,
     evidence: list[dict[str, Any]] | None = None,
     must_beat: list[dict[str, Any]] | None = None,
+    unknown_blocker: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"verdict": verdict, "reason": reason, "evidence_source": evidence_mode}
     if evidence is not None:
         payload["evidence"] = evidence
     if must_beat is not None:
         payload["must_beat"] = must_beat
+    if unknown_blocker:
+        payload["unknown_blocker"] = unknown_blocker
     return payload
 
 
