@@ -1,0 +1,311 @@
+{
+  "repo_id": "samuelarogbonlo/knetvis",
+  "gate1": {
+    "verdict": "CANDIDATE",
+    "total": 41.67,
+    "flags": [
+      "LLM_FALLBACK",
+      "BUDGET_EXHAUSTED",
+      "UNSUPPORTED"
+    ],
+    "run_id": "judge-20261026205414",
+    "run_hash": "26bab56e6000ffabea1a35917075e255bcd0c058c812bf3cec9ca91df106f338"
+  },
+  "drafted_by": "model",
+  "requested_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "served_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "positioning": {
+    "target_user": "Kubernetes platform engineers and security teams who manage Network Policies",
+    "job": "visualize and test Kubernetes Network Policies from the CLI",
+    "gap": "maintained free OSS alternatives lack a CLI that both visualizes policies and tests connectivity between pods; browser tools (artturik, calico-visualiser) are unmaintained; illuminatio is archived; kubectl-reach only tests connectivity from a live pod, not policy validation",
+    "evidence": [
+      "candidate:samuelarogbonlo/knetvis",
+      "assessment:differentiation",
+      "must_beat:artturik/network-policy-viewer",
+      "must_beat:inovex/illuminatio",
+      "must_beat:amdadulbari/kubectl-reach"
+    ]
+  },
+  "stages": [
+    {
+      "stage": "REVIVE",
+      "items": [
+        {
+          "title": "Restore CLI visualize and test commands against test-policy.yaml",
+          "why": "The candidate claims to be a CLI tool for visualizing and testing Network Policies; the repo includes a test policy and test directory but the README is truncated, so the round-trip must be verified.",
+          "acceptance": "Running `knetvis` against `test-policy.yaml` produces a visualization output and test results without errors.",
+          "quote": "A powerful CLI tool for visualizing and testing Kubernetes Network Policies.",
+          "evidence": [
+            "candidate:samuelarogbonlo/knetvis",
+            "repo:tree"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "OPTIMISE",
+      "items": [
+        {
+          "title": "Pin and update Python dependencies; ensure CI passes on Python 3.8+",
+          "why": "The project declares Python 3.8+ support and provides requirements files; dependency drift can break the revive.",
+          "acceptance": "CI workflow passes on Python 3.8, 3.9, 3.10, 3.11, 3.12 with pinned dependencies in requirements.txt and requirements-dev.txt.",
+          "quote": "Python 3.8+",
+          "evidence": [
+            "candidate:samuelarogbonlo/knetvis",
+            "repo:tree"
+          ]
+        },
+        {
+          "title": "Expand test coverage for visualize and test code paths",
+          "why": "The repo has a tests/ directory and test-policy.yaml; coverage ensures the revive stays verifiable.",
+          "acceptance": "pytest coverage >= 80% for src/ modules; new tests exercise cross-namespace policy visualization.",
+          "quote": "Structured codebase with 6 non-boilerplate source paths (ci-check.sh, images/Real-demo.gif, setup.py). Solid working baseline.",
+          "evidence": [
+            "repo:tree",
+            "assessment:feasibility"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "UPGRADE",
+      "items": [
+        {
+          "title": "Implement cross-namespace connection visualization",
+          "why": "Differentiation identifies 'Show cross-namespace connections' as a capability not covered by any maintained free OSS alternative; must_beat alternatives (artturik, gerald1248) are unmaintained browser tools.",
+          "acceptance": "Given a multi-namespace NetworkPolicy fixture, `knetvis visualize` renders namespace-scoped edges and labels them in the output.",
+          "quote": "Missing capabilities: 'Visualize network policies', 'Test connectivity between pods', 'Validate network policy files', 'Show cross-namespace connections', 'Generate visualizations of network policies' (5 not covered by any maintained free OSS alternative).",
+          "evidence": [
+            "assessment:differentiation",
+            "must_beat:artturik/network-policy-viewer",
+            "must_beat:gerald1248/k8s-network-policy-viewer"
+          ]
+        },
+        {
+          "title": "Add network policy file validation (lint) command",
+          "why": "Differentiation lists 'Validate network policy files' as a missing capability in maintained alternatives; the candidate can own this gap.",
+          "acceptance": "New `knetvis validate` command exits non-zero and reports errors for invalid NetworkPolicy YAML (missing required fields, bad selectors).",
+          "quote": "Missing capabilities: 'Visualize network policies', 'Test connectivity between pods', 'Validate network policy files', 'Show cross-namespace connections', 'Generate visualizations of network policies' (5 not covered by any maintained free OSS alternative).",
+          "evidence": [
+            "assessment:differentiation",
+            "must_beat:inovex/illuminatio"
+          ]
+        },
+        {
+          "title": "Add pod-to-pod connectivity test simulation (offline)",
+          "why": "Differentiation lists 'Test connectivity between pods' as uncovered; kubectl-reach only tests from a live pod via ephemeral container, not offline policy simulation.",
+          "acceptance": "New `knetvis test` command takes a policy set and pod labels, outputs allowed/denied matrix without a running cluster.",
+          "quote": "tests network connectivity from an existing Pod to a target (IP, DNS, or Service) by injecting an ephemeral debug container",
+          "evidence": [
+            "assessment:differentiation",
+            "must_beat:amdadulbari/kubectl-reach"
+          ]
+        }
+      ]
+    }
+  ],
+  "must_beat": [
+    {
+      "alternative": "artturik/network-policy-viewer",
+      "how_to_win": "Provide a maintained CLI that visualizes policies and tests connectivity offline, whereas the alternative is an unmaintained browser tool (last update 2024-11-28).",
+      "evidence": [
+        "must_beat:artturik/network-policy-viewer"
+      ]
+    },
+    {
+      "alternative": "sbulav/calico-policy-visualiser",
+      "how_to_win": "Deliver a CLI-first, zero-dependency visualization that works for vanilla Kubernetes NetworkPolicies, not just Calico, and is actively maintained.",
+      "evidence": [
+        "must_beat:web:https://github.com/sbulav/calico-policy-visualiser"
+      ]
+    },
+    {
+      "alternative": "inovex/illuminatio",
+      "how_to_win": "Offer active maintenance and a simpler CLI workflow (no cluster scan required for validation), while illuminatio is archived.",
+      "evidence": [
+        "must_beat:inovex/illuminatio"
+      ]
+    },
+    {
+      "alternative": "gerald1248/k8s-network-policy-viewer",
+      "how_to_win": "Provide a maintained CLI with cross-namespace visualization; the alternative is unmaintained since 2023 and only outputs JSON/YAML/dot.",
+      "evidence": [
+        "must_beat:gerald1248/k8s-network-policy-viewer"
+      ]
+    },
+    {
+      "alternative": "amdadulbari/kubectl-reach",
+      "how_to_win": "Enable offline policy simulation and validation, not just live connectivity tests via ephemeral containers.",
+      "evidence": [
+        "must_beat:amdadulbari/kubectl-reach"
+      ]
+    }
+  ],
+  "risks": [
+    "No external demand signals (demand_evidence score 0) — adoption may stay low.",
+    "Zero moat (moat score 0) — any contributor can replicate the CLI approach.",
+    "Candidate README is truncated; actual feature set unknown — revive may uncover missing core functionality.",
+    "All must_beat alternatives are unmaintained or partial overlap; market may not perceive a strong need for another tool."
+  ],
+  "organised": {
+    "status": "verifiable",
+    "detail": "A test path is visible in the root, so gate 2's execution loop can verify the REVIVE stage.",
+    "manifests": [
+      "pyproject.toml",
+      "requirements.txt",
+      "setup.py"
+    ],
+    "test_paths": [
+      "tests"
+    ]
+  },
+  "rejected_items": [],
+  "evidence": [
+    {
+      "id": "candidate:samuelarogbonlo/knetvis",
+      "kind": "candidate",
+      "url": "https://github.com/samuelarogbonlo/knetvis",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://github.com/artturik/network-policy-viewer",
+      "kind": "prior",
+      "url": "https://github.com/artturik/network-policy-viewer",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://kubernetes.io/blog/2017/10/enforcing-network-policies-in-kubernetes",
+      "kind": "prior",
+      "url": "https://kubernetes.io/blog/2017/10/enforcing-network-policies-in-kubernetes",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://github.com/sbulav/calico-policy-visualiser",
+      "kind": "prior",
+      "url": "https://github.com/sbulav/calico-policy-visualiser",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://k8studio.io/blogs/best-kubernetes-cluster-visualization-tools-2026/",
+      "kind": "prior",
+      "url": "https://k8studio.io/blogs/best-kubernetes-cluster-visualization-tools-2026/",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:artturik/network-policy-viewer",
+      "kind": "prior",
+      "url": "https://github.com/artturik/network-policy-viewer",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:amdadulbari/kubectl-reach",
+      "kind": "prior",
+      "url": "https://github.com/amdadulbari/kubectl-reach",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:inovex/illuminatio",
+      "kind": "prior",
+      "url": "https://github.com/inovex/illuminatio",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:gerald1248/k8s-network-policy-viewer",
+      "kind": "prior",
+      "url": "https://github.com/gerald1248/k8s-network-policy-viewer",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://github.com/artturik/network-policy-viewer",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://github.com/sbulav/calico-policy-visualiser",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://k8studio.io/blogs/best-kubernetes-cluster-visualization-tools-2026/",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:artturik/network-policy-viewer",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:inovex/illuminatio",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:gerald1248/k8s-network-policy-viewer",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:amdadulbari/kubectl-reach",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://kubernetes.io/blog/2017/10/enforcing-network-policies-in-kubernetes",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:problem_severity",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:demand_evidence",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:differentiation",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:feasibility",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:productization_path",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:moat",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "repo:tree",
+      "kind": "repo",
+      "url": "https://github.com/samuelarogbonlo/knetvis",
+      "content_hash": ""
+    }
+  ],
+  "run_id": "rescue-samuelarogbonlo__knetvis-20261027T204407Z",
+  "run_hash": "c36efde5526a2c082912e628e22d3babb6e5a0e96521d767794cb34c34aa9016"
+}
