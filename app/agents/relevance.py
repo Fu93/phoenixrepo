@@ -145,6 +145,8 @@ NEMOTRON_POLICIES = ("label", "require", "fallback-nvidia")
 DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 REASONING_EXCERPT_CHARS = 1200
 _THINK_RE = re.compile(r"<think>(.*?)</think>", re.S | re.I)
+# Nightshift Ultra closes inline reasoning with a lone </think> and no opening tag.
+_THINK_LONE_CLOSE_RE = re.compile(r"^(.*?)</think>", re.S | re.I)
 
 
 def _env_text(*names: str) -> str:
@@ -171,8 +173,10 @@ def nemotron_policy_from_env() -> str:
 
 
 def reasoning_excerpt(message: Any, text: str) -> str:
-    """The model's own reasoning when the reply carries it: a reasoning field or a <think> block.
+    """The model's own reasoning when the reply carries it.
 
+    A separate reasoning field, a complete <think>...</think> pair, or text before
+    a lone </think> with no opening tag. The text after that tag stays the answer.
     Kept short (head and tail) for the trace. It is shown as the model's account; the verdict
     still stands or falls on the verbatim quote checks, not on this text.
     """
@@ -187,6 +191,10 @@ def reasoning_excerpt(message: Any, text: str) -> str:
         match = _THINK_RE.search(text)
         if match:
             raw = match.group(1)
+        else:
+            lone = _THINK_LONE_CLOSE_RE.search(text)
+            if lone:
+                raw = lone.group(1)
     raw = raw.strip()
     if len(raw) <= REASONING_EXCERPT_CHARS:
         return raw

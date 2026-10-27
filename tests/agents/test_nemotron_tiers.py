@@ -196,6 +196,29 @@ def test_reasoning_excerpt_reads_think_blocks_and_keeps_head_and_tail():
     assert out.startswith("a") and out.endswith("b") and "MIDDLE" not in out and "..." in out
 
 
+def test_reasoning_excerpt_accepts_a_lone_closing_think_tag():
+    """Nightshift Ultra puts reasoning in content and closes it with </think> only."""
+    from app.llm.parsing import parse_model_json
+
+    content = 'The quote is on the docs page.</think>{"verdict": "ALREADY_EXISTS"}'
+    assert reasoning_excerpt({}, content) == "The quote is on the docs page."
+    assert "ALREADY_EXISTS" not in reasoning_excerpt({}, content)
+    # The JSON answer after the tag is still what the parser returns. This extractor
+    # does not change that parse.
+    assert parse_model_json(content)["verdict"] == "ALREADY_EXISTS"
+    draft_then_answer = 'draft {"decision": "NO_GO"}</think>{"verdict": "ALREADY_EXISTS"}'
+    assert parse_model_json(draft_then_answer)["decision"] == "NO_GO"
+    # A complete pair still yields only the inside, not a preamble and not the JSON answer.
+    paired = 'preamble <think>check the quote</think>{"verdict": "CANDIDATE"}'
+    assert reasoning_excerpt({}, paired) == "check the quote"
+    # A separate field still wins over tags in the content.
+    assert reasoning_excerpt({"reasoning_content": "from the field"}, content) == "from the field"
+    assert reasoning_excerpt({"reasoning": "from reasoning"}, content) == "from reasoning"
+    # No think tags yields none.
+    assert reasoning_excerpt({}, '{"verdict": "CANDIDATE"}') == ""
+    assert reasoning_excerpt({}, "plain prose with no tags") == ""
+
+
 def test_invalid_policy_is_rejected(tmp_path: Path):
     with pytest.raises(ValueError):
         RelevanceClient(cache_dir=tmp_path, nemotron_policy="maybe")
