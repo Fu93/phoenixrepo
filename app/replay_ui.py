@@ -80,7 +80,7 @@ def replay_payload(replay_id: str) -> dict[str, Any]:
             if line.strip()
         ]
         steps = [step_from_event(event, index) for index, event in enumerate(events, start=1)]
-        verification = _verify_replay(trace_path, record)
+        verification = _verify_replay(trace_path, record, replay_id)
     else:
         verification = {
             "ok": False,
@@ -139,6 +139,14 @@ def verdict_reasoning(events: list[dict[str, Any]], repo_id: str) -> dict[str, A
     return found
 
 
+# Same fact as the replay page and the README: a SAMPLE file is sealed in this
+# repository over committed copies. It is not a trace copied from a run.
+SAMPLE_NOTE = (
+    "A SAMPLE replay is a reconstruction sealed over committed files, not a trace copied from a run."
+)
+SAMPLE_DETAIL = "sample, not a recorded run: hash not compared"
+
+
 def recorded_run_hash(record: dict[str, Any]) -> str | None:
     """``recorded_run.run_hash`` when record.json has a non-empty string. Otherwise none."""
 
@@ -152,13 +160,44 @@ def recorded_run_hash(record: dict[str, Any]) -> str | None:
     return value or None
 
 
-def _verify_replay(trace_path: Path, record: dict[str, Any]) -> dict[str, Any]:
-    """Check the trace against ``recorded_run.run_hash`` when that field is set.
+def manifest_trace_class(replay_id: str) -> str | None:
+    """``trace_class`` from ``data/replays/manifest.json`` for this id, when listed."""
 
-    A missing hash is not a pass: the page has nothing outside the file to compare.
-    A chain that still matches after a re-seal fails when the new run hash differs.
+    path = REPLAYS_ROOT / "manifest.json"
+    if not path.is_file():
+        return None
+    try:
+        listed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    for row in listed.get("replays") or []:
+        if isinstance(row, dict) and row.get("id") == replay_id:
+            value = row.get("trace_class")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+def _verify_replay(trace_path: Path, record: dict[str, Any], replay_id: str) -> dict[str, Any]:
+    """Check a RECORDED trace against ``recorded_run.run_hash`` when that field is set.
+
+    A SAMPLE entry in the manifest is not compared. The page shows a neutral line,
+    not a pass and not a failure. A RECORDED replay with no hash is not a pass.
+    A RECORDED chain that still matches after a re-seal fails when the new run hash differs.
     """
 
+    trace_class = manifest_trace_class(replay_id)
+    if trace_class is None:
+        raw = record.get("trace_class")
+        trace_class = raw.strip() if isinstance(raw, str) else ""
+    if trace_class == "SAMPLE":
+        return {
+            "ok": False,
+            "state": "sample",
+            "compared": False,
+            "detail": SAMPLE_DETAIL,
+            "note": SAMPLE_NOTE,
+        }
     expected = recorded_run_hash(record)
     if expected is None:
         chain_ok, chain_detail = verify(trace_path)

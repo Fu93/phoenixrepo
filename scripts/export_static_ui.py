@@ -6,9 +6,10 @@
 
 The page is app/ui/index.html with the replay catalog, every replay payload, and the
 tamper results embedded as JSON. Every value comes from the same functions the server
-uses (app.replay_ui): the hash chain of each trace is verified here at export time
-against recorded_run.run_hash when record.json has one, and the tamper result is the
-real verify_trace result on a one-character copy, computed here.
+uses (app.replay_ui): a RECORDED trace is verified here at export time against
+recorded_run.run_hash when record.json has one. A SAMPLE replay is not compared to
+that hash. The tamper result is the real verify_trace result on a one-character copy,
+computed here.
 The page also embeds exported_at and source_commit (GITHUB_SHA when that is set,
 otherwise git rev-parse HEAD, otherwise the string unknown). When a commit is named,
 the run hash check is anchored to the commit this page was exported from. It does

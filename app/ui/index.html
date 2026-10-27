@@ -134,7 +134,7 @@
   </div>
   <section class="panel chain" id="chain">
     <h2>Hash chain</h2>
-    <p class="muted">Verification uses the same check as <span>scripts/verify_trace.py</span>. When <span>record.json</span> has <span>recorded_run.run_hash</span>, that value is passed as the expected run hash. The chain detects an accidental or partial edit. A file that is edited and re-sealed gets a new run hash and fails this check when that recorded hash is different. When <span>record.json</span> has no recorded run hash, the page says there is no recorded hash to compare and does not show a pass. This button flips one character of a copy and does not re-seal. It does not show the words are true.</p>
+    <p class="muted">Verification uses the same check as <span>scripts/verify_trace.py</span> when the manifest <span>trace_class</span> is RECORDED. When that replay's <span>record.json</span> has <span>recorded_run.run_hash</span>, that value is passed as the expected run hash. The chain detects an accidental or partial edit. A RECORDED file that is edited and re-sealed gets a new run hash and fails this check when that recorded hash is different. A RECORDED replay with no recorded run hash says there is no recorded hash to compare and does not show a pass. A SAMPLE replay is a reconstruction sealed over committed files, not a trace copied from a run. Its line is sample, not a recorded run: hash not compared, which is not a pass or a failure. This button flips one character of a copy and does not re-seal. It does not show the words are true.</p>
     <p id="chain-status">No replay loaded.</p>
     <p id="export-note" class="muted"></p>
     <button type="button" id="tamper">Flip one character and verify the copy</button>
@@ -354,7 +354,12 @@
     var check = replay.verification || {};
     var recorded = replay.recorded_run;
     var status = document.getElementById("chain-status");
-    if (check.state === "no_recorded_hash") {
+    if (check.state === "sample") {
+      var sampleLine = check.detail || "sample, not a recorded run: hash not compared";
+      var sampleNote = check.note || "A SAMPLE replay is a reconstruction sealed over committed files, not a trace copied from a run.";
+      status.textContent = sampleLine + " " + sampleNote;
+      status.className = "muted";
+    } else if (check.state === "no_recorded_hash") {
       status.textContent = check.detail || "no recorded hash to compare";
       status.className = "";
     } else {
