@@ -1,18 +1,28 @@
 """Rule B holds a CANDIDATE when a full-overlap web alternative was not checked.
 
-The hold is a safety mechanism. It does not change a blocker verdict, ALREADY_EXISTS,
-or a row that already has a proven non-match. No network and no model calls.
+The hold is off unless PHOENIX_UNKNOWN_BLOCKER_REVIEW is 1, true, yes, on, or enabled.
+It does not change a blocker verdict, ALREADY_EXISTS, or a row that already has a proven
+non-match. No network and no model calls.
 """
 
 from __future__ import annotations
 
 import json
 from datetime import date, timedelta
+from pathlib import Path
 
+import httpx
 import pytest
 
 from app.agents.blocker import evaluate_blocker
-from app.agents.relevance import RelevanceClient, judge_discovery
+from app.agents.relevance import (
+    RelevanceClient,
+    filter_relevant_alternatives,
+    judge_discovery,
+    search_prior_art,
+    unknown_blocker_review_enabled,
+)
+from app.tools import Budget, GitHubTool, NpmTool, PyPiTool, ToolBox, WebSearchTool
 
 AS_OF = date(2026, 10, 27)
 RECENT = (date.today() - timedelta(days=10)).isoformat()
@@ -86,7 +96,8 @@ def _judge(tmp_path, row: dict, *, verdict: str = "CANDIDATE", trace=None, prior
     )
 
 
-def test_unknown_only_full_web_row_needs_review(tmp_path):
+def test_unknown_only_full_web_row_needs_review(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOENIX_UNKNOWN_BLOCKER_REVIEW", "1")
     trace = _Trace()
     judged = _judge(tmp_path, _web(), trace=trace)
     assert judged[0] == "NEEDS_REVIEW"
@@ -213,6 +224,194 @@ def test_switch_off_restores_candidate(tmp_path, monkeypatch):
     assert not [event for event in trace.events if event.get("action") == "UNKNOWN_BLOCKER_FACTS"]
 
 
+def test_default_off_matches_pre_pr_verdicts(tmp_path, monkeypatch):
+    """Unset leaves the verdicts these rows had before Rule B existed."""
+    monkeypatch.delenv("PHOENIX_UNKNOWN_BLOCKER_REVIEW", raising=False)
+    assert unknown_blocker_review_enabled() is False
+
+    unknown = _judge(tmp_path, _web())
+    assert unknown[0] == "CANDIDATE"
+    assert unknown.unknown_blocker is None
+    assert "UNKNOWN_BLOCKER_FACTS" not in unknown[1]
+    assert unknown.must_beat
+    assert "did not block" in unknown.must_beat[0]["reason"]
+
+    proven_rows = [
+        _web(pushed_at="2020-01-01"),
+        _web(archived=True),
+        _web(page_kind="listicle"),
+        _web(overlap="partial"),
+        _web(same_job=False),
+        _web(
+            description="Notes sync is paid-only and requires a paid plan.",
+            excerpt="Notes sync is paid-only and requires a paid plan.",
+            quotes=["Notes sync is paid-only and requires a paid plan."],
+        ),
+    ]
+    for row in proven_rows:
+        judged = _judge(tmp_path, row)
+        assert judged[0] == "CANDIDATE"
+        assert judged.unknown_blocker is None
+
+    named = _judge(
+        tmp_path,
+        _web(),
+        verdict="ALREADY_EXISTS",
+        alternative_repo="web:https://example.com/folder-sync",
+        alternative_quote=QUOTE,
+    )
+    assert named[0] == "CANDIDATE"
+    assert named.unknown_blocker is None
+    assert named.must_beat
+    assert "did not block" in named.must_beat[0]["reason"]
+
+    own = {
+        "alternative_id": "acme/widget",
+        "url": "https://github.com/acme/widget",
+        "same_problem": True,
+        "overlap": "full",
+        "description": PROBLEM,
+        "quotes": [PROBLEM],
+    }
+    with_own = _judge(
+        tmp_path,
+        _web(),
+        verdict="ALREADY_EXISTS",
+        alternative_repo="acme/widget",
+        alternative_quote=PROBLEM,
+        prior=[own, _web()],
+    )
+    assert with_own[0] == "CANDIDATE"
+    assert "UNKNOWN_BLOCKER_FACTS" not in with_own[1]
+    assert with_own.unknown_blocker is None
+
+    blocked = _judge(tmp_path, _web(), prior=[_mature(), _web()])
+    assert blocked[0] == "ALREADY_EXISTS"
+    assert blocked.unknown_blocker is None
+
+
+@pytest.mark.parametrize("value", ["1", "true", "yes", "on", "enabled"])
+def test_explicit_truthy_flag_holds_the_unknown_web_row(tmp_path, monkeypatch, value):
+    monkeypatch.setenv("PHOENIX_UNKNOWN_BLOCKER_REVIEW", value)
+    assert unknown_blocker_review_enabled() is True
+    judged = _judge(tmp_path, _web())
+    assert judged[0] == "NEEDS_REVIEW"
+    assert "UNKNOWN_BLOCKER_FACTS" in judged[1]
+    assert judged.unknown_blocker["fired"] is True
+
+
+@pytest.mark.parametrize("value", ["", "0", "false", "off", "no", "disabled", "maybe"])
+def test_non_truthy_values_leave_the_pre_pr_candidate(tmp_path, monkeypatch, value):
+    monkeypatch.setenv("PHOENIX_UNKNOWN_BLOCKER_REVIEW", value)
+    assert unknown_blocker_review_enabled() is False
+    judged = _judge(tmp_path, _web())
+    assert judged[0] == "CANDIDATE"
+    assert judged.unknown_blocker is None
+
+
+def _judge_ytkb_fixtures(tmp_path):
+    """The committed prior-art fixtures used by the ytkb regression, judged once."""
+    fixtures_dir = Path(__file__).resolve().parent.parent / "fixtures" / "prior_art"
+    candidate = {
+        "repo_id": "SergioMendolia/ytkb",
+        "html_url": "https://github.com/SergioMendolia/ytkb",
+        "description": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+        "readme_excerpt": "A CLI application for syncing YouTrack knowledge base articles to local markdown files, edit them in your editor of choice and push them back online.",
+        "core_terms": "youtrack, markdown, knowledge base",
+    }
+    problem_statement = {
+        "problem": "Developers and technical writers cannot easily edit and sync YouTrack knowledge base articles offline in their local markdown editor.",
+        "target_user": "Developers and technical writers using YouTrack knowledge base",
+        "category": "developer-tools",
+        "search_queries": ["youtrack cli", "youtrack markdown export"],
+    }
+
+    def mock_transport_fn(request: httpx.Request) -> httpx.Response:
+        url_str = str(request.url)
+        if "duckduckgo.com" in url_str:
+            return httpx.Response(200, text=(fixtures_dir / "ddg_search_results.html").read_text(encoding="utf-8"))
+        if "registry.npmjs.org" in url_str:
+            return httpx.Response(200, text=(fixtures_dir / "npm_search_results.json").read_text(encoding="utf-8"))
+        if "pypi.org" in url_str:
+            return httpx.Response(200, text=(fixtures_dir / "pypi_search_results.html").read_text(encoding="utf-8"))
+        if "api.github.com/search/repositories" in url_str:
+            return httpx.Response(200, json={"items": []})
+        return httpx.Response(404)
+
+    toolbox = ToolBox(
+        tools={
+            "github": GitHubTool(transport=httpx.MockTransport(mock_transport_fn)),
+            "npm": NpmTool(transport=httpx.MockTransport(mock_transport_fn)),
+            "pypi": PyPiTool(transport=httpx.MockTransport(mock_transport_fn)),
+            "web_search": WebSearchTool(transport=httpx.MockTransport(mock_transport_fn)),
+        },
+        budget=Budget(max_calls=20, max_seconds=30.0),
+    )
+    search_results = search_prior_art(candidate=candidate, queries=["youtrack cli"], toolbox=toolbox)
+
+    def fake_llm(prompt: str, sys_prompt: str) -> str:
+        if "relevance_alternative" in sys_prompt or "Alternative Repository" in prompt:
+            return json.dumps(
+                {
+                    "same_problem": True,
+                    "overlap": "full",
+                    "reason": "yt-cli provides full round trip markdown editing and sync for YouTrack articles.",
+                    "quotes": ["save it to a local markdown file"],
+                }
+            )
+        if "relevance_discovery" in sys_prompt or "Candidate Repository: SergioMendolia/ytkb" in prompt:
+            return json.dumps(
+                {
+                    "verdict": "ALREADY_EXISTS",
+                    "reason": "yt-cli already exists and covers full markdown round trip for YouTrack articles.",
+                    "problem_quote": "syncing YouTrack knowledge base articles to local markdown files",
+                    "alternative_repo": "yt-cli",
+                    "alternative_quote": "save it to a local markdown file",
+                }
+            )
+        return json.dumps({"verdict": "NO_GO", "reason": "unknown"})
+
+    client = RelevanceClient(cache_dir=tmp_path / "cache", mock_handler=fake_llm)
+    problem_alts = filter_relevant_alternatives(
+        problem_statement=problem_statement,
+        candidate_repo_id=candidate["repo_id"],
+        search_results=search_results,
+        client=client,
+    )
+    return judge_discovery(
+        candidate=candidate,
+        prior_rows=[],
+        demand_rows=[],
+        client=client,
+        problem_alternatives=problem_alts,
+        source_status=search_results.source_status,
+        source_counts=search_results.source_counts,
+        insufficient_coverage=search_results.insufficient_coverage,
+    )
+
+
+def test_ytkb_fixtures_keep_the_pre_pr_candidate_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("PHOENIX_UNKNOWN_BLOCKER_REVIEW", raising=False)
+    judged = _judge_ytkb_fixtures(tmp_path)
+    assert judged[0] == "CANDIDATE"
+    assert judged[0] != "NEEDS_REVIEW"
+    assert judged.unknown_blocker is None
+    assert "UNKNOWN_BLOCKER_FACTS" not in judged[1]
+    assert judged.must_beat
+    assert any("yt-cli" in str(item.get("alternative")) for item in judged.must_beat)
+    assert "did not block" in judged.must_beat[0]["reason"]
+
+
+def test_ytkb_fixtures_need_review_when_the_flag_is_on(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOENIX_UNKNOWN_BLOCKER_REVIEW", "1")
+    judged = _judge_ytkb_fixtures(tmp_path)
+    assert judged[0] == "NEEDS_REVIEW"
+    assert "UNKNOWN_BLOCKER_FACTS" in judged[1]
+    assert judged.unknown_blocker["fired"] is True
+    assert judged.must_beat
+    assert "did not block" in judged.must_beat[0]["reason"]
+
+
 @pytest.mark.parametrize(
     "row",
     [
@@ -284,7 +483,8 @@ def test_unverified_quote_does_not_downgrade(tmp_path):
     assert judged[0] == "CANDIDATE"
 
 
-def test_must_beat_path_is_held_for_review(tmp_path):
+def test_must_beat_path_is_held_for_review(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOENIX_UNKNOWN_BLOCKER_REVIEW", "on")
     judged = _judge(
         tmp_path,
         _web(),
@@ -314,7 +514,8 @@ def test_own_identity_alone_stays_candidate(tmp_path):
     assert judged.unknown_blocker is None
 
 
-def test_own_identity_path_still_applies_rule_b(tmp_path):
+def test_own_identity_path_still_applies_rule_b(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOENIX_UNKNOWN_BLOCKER_REVIEW", "true")
     own = {
         "alternative_id": "acme/widget",
         "url": "https://github.com/acme/widget",

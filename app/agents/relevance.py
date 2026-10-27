@@ -1666,20 +1666,24 @@ def broaden_queries(queries: list[str], category: str = "", candidate_repo_id: s
     return dedup_broader
 
 
-# Rule B safety hold. A full-overlap non-forge web alternative whose blocker facts were
-# never established must not auto-pass. Default on. Set to 0, off, false, or no to restore
-# the previous CANDIDATE verdict for a comparison. This does not rescore a finished run.
+# Rule B safety hold. Opt-in. Unset leaves every verdict as it was before this change.
+# Set PHOENIX_UNKNOWN_BLOCKER_REVIEW to 1, true, yes, on, or enabled to hold a CANDIDATE
+# when a full-overlap non-forge web alternative has only unknown blocker facts.
+# This is an unvalidated post-v3 change. It is not in any reported number.
 PHOENIX_UNKNOWN_BLOCKER_REVIEW = "PHOENIX_UNKNOWN_BLOCKER_REVIEW"
-_UNKNOWN_BLOCKER_REVIEW_OFF = frozenset({"0", "false", "off", "no", "disabled"})
+_UNKNOWN_BLOCKER_REVIEW_ON = frozenset({"1", "true", "yes", "on", "enabled"})
 _UNKNOWN_FIELD_ORDER = ("push/release date", "host fetch", "stars", "licence/free tier")
 
 
 def unknown_blocker_review_enabled() -> bool:
-    """True unless ``PHOENIX_UNKNOWN_BLOCKER_REVIEW`` is set to an off value. Unset means on."""
+    """True only when ``PHOENIX_UNKNOWN_BLOCKER_REVIEW`` is an explicit truthy value.
+
+    Unset, blank, and every other string leave the pre-change verdicts in place.
+    """
     raw = os.environ.get(PHOENIX_UNKNOWN_BLOCKER_REVIEW)
     if raw is None or not str(raw).strip():
-        return True
-    return str(raw).strip().lower() not in _UNKNOWN_BLOCKER_REVIEW_OFF
+        return False
+    return str(raw).strip().lower() in _UNKNOWN_BLOCKER_REVIEW_ON
 
 
 def _ordered_unknown_fields(fields: list[str]) -> list[str]:
@@ -1824,8 +1828,9 @@ def judge_discovery(
     Verifies alternative_repo against the union of prior_rows and problem_alternatives.
     Falls back to phrase/keyword decide_discovery when no RelevanceClient is configured.
     Enforces that absence is not evidence: insufficient coverage blocks CANDIDATE verdict.
-    Rule B (``PHOENIX_UNKNOWN_BLOCKER_REVIEW``, default on) holds a CANDIDATE for review
-    when a full-overlap non-forge web alternative has only unknown blocker facts. It does
+    Rule B (``PHOENIX_UNKNOWN_BLOCKER_REVIEW``, default off) holds a CANDIDATE for review
+    when a full-overlap non-forge web alternative has only unknown blocker facts. It applies
+    only when that variable is ``1``, ``true``, ``yes``, ``on``, or ``enabled``. It does
     not change ALREADY_EXISTS and it does not produce NEEDS_PRIOR_ART.
     """
     from app.agents.market_filter import decide_discovery
