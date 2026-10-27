@@ -304,14 +304,15 @@ def _merge_runs(check_id: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     return _check(check_id, status, detail, **extra)
 
 
-def audit_check(repo: Path, runner: Runner, timeout: int, tools_present: ToolLookup | None = None) -> dict[str, Any]:
+def audit_check(repo: Path, runner: Runner, timeout: int, tools_present: ToolLookup | None = None, lookup_runner: Runner | None = None) -> dict[str, Any]:
     present = tools_present or shutil.which
+    lookup = lookup_runner or runner  # registry audits need the network; the caller may give them a network phase
     rows: list[dict[str, Any]] = []
     applicable = False
     if (repo / "package.json").is_file():
         applicable = True
         try:
-            result = runner("npm audit --omit=dev --json", repo, timeout)
+            result = lookup("npm audit --omit=dev --json", repo, timeout)
             output = str(getattr(result, "output", "") or "")
             code = int(getattr(result, "code", 1))
         except Exception as exc:  # noqa: BLE001
@@ -324,7 +325,7 @@ def audit_check(repo: Path, runner: Runner, timeout: int, tools_present: ToolLoo
             rows.append(_check("audit", "unavailable", "pip-audit is not installed"))
         else:
             try:
-                result = runner("pip-audit -f json", repo, timeout)
+                result = lookup("pip-audit -f json", repo, timeout)
                 output = str(getattr(result, "output", "") or "")
                 code = int(getattr(result, "code", 1))
             except Exception as exc:  # noqa: BLE001
@@ -462,6 +463,7 @@ def run_quality_gate(
     is_protected: Callable[[str], bool] | None = None,
     max_files: int = MAX_DIFF_FILES,
     max_lines: int = MAX_DIFF_LINES,
+    lookup_runner: Runner | None = None,
 ) -> list[dict[str, Any]]:
     """Run every quality check. The list always contains one row per check id."""
     if is_protected is None:
@@ -484,10 +486,10 @@ def run_quality_gate(
         checks.append(_merge_runs("build", [_build_check(runner, repo, cmd, check_timeout) for cmd in build_cmds]))
     else:
         checks.append(_check("build", "skipped", "no npm build script, Python build-system, or go.mod found"))
-    checks.append(audit_check(repo, runner, check_timeout, tools_present))
+    checks.append(audit_check(repo, runner, check_timeout, tools_present, lookup_runner=lookup_runner))
     checks.append(smoke_check(repo, runner, smoke_timeout))
     checks.append(diff_scope_check(changed_files or [], lines_changed, prd, is_protected, max_files=max_files, max_lines=max_lines))
-    checks.append(deps_freshness_check(repo, runner, check_timeout))
+    checks.append(deps_freshness_check(repo, lookup_runner or runner, check_timeout))
     return checks
 
 

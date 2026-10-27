@@ -44,8 +44,13 @@ python -m pytest -m docker                             # real-Docker tests (skip
   to `bridge` (install) or runs `docker network disconnect` (every other phase, and any unknown or missing phase).
   The command text is never inspected. If the network state cannot be set, the command is not run.
   npm projects: `npm install`/`npm ci` run in the install phase with network; `npm test` runs offline.
-  The loop's own dependency lookups (`npm outdated`, `pip list --outdated`, version probes) and audits run in a
-  non-install phase, so in Docker mode they have no network and will report nothing or "unavailable".
+  The loop's registry lookups are explicit install-phase calls (`_run_lookup`): `npm outdated`, `pip list --outdated`,
+  the `npm view` / `pip index versions` version probes, and the quality gate's `npm audit` / `pip-audit` /
+  freshness commands. They are fixed commands, they feed the same code as before, and no verdict logic changed.
+  If a lookup could not run or could not reach the registry (exit 125, or a network error in its output), the
+  sandboxed loop records a `REVIVE_LOOKUP_UNAVAILABLE` trace event ("dependency lookup unavailable in the sandbox;
+  nothing was derived from it"). Host-mode traces do not get this event. Install-phase network access is also
+  available to those lookups, which run in the same container as the clone.
 - **Timeouts.** A timed-out command kills every process in the container except PID 1 (`kill -9 -1`) and the
   container, with its venv, carries on. If that fails (for example the pids limit blocks the exec) the container is
   removed and a fresh one with an empty venv is started for the next command.

@@ -54,7 +54,7 @@ def test_offline_isolation_checks_all_pass(smoke):
 
 
 def test_install_then_test_flow_works_when_the_machine_is_online(smoke):
-    flow = ("network_available_in_install_phase", "pip_install_into_venv_in_install_phase", "installed_package_importable_in_test_phase", "pytest_in_sandbox_no_network_expected_results", "npm_install_in_install_phase", "npm_test_offline_passes", "node_staged_tree_sees_installed_modules")
+    flow = ("network_available_in_install_phase", "pip_install_into_venv_in_install_phase", "installed_package_importable_in_test_phase", "pytest_in_sandbox_no_network_expected_results", "pip_outdated_lookup_works_in_install_phase", "npm_version_probe_works_in_install_phase", "npm_version_probe_unavailable_without_network", "npm_install_in_install_phase", "npm_test_offline_passes", "node_staged_tree_sees_installed_modules")
     if smoke["network_available_in_install_phase"].status == "SKIP":
         pytest.skip(smoke["network_available_in_install_phase"].detail)
     assert {name: smoke[name].status for name in flow} == {name: "PASS" for name in flow}

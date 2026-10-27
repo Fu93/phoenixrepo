@@ -226,6 +226,12 @@ def ensure_env(
     return result
 
 
+def lookup_unavailable(result: Any) -> bool:
+    """True when a registry lookup did not run or could not reach the registry (not merely "nothing outdated")."""
+    code = int(getattr(result, "code", 0) or 0)
+    return code == 125 or (code != 0 and is_environment_failure(str(getattr(result, "output", "") or "")))
+
+
 def version_probe_command(repo: Path, package: str, version: str) -> str:
     """Ask the ecosystem whether this exact version exists. Quoted for the host shell."""
     if (repo / "package.json").is_file():
@@ -1458,6 +1464,21 @@ def _revive_impl(
     def _run_install(cmd: str, cwd: Path, timeout: int) -> CmdResult:
         return _run(cmd, cwd, timeout, phase="install")
 
+    def _run_lookup(cmd: str, cwd: Path, timeout: int) -> CmdResult:
+        """Registry lookups (npm outdated, pip list --outdated, version probes) need the network, so they
+        run in the install phase. Their results feed the same code as before; when a sandboxed lookup
+        could not reach the registry the loop says so in the trace instead of silently seeing no upgrades."""
+        res = _run(cmd, cwd, timeout, phase="install")
+        if phase_aware and lookup_unavailable(res):
+            trace.event(
+                agent_name="builder",
+                action="REVIVE_LOOKUP_UNAVAILABLE",
+                input_summary=cmd,
+                output_summary={"code": res.code, "note": "dependency lookup unavailable in the sandbox; nothing was derived from it", "tail": tail(res.output, 300)},
+                status="unavailable",
+            )
+        return res
+
     def _ensure() -> CmdResult:
         return ensure_env(repo, _run_test, test, trace=trace, timeout=test_timeout, install_timeout=install_timeout, repairs=env_repairs, install_runner=_run_install)
 
@@ -1561,6 +1582,7 @@ def _revive_impl(
             lines_changed=lines,
             prd=prd_obj,
             test_result=test_result,
+            lookup_runner=_run_lookup,
         )
 
     if stopped["phase"]:
@@ -1625,7 +1647,7 @@ def _revive_impl(
                 repo_id,
                 description,
                 baseline,
-                runner=_run,
+                runner=_run_lookup,
                 run_dir=run_dir,
                 timeout=min(20, int(test_timeout or 20)),
             )
@@ -1675,7 +1697,7 @@ def _revive_impl(
 
     auto_upgrades: list[dict[str, Any]] = []
     if baseline.ok:
-        auto_upgrades = deterministic_upgrade_items(repo, _run, min(60, test_timeout))
+        auto_upgrades = deterministic_upgrade_items(repo, _run_lookup, min(60, test_timeout))
     if baseline.ok and not work_items and not auto_upgrades:
         verified = qg.verified_criteria(prd, before)
         _emit_quality(before, verified)
@@ -1752,7 +1774,7 @@ def _revive_impl(
             history.append(f"iteration {n}: changed {changed}, test exit {run.code}; output tail: {tail(run.output, 600)}")
 
     if stage_a_ok and not baseline.ok and not stopped["phase"]:
-        auto_upgrades = deterministic_upgrade_items(repo, _run, min(60, test_timeout))
+        auto_upgrades = deterministic_upgrade_items(repo, _run_lookup, min(60, test_timeout))
 
     def _lines_for(snap: dict[str, bytes | None], paths: list[str]) -> int:
         total = 0
@@ -1812,7 +1834,7 @@ def _revive_impl(
         package = str(item.get("package") or "").strip()
         version = str(item.get("version") or item.get("to_version") or "").strip()
         if item.get("source") != "deterministic":
-            skip = _upgrade_skip_reason(repo, _run, item, test_timeout)
+            skip = _upgrade_skip_reason(repo, _run_lookup, item, test_timeout)
             if skip:
                 _record_not_done(item_id, "upgrade", skip)
                 return

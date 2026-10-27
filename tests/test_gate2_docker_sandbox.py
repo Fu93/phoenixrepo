@@ -30,6 +30,9 @@ from app.revive_sandbox import (
 from app.trace_log import HackathonTrace
 from scripts.verify_trace import verify
 from tests.test_revive_loop import _Client, _make_repo, _runner_factory, _valid_prd
+from tests.test_revive_quality import _Client as _QClient
+from tests.test_revive_quality import _node_repo, _passing_after_fix, _prd
+from tests.test_revive_quality import _Trace as _QTrace
 
 
 def _mk(path: Path) -> Path:
@@ -378,7 +381,8 @@ def test_revive_passes_explicit_phases(tmp_path: Path) -> None:
     res = rl.revive(repo, client, HackathonTrace("phase-run", tmp_path), "o/r", runner=PhaseRunner(), heartbeat_s=0)
     assert res.state == "RESURRECTED"
     by_phase = {phase: [c for c, p in calls if p == phase] for phase in {p for _, p in calls}}
-    assert all(cmd.startswith("npm install") or cmd.startswith("npm ci") for cmd in by_phase["install"])
+    assert all(cmd.startswith(("npm install", "npm ci")) or _is_lookup(cmd) for cmd in by_phase["install"])
+    assert any(cmd.startswith("npm install") for cmd in by_phase["install"])
     assert "npm test --silent" in by_phase["test"] and "verify" in by_phase
     assert not any("install" in cmd for phase, cmds in by_phase.items() if phase != "install" for cmd in cmds)
 
@@ -401,6 +405,85 @@ def test_ensure_env_repair_install_uses_the_install_runner(tmp_path: Path) -> No
     res = rl.ensure_env(tmp_path, test_runner, "npm test", install_runner=install_runner)
     assert res.ok
     assert [kind for kind, _ in seen] == ["test", "install", "test"]
+
+
+# ---- dependency lookups ----------------------------------------------------------------------
+
+
+def _upgrade_run(tmp_path: Path, runner, trace=None):
+    repo = _node_repo(tmp_path, "module.exports = () => 2;\n")
+    pkg = json.loads((repo / "package.json").read_text(encoding="utf-8"))
+    pkg["dependencies"] = {"left-pad": "1.2.0"}
+    (repo / "package.json").write_text(json.dumps(pkg), encoding="utf-8")
+    upgrade = {"id": "u1", "package": "left-pad", "version": "1.3.0", "reason": "pin a maintained release"}
+    client = _QClient([_prd(["src.js", "package.json"], upgrades=[upgrade]), {"approve": True, "issues": []}])
+    return rl.revive(repo, client, trace or _QTrace(), "o/r", runner=runner), repo
+
+
+def _is_lookup(cmd: str) -> bool:
+    return "npm view" in cmd or "outdated" in cmd or "npm audit" in cmd or "pip-audit" in cmd
+
+
+def test_dependency_lookups_run_in_the_install_phase_and_verdict_logic_is_unchanged(tmp_path: Path) -> None:
+    calls: list[tuple[str, str]] = []
+
+    class Recording(CommandRunner):
+        def __init__(self, inner):
+            self.inner = inner
+
+        def run(self, cmd, cwd, timeout=300, environ=None, phase="exec"):
+            calls.append((cmd, phase))
+            return self.inner(cmd, cwd, timeout)
+
+    repo_a = _mk(tmp_path / "a")
+    res, _ = _upgrade_run(repo_a, Recording(_passing_after_fix(repo_a)))
+    repo_b = _mk(tmp_path / "b")
+    plain, _ = _upgrade_run(repo_b, _passing_after_fix(repo_b))  # 3-argument runner, as on main
+
+    lookups = [(cmd, phase) for cmd, phase in calls if _is_lookup(cmd)]
+    assert lookups and all(phase == "install" for _, phase in lookups), lookups
+    assert any("npm view" in cmd for cmd, _ in lookups) and any("outdated" in cmd for cmd, _ in lookups)
+    assert not [c for c, ph in calls if ph == "install" and not _is_lookup(c) and not c.startswith(("npm install", "npm ci"))]
+    assert (res.state, [i["status"] for i in res.prd_items_done], res.quality["regressed"]) == (plain.state, [i["status"] for i in plain.prd_items_done], plain.quality["regressed"])
+    assert res.state == "RESURRECTED"
+
+
+def test_unavailable_lookup_is_noted_in_the_trace_and_changes_no_verdict(tmp_path: Path) -> None:
+    def offline(inner):
+        def runner(cmd, cwd, timeout, **kw):
+            if _is_lookup(cmd):
+                return CmdResult(cmd, 125, "docker network connect failed (1); command not run")
+            return inner(cmd, cwd, timeout)
+
+        return runner
+
+    class Phased(CommandRunner):
+        def __init__(self, fn):
+            self.fn = fn
+
+        def run(self, cmd, cwd, timeout=300, environ=None, phase="exec"):
+            return self.fn(cmd, cwd, timeout)
+
+    repo_a = _mk(tmp_path / "a")
+    trace = _QTrace()
+    sandboxed, _ = _upgrade_run(repo_a, Phased(offline(_passing_after_fix(repo_a))), trace)
+    repo_b = _mk(tmp_path / "b")
+    legacy_trace = _QTrace()
+    legacy, _ = _upgrade_run(repo_b, lambda cmd, cwd, timeout: offline(_passing_after_fix(repo_b))(cmd, cwd, timeout), legacy_trace)
+
+    notes = [e for e in trace.events if e["action"] == "REVIVE_LOOKUP_UNAVAILABLE"]
+    assert notes and all(e["status"] == "unavailable" and "unavailable" in e["output_summary"]["note"] for e in notes)
+    assert not [e for e in legacy_trace.events if e["action"] == "REVIVE_LOOKUP_UNAVAILABLE"], "host/legacy runners keep main's trace"
+    assert (sandboxed.state, sandboxed.reason) == (legacy.state, legacy.reason)
+    assert [i["status"] for i in sandboxed.prd_items_done] == [i["status"] for i in legacy.prd_items_done]
+    assert [i.get("reason") for i in sandboxed.prd_items_not_done] == [i.get("reason") for i in legacy.prd_items_not_done]
+
+
+def test_lookup_unavailable_classification() -> None:
+    assert rl.lookup_unavailable(CmdResult("x", 125, "")) is True
+    assert rl.lookup_unavailable(CmdResult("x", 1, "npm ERR! code ENOTFOUND")) is True
+    assert rl.lookup_unavailable(CmdResult("x", 1, '{"left-pad": {"current": "1.2.0"}}')) is False  # npm outdated exits 1 when it finds something
+    assert rl.lookup_unavailable(CmdResult("x", 0, "")) is False
 
 
 # ---- verification seal -----------------------------------------------------------------------

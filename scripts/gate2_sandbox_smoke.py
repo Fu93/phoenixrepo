@@ -179,6 +179,16 @@ def run_smoke(image: str = DEFAULT_IMAGE, node_image: str = NODE_IMAGE) -> list[
             else:
                 add("pip_install_into_venv_in_install_phase", None, "SKIP: needs network")
 
+            if installed:
+                lk = sh("python -m pip list --outdated --format json", phase="install", timeout=120)
+                try:
+                    parsed = json.loads(lk.output[lk.output.index("["):lk.output.rindex("]") + 1])
+                except ValueError:
+                    parsed = None
+                add("pip_outdated_lookup_works_in_install_phase", lk.ok and isinstance(parsed, list), f"exit {lk.code}; {lk.output.strip()[:160]}")
+            else:
+                add("pip_outdated_lookup_works_in_install_phase", None, "SKIP: needs network")
+
             # --- test phase: network cut ---------------------------------------------------
             if installed:
                 imp = sh(f'python -c "import {TINY_PACKAGE};print({TINY_PACKAGE}.__version__)"')
@@ -292,6 +302,15 @@ def run_node_smoke(add, node_image: str, online: bool) -> None:
             nets = _docker("inspect", "-f", "{{json .NetworkSettings.Networks}}", runner.name)
             add("node_network_unreachable_in_test_phase", blocked.ok and blocked.output.strip() == "BLOCKED" and nets.stdout.strip() == "{}", f"probe: {blocked.output.strip()[:200]}; attached networks: {nets.stdout.strip()}")
 
+            if online:
+                lk = sh("npm view ms@2.1.3 version", phase="install", timeout=120)
+                add("npm_version_probe_works_in_install_phase", lk.ok and "2.1.3" in lk.output, f"exit {lk.code}: {lk.output.strip()[-160:]}")
+                # a package that was never queried while online, so the npm cache cannot answer
+                off = sh("npm view is-number@7.0.0 version --fetch-retries=0 --fetch-timeout=10000", phase="test", timeout=90)
+                add("npm_version_probe_unavailable_without_network", not off.ok, f"exit {off.code}: {off.output.strip()[-160:]}")
+            else:
+                add("npm_version_probe_works_in_install_phase", None, "SKIP: this machine has no network")
+                add("npm_version_probe_unavailable_without_network", None, "SKIP: this machine has no network")
             if inst is not None and inst.ok:
                 t = sh("npm test --silent")
                 add("npm_test_offline_passes", t.ok and "node-fixture-ok" in t.output, f"exit {t.code}: {t.output.strip()[-200:]}")
