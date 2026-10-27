@@ -4,6 +4,16 @@ The evidence is the committed traces in `data/replays/`, the case audit in `docs
 The scored v3 set is a regression and audit set: 16 cases, 10 agree, 5 must-reject, 4 false passes. The traces are what make that audit possible. It is not an accuracy benchmark.
 Read each model line as Requested, Served, and Policy. Say Ultra only when Served is `nvidia/nemotron-3-ultra-550b-a55b`. Say nvidia-direct only when the line stores `provider` `nvidia-direct`.
 
+## Why Nemotron
+
+- **Two-tier model routing:** Bulk overlap screening requests Super (`nvidia/nemotron-3-super-120b-a12b`), while the final verdict requests deep (`nvidia/nemotron-3-ultra-550b-a55b`). Upstream Nightshift routing frequently served Ultra; every served ID is cryptographically recorded.
+- **Granular per-step thinking:** In Experiment E3, thinking is enabled exclusively at the verdict step (`enable_thinking=true`, temperature 1.0) while disabled on bulk filtering steps (temperature 0.0), recorded explicitly in the trace lines.
+- **Verbatim quote grounding:** Model claims are verified programmatically (`quote_in_text`) against the competitor's raw web text; unverified quotes are rejected.
+- **Cryptographic identity verification:** Every `served_model` is committed into the SHA-256 hash chain; tampering with a single character breaks chain verification.
+- **Next (Roadmap):** Because Nemotron models have open weights, the entire judge pipeline can run locally and offline on NVIDIA DGX Spark.
+
+For judge questions and trace-grounded Q&A, see [`docs/JUDGES.md`](docs/JUDGES.md).
+
 ## Quickstart
 
 Install the same dependencies CI installs (`.github/workflows/ci.yml` uses Python 3.12):
@@ -377,6 +387,7 @@ That skeleton includes the FastAPI process, the Docker image, the evidence graph
 | `data/eval/gate1_labels.json` | Human labels. 16 cases carry `audit` |
 | `docs/GATES.md` | Gate command notes moved out of this file |
 | `docs/SCORED_RUN_AUDIT.md` | Cause per scored case. Not a new run |
+| `docs/JUDGES.md` | Judge Q&A card for Best use of NVIDIA Nemotron |
 | `docs/EVIDENCE_POLICY_TRACK.md` | `POST /run` track moved out of this file |
 | `PRE_EVENT_PLAN.md`, `OPENING_READY.md` | 8 Oct 2026 skeleton notes |
 
