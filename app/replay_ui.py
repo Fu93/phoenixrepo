@@ -80,10 +80,14 @@ def replay_payload(replay_id: str) -> dict[str, Any]:
             if line.strip()
         ]
         steps = [step_from_event(event, index) for index, event in enumerate(events, start=1)]
-        ok, detail = verify(trace_path)
-        verification = {"ok": ok, "detail": detail}
+        verification = _verify_replay(trace_path, record)
     else:
-        verification = {"ok": False, "detail": "no trace file is committed for this replay"}
+        verification = {
+            "ok": False,
+            "state": "fail",
+            "compared": False,
+            "detail": "no trace file is committed for this replay",
+        }
     verdict = dict(record["verdict"])
     computed = _rescue(record.get("rescue_inputs"))
     if computed is not None:
@@ -133,6 +137,43 @@ def verdict_reasoning(events: list[dict[str, Any]], repo_id: str) -> dict[str, A
             "step_index": index,
         }
     return found
+
+
+def recorded_run_hash(record: dict[str, Any]) -> str | None:
+    """``recorded_run.run_hash`` when record.json has a non-empty string. Otherwise none."""
+
+    recorded = record.get("recorded_run")
+    if not isinstance(recorded, dict):
+        return None
+    value = recorded.get("run_hash")
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _verify_replay(trace_path: Path, record: dict[str, Any]) -> dict[str, Any]:
+    """Check the trace against ``recorded_run.run_hash`` when that field is set.
+
+    A missing hash is not a pass: the page has nothing outside the file to compare.
+    A chain that still matches after a re-seal fails when the new run hash differs.
+    """
+
+    expected = recorded_run_hash(record)
+    if expected is None:
+        chain_ok, chain_detail = verify(trace_path)
+        detail = "no recorded hash to compare"
+        if not chain_ok:
+            detail = f"{detail}; {chain_detail}"
+        return {"ok": False, "state": "no_recorded_hash", "compared": False, "detail": detail}
+    ok, detail = verify(trace_path, expected_run_hash=expected)
+    return {
+        "ok": ok,
+        "state": "pass" if ok else "fail",
+        "compared": True,
+        "detail": detail,
+        "expected_run_hash": expected,
+    }
 
 
 def tamper_replay(replay_id: str) -> dict[str, Any]:

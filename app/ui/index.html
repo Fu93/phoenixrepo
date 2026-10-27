@@ -134,8 +134,9 @@
   </div>
   <section class="panel chain" id="chain">
     <h2>Hash chain</h2>
-    <p class="muted">Verification uses the same check as <span>scripts/verify_trace.py</span>. The chain detects an accidental or partial edit. A file that is edited and re-sealed gets a new run hash and still verifies here. Full integrity needs the run hash published outside the file (the README quickstart) and passed as <span>--expected-run-hash</span>. This button flips one character of a copy and does not re-seal. It does not show the words are true.</p>
+    <p class="muted">Verification uses the same check as <span>scripts/verify_trace.py</span>. When <span>record.json</span> has <span>recorded_run.run_hash</span>, that value is passed as the expected run hash. The chain detects an accidental or partial edit. A file that is edited and re-sealed gets a new run hash and fails this check when that recorded hash is different. When <span>record.json</span> has no recorded run hash, the page says there is no recorded hash to compare and does not show a pass. This button flips one character of a copy and does not re-seal. It does not show the words are true.</p>
     <p id="chain-status">No replay loaded.</p>
+    <p id="export-note" class="muted"></p>
     <button type="button" id="tamper">Flip one character and verify the copy</button>
     <pre id="chain-result"></pre>
   </section>
@@ -340,25 +341,39 @@
       "<p class=\"muted\">Rule copied from " + esc(gate.rule_source || "") + ". historical_trace " + esc(gate.historical_trace) + ".</p>";
   }
 
+  function renderExport() {
+    var note = document.getElementById("export-note");
+    var meta = window.__phoenixExport;
+    if (!note || !meta || !meta.export_note) return;
+    note.textContent = meta.export_note;
+  }
+
   function renderChain() {
     var replay = state.current;
     if (!replay) return;
     var check = replay.verification || {};
     var recorded = replay.recorded_run;
-    var line = check.ok ? "PASS" : "FAIL";
-    var extra = "";
-    if (recorded && recorded.run_hash) {
-      var pageHash = String(check.detail || "").trim();
-      var same = pageHash === recorded.run_hash;
-      extra = " Recorded run " + recorded.run_id + " hash " + recorded.run_hash +
-        " is in " + recorded.source + ". jsonl_committed " + recorded.jsonl_committed + ". " +
-        (same
-          ? "The hash this page verified is that run hash."
-          : "The hash this page verified is a different hash.");
+    var status = document.getElementById("chain-status");
+    if (check.state === "no_recorded_hash") {
+      status.textContent = check.detail || "no recorded hash to compare";
+      status.className = "";
+    } else {
+      var line = check.ok ? "PASS" : "FAIL";
+      var extra = "";
+      if (recorded && recorded.run_hash) {
+        var pageHash = String(check.detail || "").trim();
+        var same = pageHash === recorded.run_hash;
+        extra = " Recorded run " + recorded.run_id + " hash " + recorded.run_hash +
+          " is in " + recorded.source + ". jsonl_committed " + recorded.jsonl_committed + ". " +
+          (same
+            ? "The hash this page verified is that run hash."
+            : "The hash this page verified is a different hash.");
+      }
+      status.textContent = line + " " + (check.detail || "") + "." + extra;
+      status.className = check.ok ? "ok" : "fail";
     }
-    textOf("chain-status", line + " " + (check.detail || "") + "." + extra);
-    document.getElementById("chain-status").className = check.ok ? "ok" : "fail";
     document.getElementById("chain-result").textContent = "";
+    renderExport();
   }
 
   function renderModels() {
@@ -480,6 +495,7 @@
     });
   });
 
+  renderExport();
   fetch("/api/replays").then(function (response) { return response.json(); }).then(function (body) {
     state.replays = body.replays || [];
     renderMissing(body.missing || []);
