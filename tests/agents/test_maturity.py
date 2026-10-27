@@ -128,7 +128,7 @@ def test_a_stale_small_full_overlap_is_recorded_and_does_not_refuse(tmp_path):
             "reason": "tailer already does the same job.",
             "problem_quote": "Add spacers between the characters of a file.",
             "alternative_repo": "hionay/tailer",
-            "alternative_quote": "a Go port of spacer",
+            "alternative_quote": "tailer is a Go port of spacer",
         }),
     )
     assert judged[0] != "ALREADY_EXISTS"

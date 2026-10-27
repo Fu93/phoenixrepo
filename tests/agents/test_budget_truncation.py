@@ -71,16 +71,17 @@ def test_must_beat_and_own_identity_paths_cannot_pass_a_cut_search(tmp_path):
     from app.agents.relevance import RelevanceClient, judge_discovery
 
     cand = {"repo_id": "me/tool", "description": "Sync tool.", "readme_excerpt": "A small sync tool for notes."}
+    quote = "sync notes between two machines"
     immature = {
         "alternative_id": "other/tiny", "url": "https://github.com/other/tiny", "same_problem": True, "overlap": "full",
-        "quotes": ["sync"], "description": "sync", "stars": 3, "pushed_at": "2026-10-01T00:00:00Z", "archived": False,
+        "quotes": [quote], "description": quote, "stars": 3, "pushed_at": "2026-10-01T00:00:00Z", "archived": False,
         "licence_spdx": "MIT", "page_kind": "product",
     }
 
     def says(alt: str):
         return lambda prompt, sys: json.dumps({
-            "verdict": "ALREADY_EXISTS", "reason": "r", "problem_quote": "A small sync tool",
-            "alternative_repo": alt, "alternative_quote": "sync",
+            "verdict": "ALREADY_EXISTS", "reason": "r", "problem_quote": "A small sync tool for notes",
+            "alternative_repo": alt, "alternative_quote": quote,
         })
 
     status = {"github": "BUDGET_EXHAUSTED", "npm": "ok", "web": "BUDGET_EXHAUSTED"}

@@ -1462,12 +1462,43 @@ def _normalize_for_quote(text: str) -> str:
     return _DASH_SPACING.sub("-", normalize_whitespace(str(text or "").translate(_MARKUP_TRANS))).casefold()
 
 
+# A verified quote must be at least this many characters after whitespace
+# normalisation (`normalize_whitespace`). Shorter strings are trivial substrings
+# and fail `quote_in_text` even when they occur in the text. Markdown emphasis,
+# typographic dashes and ellipsis are still folded by `_normalize_for_quote`
+# before the substring test. This threshold does not change that folding. Length
+# is counted on the whitespace-collapsed quote, before markup folding.
+MIN_VERBATIM_QUOTE_CHARS = 20
+
+_QUOTE_FAIL_OFF = frozenset({"0", "off", "false", "no", "disabled"})
+
+
+def quote_fail_flag_enabled() -> bool:
+    """``PHOENIX_QUOTE_FAIL_FLAG`` defaults on.
+
+    Off values, compared case-insensitively after stripping, are ``0``, ``off``,
+    ``false``, ``no`` and ``disabled``. An unset or blank value is on.
+    """
+    raw = os.environ.get("PHOENIX_QUOTE_FAIL_FLAG")
+    if raw is None or not str(raw).strip():
+        return True
+    return str(raw).strip().lower() not in _QUOTE_FAIL_OFF
+
+
 def quote_in_text(quote: str, text: str) -> bool:
     """Deterministic quote verification: case-insensitive substring check after normalising
-    whitespace, Markdown emphasis marks and typographic quotes."""
+    whitespace, Markdown emphasis marks and typographic quotes.
+
+    Quotes shorter than ``MIN_VERBATIM_QUOTE_CHARS`` after whitespace normalisation
+    are rejected. The Markdown, dash and ellipsis tolerance is unchanged for quotes
+    that meet that length.
+    """
     if not quote or not text:
         return False
-    if normalize_whitespace(quote).casefold() in normalize_whitespace(text).casefold():
+    collapsed = normalize_whitespace(quote)
+    if len(collapsed) < MIN_VERBATIM_QUOTE_CHARS:
+        return False
+    if collapsed.casefold() in normalize_whitespace(text).casefold():
         return True
     nq = _normalize_for_quote(quote)
     return bool(nq) and nq in _normalize_for_quote(text)
@@ -1709,6 +1740,43 @@ def _evidence_rows(rows: list[dict[str, Any]] | None) -> list[dict[str, str]]:
     return out
 
 
+def _verified_competitor_row(row: dict[str, Any]) -> bool:
+    """False for an unverified full-overlap claim. Those rows must not block."""
+    if row.get("quote_verified") is False:
+        return False
+    return str(row.get("kind") or "") != "unverified full-overlap claim"
+
+
+def _unverified_claim_names(claims: list[dict[str, Any]] | None) -> list[str]:
+    if not quote_fail_flag_enabled():
+        return []
+    names: list[str] = []
+    for claim in claims or []:
+        if not isinstance(claim, dict):
+            continue
+        name = str(claim.get("alternative_id") or claim.get("url") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _downgrade_unverified_claims(
+    verdict: str,
+    reason: str,
+    picked: list[dict[str, Any]],
+    claims: list[dict[str, Any]] | None,
+) -> tuple[str, str, list[dict[str, Any]]]:
+    """CANDIDATE becomes NEEDS_REVIEW when a full-overlap quote never verified.
+
+    The names are listed in the reason. The claims are not attached as evidence,
+    so a report cannot show them as verified competitors, and they do not block.
+    """
+    names = _unverified_claim_names(claims)
+    if verdict != "CANDIDATE" or not names:
+        return verdict, reason, picked
+    return "NEEDS_REVIEW", "unverified full-overlap claim: " + ", ".join(names), []
+
+
 def judge_discovery(
     candidate: dict[str, Any],
     prior_rows: list[dict[str, Any]],
@@ -1718,6 +1786,7 @@ def judge_discovery(
     source_status: dict[str, str] | None = None,
     source_counts: dict[str, int] | None = None,
     insufficient_coverage: bool = False,
+    unverified_full_overlap_claims: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str]:
     """Judge whether candidate is CANDIDATE, ALREADY_EXISTS, or NO_GO using LLM with deterministic quote verification.
 
@@ -1725,6 +1794,8 @@ def judge_discovery(
     maturity rule (maintained, mature or official, matching access). Stars are used for that
     rule, not as demand. An alternative that fails it is recorded on ``must_beat`` and does
     not refuse the repository.
+    An unverified full-overlap claim is not a competitor. It never produces ALREADY_EXISTS.
+    When ``PHOENIX_QUOTE_FAIL_FLAG`` is on, those claims downgrade CANDIDATE to NEEDS_REVIEW.
     Verifies alternative_repo against the union of prior_rows and problem_alternatives.
     Falls back to phrase/keyword decide_discovery when no RelevanceClient is configured.
     Enforces that absence is not evidence: insufficient coverage blocks CANDIDATE verdict.
@@ -1794,7 +1865,7 @@ def judge_discovery(
     # commercial substitute exists; GitHub partial overlap only needs a human look.
     full_overlap_rows = [
         r for r in combined_priors
-        if r.get("same_problem") is True and str(r.get("overlap") or "") == "full"
+        if _verified_competitor_row(r) and r.get("same_problem") is True and str(r.get("overlap") or "") == "full"
     ]
     github_partial_rows = [
         r for r in combined_priors
@@ -1806,7 +1877,10 @@ def judge_discovery(
     if not is_client_configured(client):
         verdict, reason = decide_discovery(candidate, combined_priors, demand_rows)
         clean_reason = reason.replace("Method: phrase/keyword.", "").rstrip().rstrip(".")
-        return verdict, f"{clean_reason}. Method: phrase/keyword (fallback)."
+        verdict, reason, _picked = _downgrade_unverified_claims(
+            verdict, f"{clean_reason}. Method: phrase/keyword (fallback).", [], unverified_full_overlap_claims,
+        )
+        return verdict, reason
 
     if client is None:
         client = RelevanceClient()
@@ -1975,6 +2049,13 @@ def judge_discovery(
         if matched_row is None:
             verdict = "NEEDS_REVIEW"
             reason = f"unverified LLM quote: alternative_repo '{alt_repo}' not found in candidate prior-art"
+        elif not _verified_competitor_row(matched_row):
+            # The model named a full-overlap claim whose quote never verified.
+            # That is not ALREADY_EXISTS and it is not shown as a verified competitor.
+            name = matched_row.get("alternative_id") or matched_row.get("url")
+            verdict = "NEEDS_REVIEW"
+            reason = f"unverified full-overlap claim: {name}"
+            picked = []
         else:
             alt_text = f"{matched_row.get('excerpt', '')} {matched_row.get('description', '')} {matched_row.get('text', '')} {matched_row.get('readme', '')}"
             if not alt_quote or not quote_in_text(alt_quote, alt_text):
@@ -2063,6 +2144,10 @@ def judge_discovery(
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
         picked = []
+
+    verdict, reason, picked = _downgrade_unverified_claims(
+        verdict, reason, picked, unverified_full_overlap_claims,
+    )
 
     clean_reason = reason.rstrip().rstrip(".")
     labeled_reason = f"{clean_reason}. Method: llm+verified quote (requested={req_m}, served={srv_m})."
@@ -2485,6 +2570,106 @@ def search_prior_art(
     return found
 
 
+def _quote_failure(quotes: Any, text: str) -> tuple[str, str | None] | None:
+    """``(trace error, offending quote)`` when a same-problem quote does not verify."""
+    if not isinstance(quotes, list) or len(quotes) == 0:
+        return ("no quotes provided for same_problem alternative", None)
+    for q in quotes:
+        q_str = str(q or "").strip()
+        if not q_str:
+            return (f"unverified quote '{q_str}' not found in alternative text", q_str)
+        if len(normalize_whitespace(q_str)) < MIN_VERBATIM_QUOTE_CHARS:
+            return (
+                f"unverified quote '{q_str}' shorter than {MIN_VERBATIM_QUOTE_CHARS} "
+                "characters after whitespace normalisation",
+                q_str,
+            )
+        if not quote_in_text(q_str, text):
+            return (f"unverified quote '{q_str}' not found in alternative text", q_str)
+    return None
+
+
+def _meta_from_quote_error(error: str) -> str:
+    """The ALTERNATIVE_CALL reason. The trace event keeps ``error`` itself."""
+    if error.startswith("no quotes"):
+        return "unverified LLM quote: no quotes provided"
+    if error.startswith("unverified quote "):
+        return "unverified LLM quote: " + error[len("unverified quote "):]
+    return error
+
+
+def _emit_unverified_alternative_quote(
+    trace: Any | None,
+    alt_id: str,
+    error: str,
+    *,
+    quote: str | None = None,
+    mode: str | None = None,
+) -> None:
+    if trace is None:
+        return
+    summary_in: dict[str, Any] = {"alternative": alt_id}
+    if mode:
+        summary_in["mode"] = mode
+    elif quote:
+        summary_in["quote"] = quote
+    trace.event(
+        agent_name="orchestrator",
+        action="UNVERIFIED_ALTERNATIVE_QUOTE",
+        input_summary=summary_in,
+        output_summary={"error": error},
+        status="error",
+    )
+
+
+def _record_unverified_full_overlap_claim(
+    trace: Any | None,
+    claims: list[dict[str, Any]] | None,
+    res: dict[str, Any],
+) -> None:
+    """Remember a full-overlap assertion whose quote never verified.
+
+    The claim is not a competitor row. It must not be shown as verified and it
+    must not be passed to the maturity blocker.
+    """
+    alt_id = str(res.get("alternative_id") or "").strip()
+    claim = {
+        "alternative_id": alt_id,
+        "url": str(res.get("url") or ""),
+        "overlap": "full",
+        "same_problem": True,
+        "quote_verified": False,
+        "kind": "unverified full-overlap claim",
+    }
+    if claims is not None:
+        claims.append(claim)
+    if trace is None:
+        return
+    trace.event(
+        agent_name="orchestrator",
+        action="UNVERIFIED_FULL_OVERLAP_CLAIM",
+        input_summary={"alternative": alt_id},
+        output_summary={
+            "kind": "unverified full-overlap claim",
+            "alternative": alt_id,
+            "overlap": "full",
+            "quote_verified": False,
+        },
+        status="error",
+    )
+
+
+def _account_alternative_call(budget: FallbackBudget | None, started: float, meta: dict[str, Any]) -> None:
+    """Same accounting as a per-item alternative call: failures spend the clock, judgements do not."""
+    if budget is None:
+        return
+    error = str(meta.get("error") or "")
+    if error and _infra_error(error):
+        budget.charge_failure(budget.clock() - started, error, kind="per_item")
+    else:
+        budget.note_completed()
+
+
 def judge_alternative_relevance(
     problem_statement: dict[str, Any],
     candidate_repo_id: str,
@@ -2492,11 +2677,15 @@ def judge_alternative_relevance(
     client: RelevanceClient | None = None,
     trace: Any | None = None,
     call_budget_s: float | None = None,
+    strict_quote: bool = False,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Judge if a search result solves the same problem as the candidate (step="alternative").
 
-    Verifies quotes verbatim against result description/README.
-    Unverified results are dropped and recorded in trace.
+    Verifies quotes verbatim against result description/README. A failed quote is
+    returned with ``quote_failed`` set and is not traced here. The caller retries
+    once, under the existing call budget, when ``PHOENIX_QUOTE_FAIL_FLAG`` is on
+    and the model asserted full overlap. ``trace`` is accepted so callers can pass
+    the run trace; the unverified event is emitted by that caller.
     """
     alt_id = str(search_result.get("alternative_id") or "").strip()
     alt_desc = str(search_result.get("description") or "").strip()
@@ -2520,6 +2709,8 @@ def judge_alternative_relevance(
         "Judge whether this alternative solves the same core user problem, the overlap degree (full, partial, none), "
         "and provide verbatim supporting quotes as strict JSON."
     )
+    if strict_quote:
+        user_prompt += QUOTE_RETRY_INSTRUCTION
 
     try:
         text, req_m, srv_m = client.complete(
@@ -2552,31 +2743,23 @@ def judge_alternative_relevance(
     reason = str(obj.get("reason") or "").strip()
     quotes = obj.get("quotes") or []
 
-    # Verify quotes verbatim
+    # Verify quotes verbatim. Tracing and the one bounded retry live with the caller
+    # so a successful retry is not recorded as a drop.
     if same_problem:
-        if not isinstance(quotes, list) or len(quotes) == 0:
-            if trace is not None:
-                trace.event(
-                    agent_name="orchestrator",
-                    action="UNVERIFIED_ALTERNATIVE_QUOTE",
-                    input_summary={"alternative": alt_id},
-                    output_summary={"error": "no quotes provided for same_problem alternative"},
-                    status="error",
-                )
-            return None, {"error": "unverified LLM quote: no quotes provided", "dropped": True}
-
-        for q in quotes:
-            q_str = str(q or "").strip()
-            if not q_str or not quote_in_text(q_str, result_text):
-                if trace is not None:
-                    trace.event(
-                        agent_name="orchestrator",
-                        action="UNVERIFIED_ALTERNATIVE_QUOTE",
-                        input_summary={"alternative": alt_id, "quote": q_str},
-                        output_summary={"error": f"unverified quote '{q_str}' not found in alternative text"},
-                        status="error",
-                    )
-                return None, {"error": f"unverified LLM quote: '{q_str}' not found in alternative text", "dropped": True}
+        failed = _quote_failure(quotes, result_text)
+        if failed is not None:
+            error, quote = failed
+            return None, {
+                "error": _meta_from_quote_error(error),
+                "quote_error": error,
+                "quote": quote,
+                "dropped": True,
+                "quote_failed": True,
+                "overlap": overlap,
+                "same_problem": True,
+                "requested_model": req_m,
+                "served_model": srv_m,
+            }
 
     if not same_problem:
         return None, {
@@ -2620,6 +2803,17 @@ BATCH_INSTRUCTION = (
     '{"results": [{"index": <number>, "same_problem": true|false, "overlap": "full"|"partial"|"none", '
     '"reason": "...", "quotes": ["verbatim quote from THAT alternative\'s text"]}]} '
     "with exactly one entry per alternative index. Use the index numbers shown in brackets. Do not renumber."
+)
+
+# One bounded retry after a full-overlap quote fails verification. The wording is part of
+# the prompt, so the cache key differs from the call that failed. Timeouts stay the client
+# defaults (180 s per attempt, 360 s per call).
+QUOTE_RETRY_INSTRUCTION = (
+    "\n\nSTRICT VERBATIM QUOTE: your previous quote was not an exact substring of this "
+    "alternative's description or README. Quote again by copying contiguous text from that "
+    "excerpt only. Do not paraphrase, summarise, or join separate sentences. Each quote must "
+    f"be at least {MIN_VERBATIM_QUOTE_CHARS} characters after whitespace is collapsed. "
+    "Output the same strict JSON."
 )
 
 # Why a chunk used to fall back to one call per alternative (42 times on one 30-repo run):
@@ -2725,35 +2919,29 @@ def _row_from_entry(
     entry: dict[str, Any],
     problem_statement: dict[str, Any],
     trace: Any | None,
-) -> dict[str, Any] | None:
-    """A verified same-problem row, or None when the entry is not same-problem or its quote fails.
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """A verified same-problem row, or ``(None, failure)`` when its quote does not verify.
 
-    The entry was judged either way. A failed quote is not sent back to the model: the guard
-    already rejected it.
+    ``failure`` is None when the entry is not same-problem. ``trace`` is unused here;
+    the caller emits UNVERIFIED_ALTERNATIVE_QUOTE after the optional verbatim retry.
+    A partial overlap, or a full overlap with the flag off, is still dropped by that caller.
     """
+    del trace
     if not bool(entry.get("same_problem")):
-        return None
+        return None, None
     alt_id = str(res.get("alternative_id") or "").strip()
+    failed = _quote_failure(entry.get("quotes") or [], rtext)
+    if failed is not None:
+        error, quote = failed
+        return None, {
+            "quote_failed": True,
+            "overlap": str(entry.get("overlap") or "").strip().lower(),
+            "quote_error": error,
+            "quote": quote,
+            "same_problem": True,
+            "error": _meta_from_quote_error(error),
+        }
     quotes = entry.get("quotes") or []
-    bad = None
-    if not isinstance(quotes, list) or not quotes:
-        bad = "no quotes provided for same_problem alternative"
-    else:
-        for q in quotes:
-            q_str = str(q or "").strip()
-            if not q_str or not quote_in_text(q_str, rtext):
-                bad = f"unverified quote '{q_str}' not found in alternative text"
-                break
-    if bad:
-        if trace is not None:
-            trace.event(
-                agent_name="orchestrator",
-                action="UNVERIFIED_ALTERNATIVE_QUOTE",
-                input_summary={"alternative": alt_id, "mode": "batch"},
-                output_summary={"error": bad},
-                status="error",
-            )
-        return None
     return {
         "repo_id": candidate_repo_id,
         "alternative_id": alt_id,
@@ -2771,7 +2959,7 @@ def _row_from_entry(
         "quote_verified": True,
         "source": str(res.get("source") or ""),
         "archived": res.get("archived", False),
-    }
+    }, None
 
 
 def _apply_entries(
@@ -2780,18 +2968,120 @@ def _apply_entries(
     candidate_repo_id: str,
     problem_statement: dict[str, Any],
     trace: Any | None,
-) -> tuple[list[dict[str, Any]], list[tuple[int, dict[str, Any], str]]]:
+) -> tuple[list[dict[str, Any]], list[tuple[int, dict[str, Any], str]], list[tuple[int, dict[str, Any], dict[str, Any]]]]:
     by_index = _index_map(entries)
     verified: list[dict[str, Any]] = []
     missing: list[tuple[int, dict[str, Any], str]] = []
+    failures: list[tuple[int, dict[str, Any], dict[str, Any]]] = []
     for i, res, rtext in pending:
         if i not in by_index:
             missing.append((i, res, rtext))
             continue
-        row = _row_from_entry(candidate_repo_id, res, rtext, by_index[i], problem_statement, trace)
+        row, failure = _row_from_entry(candidate_repo_id, res, rtext, by_index[i], problem_statement, trace)
         if row is not None:
             verified.append(row)
-    return verified, missing
+        elif failure is not None:
+            failures.append((i, res, failure))
+    return verified, missing, failures
+
+
+def _retry_alternative_once(
+    problem_statement: dict[str, Any],
+    candidate_repo_id: str,
+    res: dict[str, Any],
+    client: RelevanceClient | None,
+    trace: Any | None,
+    budget: FallbackBudget | None,
+    index: int | None = None,
+    chunk_index: int | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """One stricter per-item call. Uses the same budget accounting as ``_per_item``.
+
+    Does not retry again. A skipped call (budget already spent) returns no row.
+    """
+    if budget is not None and budget.time_exhausted():
+        return None, {
+            "quote_failed": True,
+            "overlap": "full",
+            "same_problem": True,
+            "error": "alternatives budget exhausted before quote retry",
+            "dropped": True,
+            "skipped": True,
+        }
+    left = budget.allow() if budget is not None else None
+    started = budget.clock() if budget is not None else 0.0
+    alt_row, meta = judge_alternative_relevance(
+        problem_statement=problem_statement,
+        candidate_repo_id=candidate_repo_id,
+        search_result=res,
+        client=client,
+        trace=None,
+        call_budget_s=left,
+        strict_quote=True,
+    )
+    _account_alternative_call(budget, started, meta)
+    _trace_llm(
+        trace, "ALTERNATIVE_CALL", candidate_repo_id,
+        str(meta.get("requested_model") or (client.model if client is not None else "")),
+        str(meta.get("served_model") or ""),
+        {
+            "alternative": res.get("alternative_id"),
+            "indexes": [index] if index is not None else None,
+            "reason": meta.get("error") or meta.get("reason"),
+            "overlap": (alt_row or {}).get("overlap", meta.get("overlap")),
+            "same_problem": True if alt_row is not None else meta.get("same_problem"),
+            "quote_verified": alt_row is not None,
+            "chunk_index": chunk_index,
+        },
+        status="error" if meta.get("error") or meta.get("fallback") else "ok",
+        record_model=getattr(client, "trace", None) is None,
+    )
+    if alt_row is not None and alt_row.get("same_problem"):
+        return alt_row, meta
+    return None, meta
+
+
+def _settle_failed_quote(
+    meta: dict[str, Any],
+    res: dict[str, Any],
+    *,
+    problem_statement: dict[str, Any],
+    candidate_repo_id: str,
+    client: RelevanceClient | None,
+    trace: Any | None,
+    budget: FallbackBudget | None,
+    claims: list[dict[str, Any]] | None,
+    mode: str | None = None,
+    index: int | None = None,
+    chunk_index: int | None = None,
+) -> dict[str, Any] | None:
+    """Drop a failed quote, or retry once when the model asserted full overlap.
+
+    A verified retry is a normal competitor. A retry that still does not verify,
+    and did not withdraw the claim, is recorded as an unverified full-overlap
+    claim and is not returned as a row. Partial overlap keeps the old drop.
+    """
+    alt_id = str(res.get("alternative_id") or "").strip()
+    overlap = str(meta.get("overlap") or "").strip().lower()
+    if overlap != "full" or not quote_fail_flag_enabled():
+        _emit_unverified_alternative_quote(
+            trace, alt_id, str(meta.get("quote_error") or meta.get("error") or ""),
+            quote=meta.get("quote"), mode=mode,
+        )
+        return None
+    row, retry_meta = _retry_alternative_once(
+        problem_statement, candidate_repo_id, res, client, trace, budget, index, chunk_index,
+    )
+    if row is not None:
+        return row
+    _emit_unverified_alternative_quote(
+        trace, alt_id, str(meta.get("quote_error") or meta.get("error") or ""),
+        quote=meta.get("quote"), mode=mode,
+    )
+    withdrew = retry_meta.get("same_problem") is False and not retry_meta.get("quote_failed")
+    if not withdrew:
+        _record_unverified_full_overlap_claim(trace, claims, res)
+    return None
 
 
 def _per_item(
@@ -2803,8 +3093,14 @@ def _per_item(
     budget: FallbackBudget | None,
     index: int | None = None,
     chunk_index: int | None = None,
+    claims: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
-    """Judge one alternative. A per-item infrastructure failure is charged to the shared budget."""
+    """Judge one alternative. A per-item infrastructure failure is charged to the shared budget.
+
+    A full-overlap quote that fails verification is retried once when the flag is on.
+    The retry is a second call on the same budget. It is not a second infra failure
+    unless that call itself fails the transport.
+    """
     left = budget.allow() if budget is not None else None
     started = budget.clock() if budget is not None else 0.0
     alt_row, meta = judge_alternative_relevance(
@@ -2812,7 +3108,7 @@ def _per_item(
         candidate_repo_id=candidate_repo_id,
         search_result=res,
         client=client,
-        trace=trace,
+        trace=None,
         call_budget_s=left,
     )
     overlap = (alt_row or {}).get("overlap", meta.get("overlap"))
@@ -2834,12 +3130,19 @@ def _per_item(
         status="error" if meta.get("error") or meta.get("fallback") else "ok",
         record_model=getattr(client, "trace", None) is None,
     )
-    if budget is not None:
-        error = str(meta.get("error") or "")
-        if error and _infra_error(error):
-            budget.charge_failure(budget.clock() - started, error, kind="per_item")
-        else:
-            budget.note_completed()
+    _account_alternative_call(budget, started, meta)
+    if alt_row is None and meta.get("quote_failed"):
+        return _settle_failed_quote(
+            meta, res,
+            problem_statement=problem_statement,
+            candidate_repo_id=candidate_repo_id,
+            client=client,
+            trace=trace,
+            budget=budget,
+            claims=claims,
+            index=index,
+            chunk_index=chunk_index,
+        )
     if alt_row is not None and alt_row.get("same_problem"):
         return alt_row
     return None
@@ -2870,9 +3173,27 @@ def judge_alternatives_batch(
         if text:
             items.append((i, res, text))
     if not items:
-        return []
+        return VerifiedAlternatives()
 
     prompt_record = load_prompt("relevance_alternative")
+    claims: list[dict[str, Any]] = []
+
+    def _resolve_quote_failures(failures: list[tuple[int, dict[str, Any], dict[str, Any]]], into: list[dict[str, Any]]) -> None:
+        for i, res, failure in failures:
+            row = _settle_failed_quote(
+                failure, res,
+                problem_statement=problem_statement,
+                candidate_repo_id=candidate_repo_id,
+                client=client,
+                trace=trace,
+                budget=fallback_budget,
+                claims=claims,
+                mode="batch",
+                index=i,
+                chunk_index=chunk_index,
+            )
+            if row is not None:
+                into.append(row)
     system = prompt_record.text + BATCH_INSTRUCTION
     base_prompt = _batch_prompt(problem_statement, items, max_chars_per_item)
     indexes = [i for i, _, _ in items]
@@ -2980,7 +3301,8 @@ def judge_alternatives_batch(
         _fallback(why)
         return None
 
-    verified, missing = _apply_entries(entries, items, candidate_repo_id, problem_statement, trace)
+    verified, missing, failures = _apply_entries(entries, items, candidate_repo_id, problem_statement, trace)
+    _resolve_quote_failures(failures, verified)
     if missing:
         # One follow-up for the indexes the first reply did not contain. A single missing
         # item goes straight to the per-item judge; two or more share one smaller batch.
@@ -3014,20 +3336,23 @@ def judge_alternatives_batch(
                         status="error",
                     )
             if follow:
-                more, missing = _apply_entries(follow, missing, candidate_repo_id, problem_statement, trace)
+                more, missing, more_failures = _apply_entries(follow, missing, candidate_repo_id, problem_statement, trace)
                 verified.extend(more)
+                _resolve_quote_failures(more_failures, verified)
         try:
             for _i, res, _rtext in missing:
                 alt_row = _per_item(
                     problem_statement, candidate_repo_id, res, client, trace, fallback_budget, _i,
-                    chunk_index=chunk_index,
+                    chunk_index=chunk_index, claims=claims,
                 )
                 if alt_row is not None:
                     verified.append(alt_row)
         except InfraFallbackStop as exc:
             exc.attach(verified, 0)
             raise
-    return verified
+    out = VerifiedAlternatives(verified)
+    out.unverified_full_overlap_claims.extend(claims)
+    return out
 
 
 def _trace_own(trace: Any | None, repo_id: str, identity: Any, dropped: list[dict[str, str]]) -> None:
@@ -3086,6 +3411,18 @@ def _trace_partial_alternatives(
     )
 
 
+class VerifiedAlternatives(list):
+    """Verified same-problem rows.
+
+    ``unverified_full_overlap_claims`` are not rows. They are not competitors,
+    ``quote_verified`` is false, and they must not be shown or passed to the blocker.
+    """
+
+    def __init__(self, rows: list | None = None) -> None:
+        super().__init__(rows or [])
+        self.unverified_full_overlap_claims: list[dict[str, Any]] = []
+
+
 def filter_relevant_alternatives(
     problem_statement: dict[str, Any],
     candidate_repo_id: str,
@@ -3109,6 +3446,8 @@ def filter_relevant_alternatives(
     were left unjudged.
     The candidate's own package, docs, homepage, fork, and mirror are removed before the call
     and again from whatever the model returns.
+    The returned list carries ``unverified_full_overlap_claims`` when a full-overlap quote
+    still failed after one verbatim retry. Those claims are not elements of the list.
     """
     from app.agents.own_identity import build_identity, split_own
 
@@ -3121,7 +3460,7 @@ def filter_relevant_alternatives(
         budget = fallback_budget
     else:
         budget = FallbackBudget(seconds=alternatives_budget_seconds(chunk_count), clock=clock)
-    verified_alts: list[dict[str, Any]] = []
+    verified_alts = VerifiedAlternatives()
     verified_chunk_indexes: list[int] = []
     finished = 0
     try:
@@ -3136,6 +3475,9 @@ def filter_relevant_alternatives(
                 )
                 if batch is not None:
                     verified_alts.extend(batch)
+                    verified_alts.unverified_full_overlap_claims.extend(
+                        getattr(batch, "unverified_full_overlap_claims", [])
+                    )
                     judged = True
             if not judged:
                 if budget.time_exhausted():
@@ -3148,6 +3490,7 @@ def filter_relevant_alternatives(
                     alt_row = _per_item(
                         problem_statement, candidate_repo_id, res, client, trace, budget,
                         chunk_index=chunk_index,
+                        claims=verified_alts.unverified_full_overlap_claims,
                     )
                     if budget.failures > before:
                         per_item_failures += 1
@@ -3169,9 +3512,12 @@ def filter_relevant_alternatives(
         exc.attach(verified_alts, max(0, chunk_count - finished), verified_chunk_indexes)
         _trace_partial_alternatives(trace, candidate_repo_id, len(search_results), exc.verified, exc)
         raise
+    quote_claims = list(verified_alts.unverified_full_overlap_claims)
     verified_alts, dropped_after = split_own(identity, verified_alts)
     _trace_own(trace, candidate_repo_id, identity, dropped_after)
-    return verified_alts
+    kept = VerifiedAlternatives(verified_alts)
+    kept.unverified_full_overlap_claims.extend(quote_claims)
+    return kept
 
 
 def judge_partial_alternatives(
@@ -3185,8 +3531,11 @@ def judge_partial_alternatives(
     """Apply the maturity rule to alternatives judged before the phase stopped.
 
     A verified full overlap blocks only when ``evaluate_blocker`` says it blocks.
-    An unverified quote, a partial overlap, or an immature product does not block.
-    Unjudged chunks never produce CANDIDATE.
+    An unverified quote is not a verified competitor and does not block with
+    ALREADY_EXISTS. When ``PHOENIX_QUOTE_FAIL_FLAG`` is on, a full-overlap claim
+    whose quote still fails after one verbatim retry downgrades CANDIDATE to
+    NEEDS_REVIEW in ``judge_discovery``. A partial overlap or an immature product
+    does not block. Unjudged chunks never produce CANDIDATE.
     """
     from datetime import date as _date
 
