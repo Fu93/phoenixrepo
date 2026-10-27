@@ -170,7 +170,7 @@
     },
     {
       "id": "e3-goodreasonai-scrapeserv",
-      "title": "Experiment E3: NVIDIA direct, thinking on, temperature 1.0, not the scored run",
+      "title": "Experiment E3 (NVIDIA direct; final verdict only: thinking on, temperature 1.0; bulk steps thinking off, temperature 0), not the scored run",
       "repo_id": "goodreasonai/ScrapeServ",
       "data_class": "RECORDED",
       "trace_class": "RECORDED",
@@ -178,7 +178,7 @@
     },
     {
       "id": "e3-dsregoitia-calendarsyncproject",
-      "title": "Experiment E3: NVIDIA direct, thinking on, temperature 1.0, not the scored run",
+      "title": "Experiment E3 (NVIDIA direct; final verdict only: thinking on, temperature 1.0; bulk steps thinking off, temperature 0), not the scored run",
       "repo_id": "DSRegoitia/CalendarSyncProject",
       "data_class": "RECORDED",
       "trace_class": "RECORDED",

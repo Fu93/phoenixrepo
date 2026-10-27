@@ -11,7 +11,7 @@ from scripts.verify_trace import nemotron_report, verify
 
 ROOT = Path(__file__).resolve().parents[2]
 REPLAYS = ROOT / "data" / "replays"
-TITLE = "Experiment E3: NVIDIA direct, thinking on, temperature 1.0, not the scored run"
+TITLE = "Experiment E3 (NVIDIA direct; final verdict only: thinking on, temperature 1.0; bulk steps thinking off, temperature 0), not the scored run"
 E3 = {
     "e3-goodreasonai-scrapeserv": ("judge-20261027042854", "ad556177edc4bb186251ecbb5a5dde256a255e4fc4742935677716bb2401480b"),
     "e3-dsregoitia-calendarsyncproject": ("judge-20261027041913", "1fbf3ae09de5c72eaa02c866aa9e867d025b579e42b4038f72beda94681f3052"),

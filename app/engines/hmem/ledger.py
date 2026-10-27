@@ -16,8 +16,13 @@ class TrustLedgerService:
         self.entries: list[LedgerEntry] = []
         if path and path.exists():
             for line in path.read_text(encoding="utf-8").splitlines():
-                if line.strip():
+                if not line.strip():
+                    continue
+                try:
                     self.entries.append(LedgerEntry.model_validate_json(line))
+                except Exception:
+                    # A torn last line, or one bad row, must not disable the ledger.
+                    continue
 
     def append(
         self,

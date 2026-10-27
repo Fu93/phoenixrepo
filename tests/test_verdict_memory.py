@@ -84,3 +84,66 @@ def test_a_bad_row_or_a_broken_trace_does_not_change_the_verdict(tmp_path):
     broken = BoomTrace("run-2", log_dir=tmp_path)
     assert remember([again], trace=broken, log_dir=tmp_path, run_id="run-2") == []
     assert again["verdict"] == "NO_GO"
+
+
+def test_served_model_comes_from_the_row_or_the_reason(tmp_path):
+    trace = HackathonTrace("run-1", log_dir=tmp_path)
+    reason = "Method: llm+verified quote (requested=nvidia/nemotron-3-super-120b-a12b, served=nvidia/nemotron-3-ultra-550b-a55b)."
+    remember(
+        [{"repo_id": "o/r", "verdict": "CANDIDATE", "reason": reason}],
+        trace=trace, log_dir=tmp_path, run_id="run-1",
+    )
+    store = json.loads((tmp_path / "hmem" / "gate1_verdicts.json").read_text(encoding="utf-8"))
+    assert store["records"][0]["extra"]["served_model"] == "nvidia/nemotron-3-ultra-550b-a55b"
+
+    trace2 = HackathonTrace("run-2", log_dir=tmp_path)
+    remember(
+        [{"repo_id": "Owner/Repo", "verdict": "NO_GO", "reason": "plain", "served_model": "nvidia/explicit"}],
+        trace=trace2, log_dir=tmp_path, run_id="run-2",
+        served_by_repo={"owner/repo": "nvidia/from-map"},
+    )
+    store = json.loads((tmp_path / "hmem" / "gate1_verdicts.json").read_text(encoding="utf-8"))
+    explicit = next(r for r in store["records"] if r["source"] == "run-2")
+    assert explicit["extra"]["served_model"] == "nvidia/explicit"
+
+
+def test_repo_id_match_is_case_insensitive(tmp_path):
+    _run(tmp_path, "run-1", "CANDIDATE")
+    # _run writes owner path "o/r". A different case must supersede that same repository.
+    trace = HackathonTrace("run-2", log_dir=tmp_path)
+    out = remember(
+        [{"repo_id": "O/R", "verdict": "NO_GO", "reason": "why"}],
+        trace=trace, log_dir=tmp_path, run_id="run-2",
+    )
+    assert out[0]["verdict_changed"] is True
+    store = json.loads((tmp_path / "hmem" / "gate1_verdicts.json").read_text(encoding="utf-8"))
+    live = [r for r in store["records"] if not r.get("superseded_by")]
+    assert len(live) == 1 and live[0]["extra"]["verdict"] == "NO_GO"
+
+
+def test_a_failed_supersede_does_not_leave_two_live_verdicts(tmp_path, monkeypatch):
+    _run(tmp_path, "run-1", "CANDIDATE")
+    import app.engines.hmem.store as store_mod
+
+    def boom(self, old_id, new_id):
+        raise RuntimeError("supersede failed")
+
+    monkeypatch.setattr(store_mod.MemoryStoreService, "supersede", boom)
+    trace, out = _run(tmp_path, "run-2", "NO_GO")
+    assert out[0]["verdict"] == "NO_GO"
+    store = json.loads((tmp_path / "hmem" / "gate1_verdicts.json").read_text(encoding="utf-8"))
+    live = [r for r in store["records"] if not r.get("superseded_by")]
+    assert len(live) == 1
+
+
+def test_a_corrupt_store_is_renamed_and_a_torn_ledger_line_is_skipped(tmp_path):
+    directory = tmp_path / "hmem"
+    directory.mkdir()
+    (directory / "gate1_verdicts.json").write_text("{not json", encoding="utf-8")
+    (directory / "gate1_ledger.jsonl").write_text('{"torn"\n', encoding="utf-8")
+    trace, out = _run(tmp_path, "run-1", "CANDIDATE")
+    assert out[0]["verdict"] == "CANDIDATE"
+    assert (directory / "gate1_verdicts.json.bak").read_text(encoding="utf-8").startswith("{not")
+    store = json.loads((directory / "gate1_verdicts.json").read_text(encoding="utf-8"))
+    assert len(store["records"]) == 1
+    assert _events(trace)[0]["status"] == "ok"

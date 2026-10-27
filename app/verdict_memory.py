@@ -1,9 +1,12 @@
 """Gate-1 verdict memory on Meterless H-MEM.
 
 Every gate-1 verdict is written to an H-MEM store (``app/engines/hmem``) as a long-term memory
-with its run id, its reason and the served model. Before writing, the store is asked for the
-verdicts it already holds for the same repository. The newest one is superseded by the new
-verdict (H-MEM keeps it, it does not delete), and when the two differ the trace line says so.
+with its run id and its reason. The served model is stored when the row carries ``served_model``,
+when the reason ends with ``served=<id>``, or when ``served_by_repo`` names that repository.
+Otherwise the stored ``served_model`` is empty. Before writing, the store is asked for the
+verdicts it already holds for the same repository (the id match is case-insensitive). Each live
+one is superseded by the new verdict (H-MEM keeps it, it does not delete), and when they differ
+the trace line says so. If supersede fails, the write still tries to leave only one live verdict.
 
 This never changes a verdict. It makes one known weakness visible on the record: generated
 search queries can move a verdict between runs (CalendarSyncProject has had three). A repeat
@@ -17,6 +20,7 @@ recorded on the trace line and gate 1 carries on.
 from __future__ import annotations
 
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -33,6 +37,69 @@ def _store(log_dir: Path) -> MemoryStoreService:
     store = MemoryStoreService(ledger=ledger, path=directory / "gate1_verdicts.json", clock=clock)
     store.hydrate()
     return store
+
+
+_SERVED_IN_REASON = re.compile(r"served=([^)]*)\)\.?\s*$")
+
+
+def served_model_from_reason(reason: object) -> str:
+    """The ``served=<id>`` at the end of a gate-1 verdict reason, or empty."""
+
+    match = _SERVED_IN_REASON.search(str(reason or ""))
+    return match.group(1).strip() if match else ""
+
+
+def _lookup_served(served_by_repo: dict[str, str] | None, repo_id: str) -> str:
+    if not served_by_repo:
+        return ""
+    if repo_id in served_by_repo:
+        return str(served_by_repo[repo_id] or "").strip()
+    key = repo_id.casefold()
+    for name, value in served_by_repo.items():
+        if str(name).casefold() == key:
+            return str(value or "").strip()
+    return ""
+
+
+def _served_for(row: dict[str, Any], served_by_repo: dict[str, str] | None, repo_id: str) -> str:
+    direct = row.get("served_model")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    from_reason = served_model_from_reason(row.get("reason"))
+    if from_reason:
+        return from_reason
+    return _lookup_served(served_by_repo, repo_id)
+
+
+def _keep_one_live(store: Any, prior: list[Any], new_id: str) -> None:
+    """Supersede every live prior. A failed supersede must not leave two live verdicts."""
+
+    for old in prior:
+        try:
+            store.supersede(old.id, new_id)
+            continue
+        except Exception:
+            pass
+        try:
+            kept = store.records.get(old.id)
+            fresh = store.records.get(new_id)
+            if kept is None or fresh is None:
+                raise RuntimeError("verdict record missing after add")
+            if not kept.superseded_by:
+                kept.superseded_by = new_id
+            if not fresh.supersedes:
+                fresh.supersedes = old.id
+            store._save()
+        except Exception:
+            store.records.pop(new_id, None)
+            for record in list(store.records.values()):
+                if getattr(record, "superseded_by", None) == new_id:
+                    record.superseded_by = None
+            try:
+                store._save()
+            except Exception:
+                pass
+            raise
 
 
 def _current(records: list[Any]) -> list[Any]:
@@ -114,10 +181,16 @@ def _remember_rows(
                     layer="long_term",
                     entities=[repo_id],
                     tags=["gate1", verdict],
-                    extra={"kind": "verdict", "verdict": verdict, "served_model": (served_by_repo or {}).get(repo_id, "")},
+                    extra={
+                        "kind": "verdict",
+                        "verdict": verdict,
+                        "served_model": _served_for(row, served_by_repo, repo_id),
+                    },
                 )
                 if prior:
-                    store.supersede(prior[0].id, record.id)
+                    _keep_one_live(store, prior, record.id)
+                    if record.id not in store.records:
+                        raise RuntimeError("new verdict was dropped so two live verdicts would not remain")
                 changed = bool(prior) and history[0]["verdict"] != verdict
                 if changed:
                     store.ledger.append(

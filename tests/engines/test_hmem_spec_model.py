@@ -265,6 +265,54 @@ def test_parallel_adds_keep_both_records(tmp_path):
     assert {record.content for record in loaded.records.values()} == {"alpha", "beta"}
 
 
+def test_lock_closes_the_handle_when_locking_raises(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    from app.engines.hmem.store import _FileLock
+
+    fake = types.ModuleType("msvcrt")
+    fake.LK_LOCK = 0
+    fake.LK_UNLCK = 1
+
+    def locking(*_args):
+        raise OSError("lock failed")
+
+    fake.locking = locking
+    monkeypatch.setitem(sys.modules, "msvcrt", fake)
+    monkeypatch.setattr("app.engines.hmem.store.os.name", "nt")
+    opened = []
+    real_open = open
+
+    def tracking(*args, **kwargs):
+        handle = real_open(*args, **kwargs)
+        opened.append(handle)
+        return handle
+
+    monkeypatch.setattr("builtins.open", tracking)
+    lock = _FileLock(tmp_path / "gate1_verdicts.json.lock")
+    with pytest.raises(OSError, match="lock failed"):
+        with lock:
+            pass
+    assert opened and opened[0].closed
+    assert lock._handle is None
+
+
+def test_find_verdicts_matches_repo_id_case_insensitively(tmp_path):
+    store, _retrieval, _ledger = _services(tmp_path)
+    store.add(
+        "owner/repo gate-1 verdict CANDIDATE",
+        source="run-1",
+        origin="model_response",
+        label="gate1_verdict",
+        layer="long_term",
+        entities=["Owner/Repo"],
+        extra={"kind": "verdict", "verdict": "CANDIDATE"},
+    )
+    assert len(store.find_verdicts("owner/repo")) == 1
+    assert store.find_verdicts("other/repo") == []
+
+
 def test_superseded_memory_is_penalized_not_deleted(tmp_path):
     store, retrieval, ledger = _services(tmp_path)
     old = store.add(

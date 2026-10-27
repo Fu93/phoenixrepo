@@ -1640,3 +1640,5 @@ def test_gate1_writes_hmem_verdict_memory_without_changing_verdicts(tmp_path):
     first, second = runs[0]["hmem_verdict_memory"], runs[1]["hmem_verdict_memory"]
     assert all(not s["remembered_before"] for s in first)
     assert all(s["remembered_before"][0]["run_id"] == "hmem-run-1" and not s["verdict_changed"] for s in second)
+    stored = json.loads((log_dir / "hmem" / "gate1_verdicts.json").read_text(encoding="utf-8"))
+    assert stored["records"] and all(row["extra"].get("served_model") for row in stored["records"])

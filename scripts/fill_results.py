@@ -338,6 +338,19 @@ def per_case_table(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _cache_clause(hits: int) -> str:
+    """One cached answer is singular. Zero hits adds nothing."""
+
+    if not hits:
+        return ""
+    noun = "answer" if hits == 1 else "answers"
+    verb = "was" if hits == 1 else "were"
+    return (
+        f" {hits} of the used {noun} {verb} replayed from the LLM cache: an earlier run asked the same "
+        "prompt with the same input, and the cached line keeps the model and provider that answered then."
+    )
+
+
 def slots(data: dict[str, Any], source: str, readme: bool) -> dict[str, str]:
     t = data["totals"]
     out: dict[str, str] = {}
@@ -354,11 +367,7 @@ def slots(data: dict[str, Any], source: str, readme: bool) -> dict[str, str]:
         if t["not_nemotron"]:
             share += " Not Nemotron: " + "; ".join(t["not_nemotron"]) + "."
         split = ", ".join(f"{name} **{count}**" for name, count in sorted(t["providers"].items()))
-        cached = (
-            f" {t['cache_hits']} of the used answers were replayed from the LLM cache: an earlier run asked the same "
-            "prompt with the same input, and the cached line keeps the model and provider that answered then."
-            if t["cache_hits"] else ""
-        )
+        cached = _cache_clause(t["cache_hits"])
         out["provider-split"] = (
             f"Provider split on that run, from `verify_trace.py --require-nemotron` over each case trace: {split}.{cached} "
             "Served model per provider: " + "; ".join(
