@@ -1,8 +1,8 @@
 # PhoenixRepo
-
-Before anyone spends a weekend reviving an abandoned GitHub repository, PhoenixRepo checks whether that idea already exists in a maintained form, and it keeps the check in a hash-chained trace: the quote, the alternative, the model id that was requested, and the model id that actually answered. This is a solo Open Agent Hackathon 2026 entry, Track 02, "The Agent That Can Explain Why".
-
-This page is the judge check. It is based on open pull request #58 (`cursor/docs-zetaris-gate1-precision-629d`), which is not merged. `main` is `8e39557`. Pull requests #57 and #59 are not in this branch. See [In review](#in-review).
+Before anyone spends a weekend reviving an abandoned GitHub repository, PhoenixRepo checks whether that idea already exists in a maintained form and records the check in a hash-chained trace. Solo Open Agent Hackathon 2026 entry, Track 02, "The Agent That Can Explain Why", for the prize Best use of NVIDIA Nemotron.
+The evidence is the committed traces in `data/replays/`, the case audit in `docs/SCORED_RUN_AUDIT.md`, and `scripts/verify_nemotron_evidence.py` (open pull request #57; that script is not on this branch). Check a recorded trace with `scripts/verify_trace.py --require-nemotron`.
+The scored v3 set is a regression and audit set: 16 cases, 10 agree, 5 must-reject, 4 false passes. The traces are what make that audit possible. It is not an accuracy benchmark.
+Read each model line as Requested, Served, and Policy. Say Ultra only when Served is `nvidia/nemotron-3-ultra-550b-a55b`. Say nvidia-direct only when the line stores `provider` `nvidia-direct`.
 
 ## Quickstart
 
@@ -40,7 +40,7 @@ request_settings: present on 0 of 11 LLM_CALL lines (informational; absence is n
 nemotron: 10 of 10 answers used (providers: nightshift 6, nvidia-direct 4; discarded by policy: 0)
 ```
 
-Exit code 0. In that last line, `nightshift` is the name `scripts/verify_trace.py` prints when the line has no `provider` field (`_provider` in that file). It is not a value stored on the line. On this SelfDB file the 6 are `LLM_CALL` lines with no `provider` field, and the 4 are `LLM_CALL` lines whose summary has `provider` `nvidia-direct`. One further `LLM_CALL` has status `error` and is not an answer used (11 lines, 10 used).
+Exit code 0. In that last line, `nightshift` is the name `scripts/verify_trace.py` prints when the line has no `provider` field (`_provider` in that file). It is not a value stored on the line. On an `LLM_CALL` line that omission is the Nightshift route, shown under [Nemotron use](#nemotron-use). On this SelfDB file the 6 are `LLM_CALL` lines with no `provider` field, and the 4 are `LLM_CALL` lines whose summary has `provider` `nvidia-direct`. One further `LLM_CALL` has status `error` and is not an answer used (11 lines, 10 used).
 
 Check every RECORDED replay:
 
@@ -73,7 +73,7 @@ e3-dsregoitia-calendarsyncproject                         CANDIDATE        1fbf3
 19 passed, 0 failed, 19 RECORDED
 ```
 
-Exit code 0. The same `nightshift` label means a missing `provider` field. For the 16 scored traces, read the 50 / 158 / 10 split in [Nemotron use](#nemotron-use), not the word `nightshift` in this table. Invoice's `nightshift 17` is 16 `LLM_CALL` lines with no `provider` field plus 1 `LLM_SCORE` line. `scripts/score_candidates.py` writes `LLM_SCORE` with `output_summary` `{"parsed": true}` and never sets `provider`.
+Exit code 0. The same `nightshift` label means a missing `provider` field. For the 16 scored traces, read the 50 / 158 / 10 split in [Nemotron use](#nemotron-use), not the word `nightshift` in this table. Invoice's `nightshift 17` is 16 `LLM_CALL` lines with no `provider` field plus 1 `LLM_SCORE` line. `scripts/score_candidates.py` writes `LLM_SCORE` with `output_summary` `{"parsed": true}` and never sets `provider`. Those `LLM_SCORE` lines are not the Nightshift omission.
 
 Compliance (sample mode, no token):
 
@@ -99,9 +99,20 @@ RESULT: PASS
 
 Between `API contract` and `SAMPLE_MODE` the script prints a sample `POST /run` trace. That trace's `run_id` and hashes change on every execution, so they are not a fixed expected output. Exit code 0, last line `RESULT: PASS`.
 
-`python scripts/verify_nemotron_evidence.py` is added by open pull request #57 and is not in this checkout. Do not run it from this branch.
+`scripts/verify_nemotron_evidence.py` is named in the opening as the evidence checker. Open pull request #57 adds it. It is not in this checkout, so this branch does not run it.
 
 Token-free replay page: `python main.py`, then open `http://127.0.0.1:8000/ui`. The page opens on `selfdb-io-selfdb`. A static copy is published by `.github/workflows/pages.yml` at <https://fu93.github.io/phoenixrepo/> (HTTP 200 on 27 Oct 2026; the HTML contains `selfdb-io-selfdb`, `zetaris-gate1`, and `e3-goodreasonai`). `docker build -t phoenixrepo . && docker run --rm -p 8000:8000 phoenixrepo` serves the same app. `main.py` binds `0.0.0.0` and `$PORT` (default 8000).
+
+## The decision, read as VRIO
+
+The two gates follow the four VRIO questions. The trace records what was checked. A missing or failed search does not answer a question: it is `NEEDS_REVIEW` or `UNJUDGED`.
+
+| Question | What is recorded | If it does not hold |
+| --- | --- | --- |
+| Valuable | A problem quote found in the repository's own text | `NO_GO` |
+| Rare | An alternative that passes the maturity checks with a verified quote | `ALREADY_EXISTS` |
+| Inimitable | Alternatives that did not block, kept as `must_beat` with the reason | `CANDIDATE`, with that gap stated. A famous commercial page in that list does not by itself refuse the repository. |
+| Organised | Gate 2 runs only after `CANDIDATE`. Verified execution has not run on a real `CANDIDATE` in this submission. | Any other gate-1 verdict is `NOT_ATTEMPTED_GATE1` unless a human approval is attached for `NEEDS_REVIEW` or `NEEDS_PRIOR_ART`. |
 
 ## Nemotron use
 
@@ -117,9 +128,9 @@ Scored v3 traces do not record temperature or thinking mode. Neither is inferred
 
 Provider, counted from the 16 scored files under `data/replays/` (status `error` and `rejected` skipped):
 
-- **50** `LLM_CALL` lines record `provider` `nvidia-direct`. Each of those 50 has `routing.fallback_reason` `nightshift HTTP 502`. All 50 were served `nvidia/nemotron-3-ultra-550b-a55b`.
-- **158** `LLM_CALL` lines have no `provider` field. In the code that writes `LLM_CALL` (`app/agents/relevance.py`, `_observe`), `provider` is omitted when the value is `nightshift` and written when it is not. A missing `provider` on an `LLM_CALL` is the Nightshift route inferred from that omission. It is not a stored field.
-- **10** `LLM_SCORE` lines have no `provider` field. That writer does not set `provider` on any route, so those 10 are not the Nightshift omission rule. They are in the arithmetic remainder (218 used answers − 50 explicit `nvidia-direct` = 168 lines with no `provider` field, of which 158 are `LLM_CALL` and 10 are `LLM_SCORE`).
+- **50** `LLM_CALL` lines record `provider` `nvidia-direct`. Each of those 50 has `routing.fallback_reason` `nightshift HTTP 502` and no other routing key. All 50 were served `nvidia/nemotron-3-ultra-550b-a55b`. `_direct` in `app/agents/relevance.py` is the only writer of `provider` `nvidia-direct`, and it returns without calling NVIDIA unless the policy is `fallback-nvidia` and `NVIDIA_API_KEY` is set.
+- **158** `LLM_CALL` lines have no `provider` field. Each of those 158 carries Nightshift's routing block (`mode`, `requested_model`, `routed_model`, `winning_model`, `winning_provider`) and no `fallback_reason`. `routing_meta` copies that block from a Nightshift response. The Nightshift HTTP 200 path passes `provider="nightshift"` into `_store` (`app/agents/relevance.py` around line 1113). `_observe` omits `provider` when the value is `nightshift` (the default argument, around lines 685 and 722). `winning_provider` on that block is `nvidia`: Nightshift's label for the upstream it picked, not the trace field `provider`. One of the 158 is a `cache_hit`. A cache hit copies the cached provider, so a cached `nvidia-direct` answer would still show the field. This cache hit has the Nightshift routing block and no `provider` field. Served on these 158 lines: Ultra 140 (124 fast, 16 deep) and Super-VL 18 (fast). Requested on the fast lines is Super.
+- **10** `LLM_SCORE` lines have no `provider` field. `scripts/score_candidates.py` writes `LLM_SCORE` with `output_summary` `{"parsed": true}` and never sets `provider`, on any route. Those 10 are not the Nightshift omission. Served: Ultra 7, Lightning 3. They are the rest of the 168 lines with no `provider` field (218 used answers − 50 explicit `nvidia-direct`).
 
 The blocks between `BEGIN numbers` and `END numbers` are the `scripts/fill_results.py` slots already in the file. They were not regenerated. The writer is `scripts/fill_results.py logs/eval-nemotron-v3.json --write`. That command was not run for this page. `logs/eval-nemotron-v3.json` is gitignored.
 
@@ -155,7 +166,17 @@ One committed rescue-plan trace, not part of the 218: `docs/rescue/trace-rescue-
 
 ## Why Nemotron
 
-`metadata.json` names the separate in-kind prize Best use of NVIDIA Nemotron. Gate 1 requests two NVIDIA Nemotron ids, and the served id on the trace line is what answered. On the scored v3 traces, 218 of 218 answers used have a served id under `nvidia/nemotron-*`. That is a record of which model answered on one labelled audit. It is not a quality ranking and it is not a generalisable accuracy figure. The counts, the 50 / 158 / 10 split, and the missing temperature and thinking-mode fields are in [Nemotron use](#nemotron-use).
+Target prize: Best use of NVIDIA Nemotron.
+
+This repository has no rule text numbered 15.2. The three rows are the eligibility items the README mapped to that prize before this rewrite. Each cell was checked against the files and traces in this checkout. A cell that did not match was corrected. None was dropped.
+
+| Rule 15.2 item | File | Trace / evidence |
+| --- | --- | --- |
+| At least one Nemotron model, through Meterless Nightshift | Nightshift is posted first (`_do_post` to `METERLESS_BASE_URL` in `app/agents/relevance.py`). An HTTP 200 that is kept calls `_store` with `provider="nightshift"` (around line 1113). `_observe` omits `provider` when the value is `nightshift` (default argument, around lines 685 and 722). | Scored v3: the 158 `LLM_CALL` lines in [Nemotron use](#nemotron-use). Zetaris gate-1 trace `data/replays/zetaris-gate1-tharani-2006-invoice-generator-application/trace.jsonl`: 27 of 27 answers used were Nemotron's, 21 through Nightshift and 6 through nvidia-direct. The 21 have the Nightshift routing block. The 6 store `provider` `nvidia-direct` and `fallback_reason` `nightshift HTTP 502`. |
+| In a working feature | The gate-1 judge in `app/agents/relevance.py` (`problem`, `alternative`, `coverage`, `demand`, `discovery`), called from `scripts/score_candidates.py`. | The 16 scored traces and the Zetaris trace above are that feature. Gate 2 verified execution has not run on a real `CANDIDATE`. The committed rescue plan `docs/rescue/trace-rescue-0xmh__fichero-printer-20261027T001117Z.jsonl` is one answer: Requested and Served `nvidia/nemotron-3-ultra-550b-a55b`, `provider` `nvidia-direct`, `fallback_reason` `nightshift HTTP 502`. |
+| Shows which model handled the request | `_observe` writes `requested_model` and `served_model`. `scripts/verify_trace.py --require-nemotron` prints the served family. `/ui` shows the served-model table. | Requested / Served / Policy, read separately. Requested is `requested_model`. Served is `served_model`. Policy is not a field on these traces. On the scored Nightshift `LLM_CALL` lines, Served is Ultra on 140 and Super-VL on 18. The 50 scored `nvidia-direct` lines are Served Ultra. The 10 `LLM_SCORE` lines are Served Ultra 7 and Lightning 3, and they do not record a provider. |
+
+On the scored v3 traces, 218 of 218 answers used have a Served id under `nvidia/nemotron-*`. That is which model answered on one labelled audit. It is not a quality ranking and it is not a generalisable accuracy figure. `.env.example` comments that the NVIDIA API answered 404 for `nvidia/nemotron-3-super-120b-a12b` on the author's account. No trace in this checkout records that 404. The `nvidia-direct` lines that are answers record `fallback_reason` `nightshift HTTP 502` and Served Ultra.
 
 ## Results
 
@@ -185,6 +206,17 @@ Counted from those 16 human labels and from each trace's `DISCOVERY_FILTER` verd
 The 4 false passes are `tharani-2006/Invoice-generator-application`, `goodreasonai/ScrapeServ`, `rianvdm/raindrop-wordpress-linkblog-sync`, and `Shabi-x/go-file-sync`. The fifth must-reject case, `Selfdb-io/SelfDB`, is `ALREADY_EXISTS` and agrees. The other two disagreements are not false passes: `DSRegoitia/CalendarSyncProject` is `NEEDS_PRIOR_ART` (acceptable is `CANDIDATE` or `NEEDS_REVIEW`), and `Dhaiwat10/x402-sovereign` is `ALREADY_EXISTS` where the label allows `CANDIDATE` or `NEEDS_REVIEW` (1 over-refusal).
 
 The cause for each case is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). The gate currently cannot refuse a repo because of a famous commercial product.
+
+### Before and after: the same 16 repositories
+
+The scored row is the regression and audit set above (16 cases, 10 agree, 5 must-reject, 4 false passes). It is not an accuracy benchmark. The 25 Oct cells are the comparison written in this README before the rewrite. Those Gemini traces are not files in this checkout, so 5 of 16, 11 of 11, and 0 of 5 were not recomputed from a committed trace. The scored cells match the `eval-summary-table` slot and the 16 `DISCOVERY_FILTER` lines.
+
+| Run | Answers by | Verdicts inside the human label | Over-refusals | False passes |
+| --- | --- | --- | --- | --- |
+| 25 Oct 2026 batch | Judged by Gemini models (`gemini-3.1-flash-lite` and `gemini-3.5-flash-lite`). Those traces request `meterless/auto`. The traces are not in this checkout. | 5 of 16 | 11 of 11 | 0 of 5 |
+| Scored run, 26 Oct 2026 | Nemotron. Served ids are in [Nemotron use](#nemotron-use). | 10 of 16 | 1 of 11 | 4 of 5 |
+
+The code changed between the two runs as well as the model, so the table is the pipeline and the model together. In that recorded comparison the 25 Oct row is 11 of 11 over-refusals and 0 of 5 false passes, and the scored row is 1 of 11 and 4 of 5. The cause of each scored false pass is the per-case table in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md).
 
 <!-- BEGIN numbers: eval-summary-table -->
 | Measure | Result |
@@ -252,11 +284,11 @@ python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scor
 
 Zetaris was exercised live, read-only, on 2 repositories in `data/real`: `tharani-2006/Invoice-generator-application` and `SergioMendolia/ytkb`. Both ids are in `data/real/discovery_candidates.csv`. The committed gate-1 trace is `data/replays/zetaris-gate1-tharani-2006-invoice-generator-application/trace.jsonl`.
 
-That file has 7 `zetaris_query` events: 1 `preflight` and 6 `ok` (3 per repository, on `phoenix.discovery_candidates`, `phoenix.prior_art`, and `phoenix.demand_signals`). Each stored SQL text is a single `SELECT`. `evidence_source` on those events is `zetaris`. The 27 `LLM_CALL` lines are status `ok` and served `nvidia/nemotron-*`: Ultra 24, Super-VL 3. Requested ids are Super on 25 lines and Ultra on 2. Tiers are fast 25 and deep 2. Six lines record `provider` `nvidia-direct` with `routing.fallback_reason` `nightshift HTTP 502`. Twenty-one `LLM_CALL` lines have no `provider` field (the same omission as the scored run). One `LLM_CALL` is a `cache_hit`. `request_settings` is present on 0 of the 27. `HMEM_VERDICT_MEMORY` does not occur. ytkb `venture_analyst` at `2026-10-26T20:09:01Z` is `LLM_FALLBACK` after `Meterless chat failed with HTTP 502`, then `INITIAL_SCORECARD` total 13.33. `PROTAGONIST_SELECTION` says no eligible candidate met the feasibility threshold. Verdicts: Invoice `ALREADY_EXISTS`, ytkb `CANDIDATE` (human label `ALREADY_EXISTS`, so ytkb is a false pass on this run). Tool lines include 10 with status text `GitHub HTTP 404`, 1 `GitHub HTTP 422`, and 4 `BUDGET_EXHAUSTED`. There are 2 `UNVERIFIED_ALTERNATIVE_QUOTE` events. `scripts/zetaris_check.py` loads rows and seals a trace; it calls no model and writes no verdict. Its sealed trace is not in this checkout. `scripts/zetaris/load_real.ps1` issues `CREATE` statements. This checkout has no record that the load was run.
+That file has 7 `zetaris_query` events: 1 `preflight` and 6 `ok` (3 per repository, on `phoenix.discovery_candidates`, `phoenix.prior_art`, and `phoenix.demand_signals`). Each stored SQL text is a single `SELECT`. `evidence_source` on those events is `zetaris`. The 27 `LLM_CALL` lines are status `ok` and served `nvidia/nemotron-*`: Ultra 24, Super-VL 3. Requested ids are Super on 25 lines and Ultra on 2. Tiers are fast 25 and deep 2. 27 of 27 answers used were Nemotron's, 21 through Nightshift and 6 through nvidia-direct. The 21 have no `provider` field and carry the Nightshift routing block (`winning_provider` `nvidia`, plus `mode`, `requested_model`, `routed_model`, `winning_model`). The 6 store `provider` `nvidia-direct` and `routing.fallback_reason` `nightshift HTTP 502`, and all 6 were Served Ultra. The same writer proof as the scored 158 is in [Nemotron use](#nemotron-use). One of the 21 is a `cache_hit` with that routing block and no `provider` field. `request_settings` is present on 0 of the 27. `HMEM_VERDICT_MEMORY` does not occur. ytkb `venture_analyst` at `2026-10-26T20:09:01Z` is `LLM_FALLBACK` after `Meterless chat failed with HTTP 502`, then `INITIAL_SCORECARD` total 13.33. `PROTAGONIST_SELECTION` says no eligible candidate met the feasibility threshold. Verdicts: Invoice `ALREADY_EXISTS`, ytkb `CANDIDATE` (human label `ALREADY_EXISTS`, so ytkb is a false pass on this run). Tool lines include 10 with status text `GitHub HTTP 404`, 1 `GitHub HTTP 422`, and 4 `BUDGET_EXHAUSTED`. There are 2 `UNVERIFIED_ALTERNATIVE_QUOTE` events. `scripts/zetaris_check.py` loads rows and seals a trace; it calls no model and writes no verdict. Its sealed trace is not in this checkout. `scripts/zetaris/load_real.ps1` issues `CREATE` statements. This checkout has no record that the load was run.
 
 The 16 scored repositories were fetched live with `evidence_source=csv` on each `DISCOVERY_FILTER` line. They did not go through Zetaris.
 
-**Pending, not a result.** An independent Zetaris re-run of the 16 scored repositories is in progress. No verdict, run hash, answer count, or trace from that re-run is in this repository. This sentence is a placeholder. It is not a result.
+The earlier Zetaris gate-1 trace judged Invoice `ALREADY_EXISTS` with evidence alternative `al1abb/invoify`. That run's `prior_art` query for Invoice returned 1 row and selected `licence_spdx`, `stars`, and `pushed_at`. The committed `data/real/prior_art.csv` row is MIT, 6376 stars, pushed `2026-08-24T02:55:34Z`. The scored v3 Invoice trace has `prior_rows=0` and does not name that row.
 
 <!-- BEGIN numbers: zetaris-gate1-run -->
 Gate 1 was then run with its evidence read from Zetaris (`EVIDENCE_SOURCE=zetaris`, `python scripts/score_candidates.py --snapshot data/real --llm`) on those 2 repositories, on 26 Oct 2026. Run hash `4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad`. The original path `logs/trace-zetaris-gate1.jsonl` is gitignored. The committed copy is `data/replays/zetaris-gate1-tharani-2006-invoice-generator-application/trace.jsonl`. Check it with `python scripts/verify_trace.py data/replays/zetaris-gate1-tharani-2006-invoice-generator-application/trace.jsonl --expected-run-hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad --require-nemotron`. That command on the committed copy reports 27 of 27 answers used were Nemotron's (Nightshift 21, `nvidia-direct` 6; served `nvidia/nemotron-3-ultra-550b-a55b` 24, `nvidia/nemotron-3.5-super-vl-120b-a12b` 3, the latter chosen by Nightshift). `scripts/zetaris_check.py` is a separate read-only evidence load and still writes no verdict; its sealed trace is also not in this checkout.
@@ -270,7 +302,7 @@ ytkb is a false pass on this run. An earlier trial returned `NEEDS_REVIEW` on a 
 <!-- END numbers: zetaris-gate1-run -->
 
 
-The slot's phrase "Nightshift 21" is what `verify_trace.py` prints for the 21 lines that have no `provider` field. The slot was not regenerated.
+The slot's phrase "Nightshift 21" is the same split, in `verify_trace.py`'s wording: 27 of 27 answers used were Nemotron's, 21 through Nightshift and 6 through nvidia-direct. The slot was not regenerated.
 
 Meterless Nightshift is the first route for a gate-1 model call: OpenAI-compatible `POST /v1/chat/completions` with `meterless-app` and `meterless-scope` headers (`app/agents/relevance.py`). Tests mock that HTTP transport. No redacted Nightshift probe output is committed (`docs/NIGHTSHIFT_PROBE.md` describes where one would go).
 
@@ -282,14 +314,13 @@ H-MEM is this repository's own implementation of the public Meterless spec (`app
 
 - The v3 table is one labelled audit run. It is not a generalisable accuracy benchmark. There is no held-out set in this repository.
 - Scored v3 traces do not record temperature, thinking mode, or `PHOENIX_NEMOTRON_POLICY`.
-- `verify_trace.py` prints `nightshift` for a missing `provider`. That print is not a stored field. `LLM_SCORE` never sets `provider`.
+- `verify_trace.py` prints `nightshift` for a missing `provider`. That print is not a stored field. On an `LLM_CALL` line the omission is the Nightshift route in [Nemotron use](#nemotron-use). `LLM_SCORE` never sets `provider`.
 - `quote_in_text` (`app/agents/relevance.py`) is a case-insensitive substring check after whitespace and Markdown normalisation. There is no minimum length. A match shows the quote occurs. It does not show that the quote supports the verdict.
 - A web row is created with `stars` set to `0` (`app/agents/relevance.py`). `RepoFactsClient.fetch_alternative` does call the GitHub API for a `github.com/owner/name` URL, including a `web:` prefix (`app/agents/repo_facts.py`), and `scripts/score_candidates.py` calls it on problem alternatives. It fills a field only when the current value is `None` or `""`, so the preset `0` is not replaced by the star count the API returns. A web-found GitHub repository still cannot meet the 100-star bar from that lookup.
 - Gate 2 verified execution runs the target repository's install and test commands with `subprocess.Popen(..., shell=True)` (`app/revive_loop.py`). There is no sandbox. It has not run on a real `CANDIDATE` here.
 - The one committed rescue plan is a plan. The quote check shows the quote occurs in the cited text. It does not show that the quote supports the item. No AI-written patch in this repository has fixed a real repository's tests.
 - CI (`.github/workflows/ci.yml`) does not call a live Zetaris, Nightshift, or NVIDIA API. Live runs were done outside CI.
 - H-MEM on gate 1 records verdicts. It does not decide them. The official conformance suite was not run. The scored run predates the hook.
-- The Zetaris re-run of the 16 repositories is pending. It has no numbers here.
 - `model_mismatch` in `config/settings.py` is true unless the served id starts with `nvidia/nemotron-`. An empty id is a mismatch. The sample stand-in name is not.
 
 ## Pre-existing components
@@ -323,7 +354,7 @@ That skeleton includes the FastAPI process, the Docker image, the evidence graph
 
 ## In review
 
-These pull requests are open. They are not merged, and they are not the behaviour of this branch except where #58's README wording is already the base of this file.
+These pull requests are open. They are not merged, and they are not the behaviour of this branch. Pull request #58 is on `main`.
 
 **Pull requests #59, #62, #65, and #66 (not merged).** Each switch is default off. It runs only when set to `1`, `true`, `yes`, `on`, or `enabled`. Unset stays off. None of them are on this branch, and none are part of any number on this page. The names are `PHOENIX_UNKNOWN_BLOCKER_REVIEW` (#59), `PHOENIX_WEB_GITHUB_API_LOOKUP` (#62), `PHOENIX_QUOTE_FAIL_FLAG` (#65), and `PHOENIX_COMMODITY_CATEGORY_RULE` (#66). An offline reading of Rule B on the recorded `must_beat` lines is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). It is not a live run.
 
