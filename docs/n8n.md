@@ -26,7 +26,7 @@ http://localhost:5678
 
 1. In the n8n UI, navigate to **Workflows**.
 2. Click **Add workflow** or click the **...** menu in the top right and select **Import from File**.
-3. Choose the file located at [`n8n/phoenix_evidence_webhook.json`](file:///C:/Users/nn201/phoenixrepo/n8n/phoenix_evidence_webhook.json).
+3. Choose the file [`n8n/phoenix_evidence_webhook.json`](../n8n/phoenix_evidence_webhook.json).
 4. The workflow consists of three nodes:
    - **Webhook**: Listens for HTTP POST requests on `/phoenix-evidence`.
    - **HTTP Request**: Fetches the `url` specified in the incoming payload.
