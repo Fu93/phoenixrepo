@@ -1,0 +1,235 @@
+{
+  "repo_id": "0xMH/fichero-printer",
+  "gate1": {
+    "verdict": "CANDIDATE",
+    "total": 48.33,
+    "flags": [
+      "MODEL_MISMATCH"
+    ],
+    "run_id": "judge-20261026224918",
+    "run_hash": "78643307b096ebbb1f3ea0a1c4acc3f91c0ee0d571facfa496db0a88449848ad"
+  },
+  "drafted_by": "model",
+  "requested_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "served_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "positioning": {
+    "target_user": "printer owners who value privacy",
+    "job": "print labels without granting excessive permissions",
+    "gap": "no maintained free OSS alternative covers Web GUI, Python CLI, BLE connectivity, Classic Bluetooth SPP connectivity, and protocol documentation for the Fichero D11s",
+    "evidence": [
+      "candidate:0xMH/fichero-printer",
+      "assessment:problem_severity",
+      "assessment:differentiation"
+    ]
+  },
+  "stages": [
+    {
+      "stage": "REVIVE",
+      "items": [
+        {
+          "title": "Verify Python CLI prints a label on a physical Fichero D11s",
+          "why": "The candidate claims a working Python CLI but gate 2 must verify the round-trip works on hardware",
+          "acceptance": "Running the CLI test command against a real printer produces a printed label",
+          "quote": "The repository provides a working Python CLI, a web GUI, and protocol documentation, indicating a functional baseline.",
+          "evidence": [
+            "candidate:0xMH/fichero-printer",
+            "assessment:feasibility",
+            "repo:tree"
+          ]
+        },
+        {
+          "title": "Verify Web GUI loads and pairs via Web Bluetooth",
+          "why": "The candidate advertises a Web GUI; it must be loadable and able to connect over BLE",
+          "acceptance": "Opening the web app in a browser shows the interface and a BLE pairing prompt appears",
+          "quote": "Candidate quotes: for 'Web-based graphical interface': \"Web GUI\"",
+          "evidence": [
+            "candidate:0xMH/fichero-printer",
+            "assessment:differentiation",
+            "repo:tree"
+          ]
+        },
+        {
+          "title": "Run existing test suite to confirm no regressions",
+          "why": "The repository includes a tests directory; tests must pass before any changes",
+          "acceptance": "All tests in the tests/ directory pass with the current dependencies",
+          "quote": "repository root: .github, .gitignore, README.md, docs, fichero, pyproject.toml, tests, uv.lock, web",
+          "evidence": [
+            "repo:tree",
+            "assessment:feasibility"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "OPTIMISE",
+      "items": [
+        {
+          "title": "Pin all dependencies in pyproject.toml and verify uv.lock reproducibility",
+          "why": "Clean dependencies are noted; pinning prevents future breakage",
+          "acceptance": "uv sync --frozen succeeds and produces identical uv.lock on a clean machine",
+          "quote": "the code appears maintainable with clean dependencies.",
+          "evidence": [
+            "repo:tree",
+            "assessment:feasibility"
+          ]
+        },
+        {
+          "title": "Add GitHub Actions workflow to run tests on every push",
+          "why": "The .github directory exists but no CI is confirmed; automation prevents regressions",
+          "acceptance": "A workflow in .github/workflows/ runs the test suite and reports success on the default branch",
+          "quote": "repository root: .github, .gitignore, README.md, docs, fichero, pyproject.toml, tests, uv.lock, web",
+          "evidence": [
+            "repo:tree"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "UPGRADE",
+      "items": [
+        {
+          "title": "Add label template engine to Web GUI for non-technical users",
+          "why": "Web GUI is a listed differentiator; templates extend its reach beyond developers",
+          "acceptance": "Web GUI offers a template selector (address, QR, barcode) and prints a filled template without code",
+          "quote": "Candidate quotes: for 'Web-based graphical interface': \"Web GUI\"",
+          "evidence": [
+            "candidate:0xMH/fichero-printer",
+            "assessment:differentiation",
+            "must_beat:web:https://hackaday.com/2026/03/09/reverse-engineering-the-bluetooth-fichero-thermal-label-printer-protocol"
+          ]
+        },
+        {
+          "title": "Release a versioned protocol specification document with changelog",
+          "why": "Protocol documentation is a listed differentiator; versioning makes it a stable reference for other implementers",
+          "acceptance": "docs/protocol-v1.0.md exists with a changelog section and is linked from README.md",
+          "quote": "Missing capabilities: 'Web-based graphical interface', 'Python command-line interface', 'Bluetooth Low Energy connectivity', 'Classic Bluetooth SPP connectivity', 'Protocol documentation for reverse-engineered printer' (5 not covered by any maintained free OSS alternative).",
+          "evidence": [
+            "candidate:0xMH/fichero-printer",
+            "assessment:differentiation"
+          ]
+        }
+      ]
+    }
+  ],
+  "must_beat": [
+    {
+      "alternative": "ChiaraCannolee/thermal-pocket-printer-basic",
+      "how_to_win": "Support the Fichero D11s specifically (different printer) and provide Web GUI plus protocol documentation",
+      "evidence": [
+        "must_beat:web:https://github.com/ChiaraCannolee/thermal-pocket-printer-basic",
+        "assessment:differentiation"
+      ]
+    },
+    {
+      "alternative": "Hackaday article on Fichero reverse engineering",
+      "how_to_win": "Remain free, self-hostable, and under a permissive licence while the article is not an alternative with code",
+      "evidence": [
+        "must_beat:web:https://hackaday.com/2026/03/09/reverse-engineering-the-bluetooth-fichero-thermal-label-printer-protocol"
+      ]
+    }
+  ],
+  "risks": [
+    "Demand evidence is weak (score 1): only a single Hackaday mention and one comment",
+    "No moat (score 0): the reverse-engineered protocol and CLI can be replicated over a weekend",
+    "No monetization or distribution channel beyond open-source adoption (productization_path score 1)",
+    "Single printer model dependency: if Action discontinues the Fichero D11s, the user base evaporates"
+  ],
+  "organised": {
+    "status": "verifiable",
+    "detail": "A test path is visible in the root, so gate 2's execution loop can verify the REVIVE stage.",
+    "manifests": [
+      "pyproject.toml"
+    ],
+    "test_paths": [
+      "tests"
+    ]
+  },
+  "rejected_items": [
+    {
+      "stage": "OPTIMISE",
+      "title": "Publish reverse-engineered protocol as standalone Markdown in docs/",
+      "reason": "quote not found verbatim in the cited evidence"
+    },
+    {
+      "stage": "UPGRADE",
+      "title": "Implement automatic BLE/SPP fallback in the Python CLI",
+      "reason": "quote not found verbatim in the cited evidence"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "candidate:0xMH/fichero-printer",
+      "kind": "candidate",
+      "url": "https://github.com/0xMH/fichero-printer",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://github.com/ChiaraCannolee/thermal-pocket-printer-basic",
+      "kind": "prior",
+      "url": "https://github.com/ChiaraCannolee/thermal-pocket-printer-basic",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://hackaday.com/2026/03/09/reverse-engineering-the-bluetooth-fichero-thermal-label-printer-protocol",
+      "kind": "prior",
+      "url": "https://hackaday.com/2026/03/09/reverse-engineering-the-bluetooth-fichero-thermal-label-printer-protocol",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://hackaday.com/2026/03/09/reverse-engineering-the-bluetooth-fichero-thermal-label-printer-protocol",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://github.com/ChiaraCannolee/thermal-pocket-printer-basic",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:problem_severity",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:demand_evidence",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:differentiation",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:feasibility",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:productization_path",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:moat",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "repo:tree",
+      "kind": "repo",
+      "url": "https://github.com/0xMH/fichero-printer",
+      "content_hash": ""
+    }
+  ],
+  "run_id": "rescue-0xmh__fichero-printer-20261027T001117Z",
+  "run_hash": "51e828e538ed8f05dda15648fc673c3461ca310a87c0af77c53482e1f0a086c4"
+}

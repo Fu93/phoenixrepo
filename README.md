@@ -83,11 +83,41 @@ python scripts/fill_results.py logs/eval-nemotron-v3.json --write
 A live run on one machine, not a stored accuracy. "False pass" means a case the human label says to refuse was not refused. The line under the per-case table says how many of those came back `CANDIDATE`, which would let gate 2 plan a revival of an idea that already exists.
 
 <!-- BEGIN numbers: eval-summary-table -->
-**TBD.**
+| Measure | Result |
+| --- | --- |
+| Labelled repositories judged | 16 of 16 in the report |
+| Verdict inside the human label's acceptable set | 10 of 16 |
+| Over-refusals (ALREADY_EXISTS where the label says it should not be) | 1 of 11 |
+| False passes (not refused where the label says ALREADY_EXISTS) | 4 of 5 |
+| Model answers used that NVIDIA Nemotron wrote | 218 of 218 |
+| Served models (all LLM call lines) | `(missing)` 3 (failed or discarded calls with no answer, not answers used), `nvidia/nemotron-3-ultra-550b-a55b` 197, `nvidia/nemotron-3.5-lightning-30b-a3b` 3, `nvidia/nemotron-3.5-super-vl-120b-a12b` 18 |
+
+Source: `logs/eval-nemotron-v3.json`, summarised by `scripts/eval_summary.py`. A live run on one machine, not a stored accuracy.
 <!-- END numbers: eval-summary-table -->
 
 <!-- BEGIN numbers: per-case-table -->
-**TBD.**
+| Repository | Human label | Verdict | Outcome | Verdict answer by | Nemotron answers used | Providers | Chain | Reason (shortened) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `tharani-2006/Invoice-generator-application` | ALREADY_EXISTS | CANDIDATE | disagrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 20 of 20 | nightshift 17, nvidia-direct 3 | ok `cfbe3cc16adb` | all guards passed |
+| `DSRegoitia/CalendarSyncProject` | CANDIDATE or NEEDS_REVIEW | NEEDS_PRIOR_ART | disagrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 10 of 10 | nightshift 7, nvidia-direct 3 | ok `2eb5a1e3157e` | Zero alternatives checked in prior-art search. |
+| `goodreasonai/ScrapeServ` | ALREADY_EXISTS | CANDIDATE | disagrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 14 of 14 | nightshift 11, nvidia-direct 3 | ok `8ebf13c116d5` | all guards passed |
+| `Selfdb-io/SelfDB` | ALREADY_EXISTS | ALREADY_EXISTS | agrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 10 of 10 | nightshift 6, nvidia-direct 4 | ok `147b7b32cbf0` | verified full-overlap alternative https://github.com/Erudika/para already solves the same problem (quote: 'Mu… |
+| `samuelarogbonlo/knetvis` | CANDIDATE or NEEDS_REVIEW | CANDIDATE | agrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 13 of 13 | nightshift 8, nvidia-direct 5 | ok `26bab56e6000` | all guards passed |
+| `rianvdm/raindrop-wordpress-linkblog-sync` | ALREADY_EXISTS | CANDIDATE | disagrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 14 of 14 | nightshift 13, nvidia-direct 1 | ok `51210214ec75` | all guards passed |
+| `Carvenjizaks/gc-sync-webhook` | CANDIDATE or NEEDS_REVIEW | CANDIDATE | agrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 13 of 13 | nightshift 11, nvidia-direct 2 | ok `459b10a988b8` | all guards passed |
+| `aa12gq/stack-file-sync-vscode` | CANDIDATE or NEEDS_REVIEW | NEEDS_REVIEW | agrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 10 of 10 | nightshift 5, nvidia-direct 5 | ok `54c66dd2653d` | unverified LLM quote: alternative_repo 'espenalbert/path-sync' not found in candidate prior-art. Method: llm+… |
+| `ri-char/pwatch` | CANDIDATE or NEEDS_REVIEW | CANDIDATE | agrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 15 of 15 | nightshift 12, nvidia-direct 3 | ok `ccd9ee9d98ee` | all guards passed |
+| `DayanK/LinkedinSyncContacts` | CANDIDATE or NEEDS_REVIEW | CANDIDATE | agrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 18 of 18 | nightshift 16, nvidia-direct 2 | ok `536118df205f` | all guards passed |
+| `Shabi-x/go-file-sync` | ALREADY_EXISTS | CANDIDATE | disagrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 18 of 18 | nightshift 17, nvidia-direct 1 | ok `0842db1647fd` | all guards passed |
+| `samwho/spacer` | CANDIDATE or NEEDS_REVIEW | CANDIDATE | agrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 13 of 13 | nightshift 9, nvidia-direct 4 | ok `6f1c4392af97` | all guards passed |
+| `oleksiiluchnikov/obsidian-localtable` | CANDIDATE or NEEDS_REVIEW | CANDIDATE | agrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 14 of 14 | nightshift 13, nvidia-direct 1 | ok `2ae4aab419eb` | all guards passed |
+| `sealdice/qq-group-files-sync` | CANDIDATE or NEEDS_REVIEW | CANDIDATE | agrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 14 of 14 | nightshift 11, nvidia-direct 3 | ok `833fd205dac5` | all guards passed |
+| `Dhaiwat10/x402-sovereign` | CANDIDATE or NEEDS_REVIEW | ALREADY_EXISTS | disagrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 10 of 10 | nightshift 6, nvidia-direct 4 | ok `37f20b4250fa` | verified full-overlap alternative https://docs.x402.org/dev-tools/facilitators already solves the same proble… |
+| `0xMH/fichero-printer` | CANDIDATE or NEEDS_REVIEW | CANDIDATE | agrees | `nvidia/nemotron-3-ultra-550b-a55b` (nightshift) | 12 of 12 | nightshift 6, nvidia-direct 6 | ok `78643307b096` | all guards passed |
+
+Of the 5 judged cases the label says to refuse: 4 `CANDIDATE`, 1 `ALREADY_EXISTS`. A `CANDIDATE` among them is a false pass that gate 2 would act on.
+
+Each row's trace is `logs/trace-<run_id>.jsonl` on the author's machine; the chain column is `scripts/verify_trace.py` on that file. `(missing)` in a served-model count is a call that failed or was discarded before any answer, not an answer used.
 <!-- END numbers: per-case-table -->
 
 ### Zetaris scope
@@ -122,16 +152,14 @@ All 16 were `ALREADY_EXISTS` in the 25 Oct batch, which is why the human audit e
 
 `DSRegoitia/CalendarSyncProject` was rejected by the older Phoenix because FullCalendar "displays public Google Calendar events". The human label in `data/eval/gate1_labels.json` calls that a WRONG over-rejection: the candidate pushes events the other way, from FullCalendar into Google Calendar. `ALREADY_EXISTS` is outside the acceptable set. The acceptable set is `CANDIDATE` or `NEEDS_REVIEW`.
 
-The current gate 1 returns `CANDIDATE` or `NEEDS_REVIEW` for this repository. Both sit inside that acceptable set. `NEEDS_REVIEW` on this case is a partial overlap: a verbatim quote is handed to a human. Two independent runs, with different generated queries, returned `CANDIDATE` and `NEEDS_REVIEW`.
-
-The run recorded for the submission is still open.
+The current gate 1 has not refused it in any run. It has given three different answers: `CANDIDATE` and `NEEDS_REVIEW` in two runs on 26 Oct (the second a partial overlap with FullCalendar's docs, handed to a human with the quote), and `NEEDS_PRIOR_ART` on the scored run, because that run's search checked zero alternatives and the gate will not call an idea new on an empty search. `NEEDS_PRIOR_ART` is outside the label's acceptable set, so the scored table counts it as a disagreement. The three answers come from three different generated query sets, which is the variance described in [Limits](#limits).
 
 <!-- BEGIN numbers: calendarsync-final-verdict -->
-Final verdict on the recorded run: **TBD** (`CANDIDATE` or `NEEDS_REVIEW`).
+Final verdict on the recorded run (`judge-20261026202603`): **NEEDS_PRIOR_ART** (disagrees with the human label). Reason: Zero alternatives checked in prior-art search.
 <!-- END numbers: calendarsync-final-verdict -->
 
 <!-- BEGIN numbers: calendarsync-final-run-hash -->
-Final run hash (`RUN_SEAL` `line_hash`, the value `scripts/verify_trace.py --expected-run-hash` checks): **TBD**.
+Final run hash: `2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0`. Check it with `python scripts/verify_trace.py logs/trace-judge-20261026202603.jsonl --expected-run-hash 2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0 --require-nemotron`.
 <!-- END numbers: calendarsync-final-run-hash -->
 
 ### What a passing verdict is allowed to mean
@@ -180,17 +208,28 @@ python scripts/verify_trace.py logs/trace-<run_id>.jsonl --require-nemotron
 `/ui` shows an "N of M answers by NVIDIA Nemotron" badge, built from `answers_by_nemotron` and `answers_used`. The verdict card includes a Nemotron reasoning card: the heading is "Nemotron's reasoning" when the used final-verdict answer is in the Nemotron family, and the page says that text is the model's account. The verdict still stands only when its quotes are found verbatim and the alternative passes the maturity checks.
 
 <!-- BEGIN numbers: nemotron-answer-share -->
-Answers by NVIDIA Nemotron on the scored run: **TBD** of **TBD**. The same share is the Nemotron row of the table in [Results](#results).
+Answers by NVIDIA Nemotron on the scored run: **218** of **218** answers used (16 of 16 case traces verified, `logs/eval-nemotron-v3.json`). The final-verdict answer (the `discovery` step) was written by Nemotron in **16** of the **16** cases whose trace has one.
 <!-- END numbers: nemotron-answer-share -->
 
 <!-- BEGIN numbers: provider-split -->
-Provider split on that run, Nightshift answers used / `nvidia-direct` answers used, as printed by `verify_trace.py --require-nemotron`: **TBD** / **TBD**.
+Provider split on that run, from `verify_trace.py --require-nemotron` over each case trace: nightshift **168**, nvidia-direct **50**. 1 of the used answers were replayed from the LLM cache: an earlier run asked the same prompt with the same input, and the cached line keeps the model and provider that answered then. Served model per provider: nightshift: `nvidia/nemotron-3-ultra-550b-a55b` 147, `nvidia/nemotron-3.5-lightning-30b-a3b` 3, `nvidia/nemotron-3.5-super-vl-120b-a12b` 18; nvidia-direct: `nvidia/nemotron-3-ultra-550b-a55b` 50.
 <!-- END numbers: provider-split -->
 
 How Nemotron was used on the scored run, counted from the same verified traces: which tier answered with which served model, how long live answers took, and how often Nightshift failed and NVIDIA's API answered instead.
 
 <!-- BEGIN numbers: nemotron-evidence -->
-**TBD**
+| Tier | Answers used, by served model |
+| --- | --- |
+| deep | `nvidia/nemotron-3-ultra-550b-a55b` 16 |
+| fast | `nvidia/nemotron-3-ultra-550b-a55b` 174, `nvidia/nemotron-3.5-super-vl-120b-a12b` 18 |
+| no tier (scoring calls outside the two-tier client) | `nvidia/nemotron-3-ultra-550b-a55b` 7, `nvidia/nemotron-3.5-lightning-30b-a3b` 3 |
+
+| Served model | Live answers | Median seconds | Max seconds |
+| --- | --- | --- | --- |
+| `nvidia/nemotron-3-ultra-550b-a55b` | 189 | 42 | 280 |
+| `nvidia/nemotron-3.5-super-vl-120b-a12b` | 18 | 7 | 90 |
+
+Final-verdict (deep tier) answers that carried a separate reasoning field or `<think>` block: **0** of **16**. Calls sent to NVIDIA's API after Nightshift failed or served a non-Nemotron answer: **53** (answered **50**, failed **3**, rejected **0**); the recorded reason on the answered ones: HTTP 502 50. Nightshift answers discarded as non-Nemotron: **0**; other Nightshift errors traced: **0**. A Nightshift failure that was retried on Nightshift itself writes no trace line, so the failure counts are lower bounds. Cases left not judged on this run: **0** of **16**. Cached answers are counted as used but not timed.
 <!-- END numbers: nemotron-evidence -->
 
 **Sampling.** Requests are sent with `temperature: 0`, so a verdict is reproducible and an answer can be cached and replayed. NVIDIA's guidance for Nemotron's reasoning mode is `temperature` 0.6 and `top_p` 0.95; `PHOENIX_LLM_DEEP_EXTRA_BODY='{"temperature": 0.6, "top_p": 0.95}'` applies it to the verdict tier only. The trade-off is deliberate: a verdict must be repeatable, and its claims are checked by code either way. The setting a run used is in that run's `.env`.
