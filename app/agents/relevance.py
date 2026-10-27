@@ -32,6 +32,7 @@ import httpx
 
 from app.errors import InvestigationError
 from app.prompts import load_prompt
+from app.trace_log import kept_request_settings, request_settings_sha256
 from config.settings import DEFAULT_NIGHTSHIFT_MODEL, model_mismatch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -117,23 +118,21 @@ def extra_body_from_env(name: str = "PHOENIX_LLM_EXTRA_BODY") -> dict[str, Any]:
 
 
 def sent_request_settings(payload: dict[str, Any]) -> dict[str, Any]:
-    """Sampling and reasoning flags present on the HTTP body that was posted.
+    """Allowlisted sampling flags present on the HTTP body that was posted.
 
-    A key that was not sent is omitted. This does not invent a default, and it
-    does not include the model, the messages, or any header.
+    A key that was not sent is omitted. This does not invent a default. The model,
+    the messages, headers, endpoints, and any key outside the allowlist are dropped.
+    ``chat_template_kwargs`` is reduced to ``enable_thinking``.
     """
 
     sent: dict[str, Any] = {}
-    for key in ("temperature", "top_p", "max_tokens"):
+    for key in ("temperature", "top_p", "max_tokens", "reasoning_effort", "reasoning_budget"):
         if key in payload:
             sent[key] = payload[key]
     template = payload.get("chat_template_kwargs")
     if isinstance(template, dict) and "enable_thinking" in template:
-        sent["enable_thinking"] = template["enable_thinking"]
-    for key in ("reasoning_effort", "reasoning_budget"):
-        if key in payload:
-            sent[key] = payload[key]
-    return sent
+        sent["chat_template_kwargs"] = {"enable_thinking": template["enable_thinking"]}
+    return kept_request_settings(sent)
 
 
 # Two Nemotron tiers. Many short overlap judgements go to the fast model (MODEL_NAME).
@@ -692,11 +691,17 @@ class RelevanceClient:
                     self.repo_mismatches.add(repo_id)
         if self.trace is None:
             return
+        # Settings of a call that was actually posted. A cache hit does not pass them:
+        # the cache key does not include them, so the stored answer may be from another body.
+        sanitized = kept_request_settings(request_settings) if request_settings else {}
         summary: dict[str, Any] = {"requested_model": requested, "served_model": served}
-        if provider != "nightshift":
-            summary["provider"] = provider
         if tier:
             summary["tier"] = tier
+        if sanitized:
+            summary["request_settings"] = sanitized
+            summary["request_settings_sha256"] = request_settings_sha256(sanitized)
+        if provider != "nightshift":
+            summary["provider"] = provider
         if routing:
             summary["routing"] = routing
         if seconds is not None:
@@ -706,10 +711,8 @@ class RelevanceClient:
         if reasoning:
             summary["reasoning"] = reasoning
         llm: dict[str, Any] = {"requested_model": requested, "served_model": served}
-        # Settings of a call that was actually posted. A cache hit does not pass them:
-        # the cache key does not include them, so the stored answer may be from another body.
-        if request_settings:
-            llm["request_settings"] = request_settings
+        if sanitized:
+            llm["request_settings"] = sanitized
         self.trace.event(
             agent_name="orchestrator",
             action="LLM_CALL",
@@ -717,7 +720,7 @@ class RelevanceClient:
             output_summary=summary,
             llm=llm,
             status=status,
-            summary_limit=4000 if reasoning else 500,
+            summary_limit=4000 if reasoning or sanitized else 500,
         )
 
     def _log_served(self, repo_id: str, step: str, served: str, elapsed: float, cache_hit: bool) -> None:
@@ -787,8 +790,9 @@ class RelevanceClient:
                 # The join already gave up. Record the requested id and an empty serve.
                 # Do not copy a model id from a response that arrived after the cap.
                 # request_settings is set only after the HTTP body was built.
+                requested, _body, tier = self.route(step)
                 self._observe(
-                    self.route(step)[0], "", repo_id, step, status="error",
+                    requested, "", repo_id, step, status="error", tier=tier,
                     request_settings=self._sent_request_settings,
                 )
             raise
@@ -803,7 +807,7 @@ class RelevanceClient:
     ) -> tuple[str, str, str]:
         call_start = time.monotonic()
         model, body_extra, tier = self.route(step)
-        tier_label = tier if self.deep_model else ""
+        tier_label = tier
         total_cap = self.total_timeout if call_budget_s is None else min(self.total_timeout, max(0.0, call_budget_s))
         prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
         input_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
@@ -817,7 +821,7 @@ class RelevanceClient:
                 raw_served = cached.get("served_model")
                 served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
-                    self._observe(model, served, repo_id, step, status="error")
+                    self._observe(model, served, repo_id, step, status="error", tier=tier_label)
                     raise RelevanceLLMError(
                         f"Nightshift served local model {served}; refusing to score with a small local model"
                     )
@@ -882,7 +886,7 @@ class RelevanceClient:
             # An explicit empty string is a missing model field and stays empty.
             served = model if self.mock_served_model is None else self.mock_served_model
             if served.startswith("local-runtime/"):
-                self._observe(model, served, repo_id, step, status="error")
+                self._observe(model, served, repo_id, step, status="error", tier=tier_label)
                 raise RelevanceLLMError(
                     f"Nightshift served local model {served}; refusing to score with a small local model"
                 )
@@ -1045,7 +1049,10 @@ class RelevanceClient:
                 raw_served = data.get("model") if isinstance(data, dict) else None
                 served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
-                    self._observe(model, served, repo_id, step, status="error", request_settings=self._sent_request_settings)
+                    self._observe(
+                        model, served, repo_id, step, status="error", tier=tier_label,
+                        request_settings=self._sent_request_settings,
+                    )
                     raise RelevanceLLMError(
                         f"Nightshift served local model {served}; refusing to score with a small local model"
                     )
