@@ -2,8 +2,10 @@
 """Recompute committed Nemotron evidence offline.
 
 One command, no network, no model calls, and no read of .env. Exit 0 only when
-every check passes. Absent fields are printed as "not recorded" and are not
-inferred (an omitted provider is not counted as nightshift).
+every check passes. Temperature, thinking mode, and policy stay "not recorded"
+and are not inferred. A missing provider is not an explicitly recorded
+nightshift value: it is the Nightshift route inferred from the absence of the
+direct-NVIDIA marker, checked as 218 total minus the explicit nvidia-direct count.
 
     python scripts/verify_nemotron_evidence.py
 """
@@ -51,6 +53,8 @@ EXPECTED_TIERS = (
 _MODEL_ACTIONS = {"LLM_CALL", "LLM_SCORE"}
 _SAMPLING_KEYS = ("temperature", "top_p", "max_tokens", "enable_thinking", "thinking", "reasoning_effort")
 _SAMPLING_SENTENCE = "Scored v3 traces do not record temperature or thinking mode; neither is inferred."
+# README's 168 is this derived remainder, not a field named nightshift.
+INFERRED_PROVIDER_LABEL = "no provider field (Nightshift route, inferred from absence of the direct-NVIDIA marker)"
 _NOT_SCORED_LABEL = "not the scored v3 run"
 
 
@@ -174,10 +178,11 @@ def skipped_model_lines(path: Path) -> int:
 
 
 def audit_trace(path: Path, *, expected_run_hash: str | None = None) -> list[str]:
-    """Fail on a broken chain, a non-Nemotron used answer, or a missing answer field.
+    """Fail on a broken chain, a non-Nemotron used answer, or a missing model id.
 
-    A missing provider is a failure. It is not filled in as nightshift.
-    A missing tier is not a failure here: the caller counts that line as no tier.
+    A missing provider is not a failure and is not stored as the string nightshift.
+    The caller counts that absence as an inferred route. A missing tier is not a
+    failure here either: the caller counts that line as no tier.
     """
 
     problems: list[str] = []
@@ -197,8 +202,6 @@ def audit_trace(path: Path, *, expected_run_hash: str | None = None) -> list[str
             problems.append(f"FAIL Served {row.served} does not start with nvidia/nemotron- ({where})")
         if row.requested is None:
             problems.append(f"FAIL Requested not recorded ({where})")
-        if row.provider is None:
-            problems.append(f"FAIL provider not recorded ({where})")
     return problems
 
 
@@ -222,6 +225,70 @@ def _check(label: str, got: int, expected: int, failures: list[str]) -> str:
     if not ok:
         failures.append(label)
     return f"  {label}: recomputed {got}, expected {expected}, {'PASS' if ok else 'FAIL'}"
+
+
+def provider_section(
+    answers: list[Answer],
+    *,
+    expected_total: int,
+    expected_direct: int,
+    failures: list[str],
+) -> list[str]:
+    """Count an explicit nvidia-direct field, and a missing provider as a derived inference.
+
+    The derived count is total answers minus explicit nvidia-direct. It is printed
+    with the inferred label and is never labelled as a recorded nightshift value.
+    """
+
+    counts: Counter[str] = Counter()
+    locations: Counter[str] = Counter()
+    absent_actions: Counter[str] = Counter()
+    for answer in answers:
+        locations[answer.provider_at] += 1
+        if answer.provider is None:
+            counts["<absent>"] += 1
+            absent_actions[answer.action or "(none)"] += 1
+        else:
+            counts[answer.provider] += 1
+    total = len(answers)
+    explicit_direct = counts.get("nvidia-direct", 0)
+    recorded_nightshift = counts.get("nightshift", 0)
+    absent = counts.get("<absent>", 0)
+    derived = total - explicit_direct
+    expected_absent = expected_total - expected_direct
+    lines = [
+        "  provider field location: " + ", ".join(f"{name} {count}" for name, count in sorted(locations.items())),
+        _check("provider nvidia-direct (explicitly recorded)", explicit_direct, expected_direct, failures),
+        f"  provider nightshift explicitly recorded: {recorded_nightshift}",
+    ]
+    matches = total == expected_total and explicit_direct == expected_direct and absent == expected_absent and derived == expected_absent and absent == derived
+    if not matches:
+        failures.append("derived provider absence")
+    lines.append(
+        f"  {INFERRED_PROVIDER_LABEL}: derived {derived} "
+        f"({total} total - {explicit_direct} explicit nvidia-direct = {derived}), "
+        f"expected {expected_absent}, {'PASS' if matches else 'FAIL'}. "
+        "This is not an explicitly recorded field."
+    )
+    if absent != derived:
+        lines.append(f"  FAIL lines with no provider field are {absent}, which does not equal the derived remainder {derived}.")
+    if absent_actions:
+        parts = ", ".join(f"{action} {count}" for action, count in sorted(absent_actions.items()))
+        lines.append(f"  lines with no provider field by action: {parts}")
+    score_lines = absent_actions.get("LLM_SCORE", 0)
+    if score_lines:
+        call_lines = absent_actions.get("LLM_CALL", 0)
+        lines.append(
+            f"  {score_lines} of the lines with no provider field are LLM_SCORE. "
+            "That writer never sets provider, so those lines are in the derived remainder "
+            "and are not themselves the direct-NVIDIA marker rule. "
+            f"The marker rule applies to the {call_lines} LLM_CALL lines."
+        )
+    other = sorted(name for name in counts if name not in {"nvidia-direct", "nightshift", "<absent>"})
+    for name in other:
+        failures.append(f"unexpected provider {name}")
+        lines.append(f"  FAIL unexpected provider {name}: {counts[name]}")
+    return lines
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -432,20 +499,16 @@ def build_report(root: Path | None = None) -> tuple[int, str]:
 
     requested_counts: Counter[str] = Counter()
     served_counts: Counter[str] = Counter()
-    provider_counts: Counter[str] = Counter()
     tier_counts: Counter[tuple[str, str]] = Counter()
     requested_at: Counter[str] = Counter()
     served_at: Counter[str] = Counter()
-    provider_at: Counter[str] = Counter()
     tier_at: Counter[str] = Counter()
     nemotron = 0
     non_nemotron: list[str] = []
-    missing_provider: Counter[str] = Counter()
     for item, answer in answers:
         rel = _rel(item.trace, root)
         requested_at[answer.requested_at] += 1
         served_at[answer.served_at] += 1
-        provider_at[answer.provider_at] += 1
         tier_at[answer.tier_at] += 1
         requested_counts[answer.requested or "not recorded"] += 1
         served_name = answer.served or "not recorded"
@@ -454,10 +517,6 @@ def build_report(root: Path | None = None) -> tuple[int, str]:
             nemotron += 1
         else:
             non_nemotron.append(f"{rel} line {answer.line}: {served_name}")
-        provider_name = answer.provider or "not recorded"
-        provider_counts[provider_name] += 1
-        if answer.provider is None:
-            missing_provider[rel] += 1
         tier_counts[(_tier_bucket(answer.tier), served_name)] += 1
         if answer.requested is None:
             failures.append(f"MISSING field requested_model in {rel}")
@@ -498,20 +557,17 @@ def build_report(root: Path | None = None) -> tuple[int, str]:
 
     lines.append("Policy")
     lines.append("  PHOENIX_NEMOTRON_POLICY: not recorded")
-    lines.append("  provider field location: " + ", ".join(f"{name} {count}" for name, count in sorted(provider_at.items())))
-    lines.append(_check("provider nvidia-direct", provider_counts.get("nvidia-direct", 0), EXPECTED_NVIDIA_DIRECT, failures))
-    lines.append(_check("provider nightshift", provider_counts.get("nightshift", 0), EXPECTED_NIGHTSHIFT, failures))
-    not_recorded = provider_counts.get("not recorded", 0)
-    lines.append(f"  provider not recorded: {not_recorded}")
-    if not_recorded:
-        failures.append("MISSING field provider")
-        lines.append("  provider is absent on those lines. It is not inferred as nightshift.")
-        for rel, count in sorted(missing_provider.items()):
-            lines.append(f"  MISSING field provider: {rel}: {count} used answers")
-    other_providers = sorted(name for name in provider_counts if name not in {"nvidia-direct", "nightshift", "not recorded"})
-    for name in other_providers:
-        failures.append(f"unexpected provider {name}")
-        lines.append(f"  FAIL unexpected provider {name}: {provider_counts[name]}")
+    if EXPECTED_ANSWERS - EXPECTED_NVIDIA_DIRECT != EXPECTED_NIGHTSHIFT:
+        failures.append("README derived provider constant")
+        lines.append(f"  FAIL README derived provider constant: {EXPECTED_ANSWERS} - {EXPECTED_NVIDIA_DIRECT} != {EXPECTED_NIGHTSHIFT}")
+    lines.extend(
+        provider_section(
+            [answer for _item, answer in answers],
+            expected_total=EXPECTED_ANSWERS,
+            expected_direct=EXPECTED_NVIDIA_DIRECT,
+            failures=failures,
+        )
+    )
     lines.append("")
 
     lines.append("Hash chain (scripts.verify_trace.verify)")
