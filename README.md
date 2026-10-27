@@ -349,7 +349,7 @@ H-MEM is this repository's own implementation of the public Meterless spec (`app
 - The one committed rescue plan is a plan. The quote check shows the quote occurs in the cited text. It does not show that the quote supports the item. No AI-written patch in this repository has fixed a real repository's tests.
 - CI (`.github/workflows/ci.yml`) does not call a live Zetaris, Nightshift, or NVIDIA API. Live runs were done outside CI.
 - H-MEM on gate 1 records verdicts. It does not decide them. The official conformance suite was not run. The scored run predates the hook.
-- `model_mismatch` in `config/settings.py` is true unless the served id starts with `nvidia/nemotron-`. An empty id is a mismatch. The sample stand-in name is not.
+- `model_mismatch` in `config/settings.py` is true unless the served id starts with `nvidia/nemotron-`. An empty id is a mismatch. The sample stand-in name is not. `MODEL_MISMATCH` means the served id is missing or outside the Nemotron family on a call whose answer was used. Failed attempts are flagged `CALL_FAILED`. The scored v3 traces predate this and may show `MODEL_MISMATCH` on failed lines.
 
 ## Pre-existing components
 

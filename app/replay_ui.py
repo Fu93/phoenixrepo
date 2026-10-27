@@ -28,7 +28,8 @@ ROOT = Path(__file__).resolve().parents[1]
 REPLAYS_ROOT = ROOT / "data" / "replays"
 UI_FILE = ROOT / "app" / "ui" / "index.html"
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
-_FLAG_NAMES = ("MODEL_MISMATCH", "SOURCE_ERROR", "DISCARDED_BY_POLICY")
+_FLAG_NAMES = ("MODEL_MISMATCH", "SOURCE_ERROR", "DISCARDED_BY_POLICY", "CALL_FAILED")
+_UNUSED_ANSWER = {"error", "rejected"}
 
 
 class ReplayError(Exception):
@@ -262,14 +263,17 @@ def step_from_event(event: dict[str, Any], index: int) -> dict[str, Any]:
     _take_flags(event.get("flags"), flags)
     for payload in payloads:
         _collect_flags(payload, flags)
-    # Same rule as the trace writer: missing or non-Nemotron served models mismatch.
+    # Same rule as the trace writer: missing or non-Nemotron served models mismatch
+    # only when the answer was used. error/rejected lines keep the flag stored on
+    # the line (CALL_FAILED, DISCARDED_BY_POLICY, or a historical MODEL_MISMATCH).
     # A different nvidia/nemotron-* size does not. requested != served is not enough.
     llm_line = "requested_model" in event or "served_model" in event
-    if "served_model" in event:
-        if model_mismatch(event.get("served_model")):
+    if status not in _UNUSED_ANSWER:
+        if "served_model" in event:
+            if model_mismatch(event.get("served_model")):
+                flags.add("MODEL_MISMATCH")
+        elif served and model_mismatch(served):
             flags.add("MODEL_MISMATCH")
-    elif served and model_mismatch(served):
-        flags.add("MODEL_MISMATCH")
     output = parsed[1] if isinstance(parsed[1], dict) else {}
     reasoning = output.get("reasoning") if isinstance(output.get("reasoning"), str) else ""
     return {
@@ -295,17 +299,19 @@ def model_summary(steps: list[dict[str, Any]]) -> dict[str, Any]:
     """Served-model counts from LLM lines. An empty served id is ``(missing)``."""
 
     calls: dict[str, int] = {}
-    mismatches = discarded = used = nemotron = 0
+    mismatches = discarded = failed = used = nemotron = 0
     for step in steps:
         if not step.get("llm_line"):
             continue
         label = step.get("served_model") or "(missing)"
         calls[label] = calls.get(label, 0) + 1
         flags = step.get("flags") or []
+        if "CALL_FAILED" in flags:
+            failed += 1
         if "DISCARDED_BY_POLICY" in flags:
             discarded += 1
             continue
-        if "MODEL_MISMATCH" in flags:
+        if "MODEL_MISMATCH" in flags and "CALL_FAILED" not in flags:
             mismatches += 1
         if label != "(missing)" and step.get("status") not in {"error", "rejected"}:
             used += 1
@@ -313,6 +319,7 @@ def model_summary(steps: list[dict[str, Any]]) -> dict[str, Any]:
                 nemotron += 1
     return {
         "model_mismatch_count": mismatches,
+        "call_failed_count": failed,
         "model_calls": calls,
         "discarded_by_policy": discarded,
         "answers_used": used,

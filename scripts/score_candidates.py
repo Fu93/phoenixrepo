@@ -1700,6 +1700,7 @@ def _do_score_candidates(
         "model_calls": relevance_client.model_calls if relevance_client else {},
         "evidence_source": evidence_mode,
         "model_mismatch_count": trace.model_mismatch_count(),
+        "call_failed_count": trace.call_failed_count(),
         "warnings": warnings,
         "duplicated_vectors": duplicated_vectors,
         "duplicated_score_vectors": duplicated_vectors,
@@ -1738,6 +1739,7 @@ def _render_markdown(data: dict[str, Any]) -> str:
     lines.append("## Model Call Summary")
     lines.append("")
     lines.append(f"- **MODEL_MISMATCH**: {int(data.get('model_mismatch_count') or 0)}")
+    lines.append(f"- **CALL_FAILED**: {int(data.get('call_failed_count') or 0)}")
     lines.append("")
     if model_calls:
         lines.append("| Served Model | Calls |")

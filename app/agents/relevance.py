@@ -157,7 +157,8 @@ def _env_text(*names: str) -> str:
 def nemotron_policy_from_env() -> str:
     """PHOENIX_NEMOTRON_POLICY: label (default), require, or fallback-nvidia.
 
-    label            a non-Nemotron answer is used and flagged MODEL_MISMATCH (honest default)
+    label            a non-Nemotron answer is used and flagged MODEL_MISMATCH (honest default).
+                     A failed attempt is CALL_FAILED, not MODEL_MISMATCH.
     require          a non-Nemotron answer is discarded and the attempt is retried through Nightshift
     fallback-nvidia  a non-Nemotron answer, a timeout or a 5xx is replaced by the same Nemotron model
                      called directly at the NVIDIA API (NVIDIA_API_KEY); the trace says nvidia-direct
@@ -694,6 +695,8 @@ class RelevanceClient:
         served is stored as the provider returned it. A missing model stays empty and is
         counted under "(missing)". It is not replaced with the requested id. A reply that the
         Nemotron policy discarded (status "rejected") is traced but not counted as used.
+        A failed attempt (status "error") is traced and counted, and it is not a mismatch:
+        no answer from it was used, so the repo is not added to repo_mismatches.
         """
 
         self._call_noted = True
@@ -703,7 +706,7 @@ class RelevanceClient:
             label = self._call_label(served)
             self.served_models.add(label)
             self.model_calls[label] = self.model_calls.get(label, 0) + 1
-            if model_mismatch(served):
+            if status != "error" and model_mismatch(served):
                 self.mismatch_count += 1
                 if repo_id:
                     self.repo_mismatches.add(repo_id)

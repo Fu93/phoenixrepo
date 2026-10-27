@@ -195,7 +195,7 @@ def served_model_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         served = event.get("served_model")
         label = served.strip() if isinstance(served, str) and served.strip() else "(missing)"
-        row = counts.setdefault(label, {"calls": 0, "mismatches": 0, "discarded": 0, "seconds": []})
+        row = counts.setdefault(label, {"calls": 0, "mismatches": 0, "discarded": 0, "failed": 0, "seconds": []})
         row["calls"] += 1
         out = event.get("output_summary")
         if isinstance(out, str):
@@ -208,6 +208,8 @@ def served_model_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         flags = event.get("flags") or []
         if "DISCARDED_BY_POLICY" in flags:
             row["discarded"] += 1
+        elif "CALL_FAILED" in flags:
+            row["failed"] += 1
         elif "MODEL_MISMATCH" in flags:
             row["mismatches"] += 1
     rows = []
@@ -218,6 +220,7 @@ def served_model_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "calls": info["calls"],
             "mismatches": info["mismatches"],
             "discarded": info["discarded"],
+            "failed": info["failed"],
             "median_s": secs[len(secs) // 2] if secs else None,
             "max_s": secs[-1] if secs else None,
         })
@@ -229,7 +232,7 @@ def nemotron_share(rows: list[dict[str, Any]] | None) -> tuple[int, int]:
     used = nemotron = 0
     for row in rows or []:
         name = str(row.get("served_model") or "")
-        kept = int(row.get("calls") or 0) - int(row.get("discarded") or 0)
+        kept = int(row.get("calls") or 0) - int(row.get("discarded") or 0) - int(row.get("failed") or 0)
         if name == "(missing)" or kept <= 0:
             continue
         used += kept
@@ -273,19 +276,21 @@ def render_served_model_table(rows: list[dict[str, Any]] | None) -> str:
         return ""
     mismatches = sum(int(row.get("mismatches") or 0) for row in rows)
     discarded = sum(int(row.get("discarded") or 0) for row in rows)
+    failed = sum(int(row.get("failed") or 0) for row in rows)
     used, nemotron = nemotron_share(rows)
     share = f"{nemotron} of {used} answers used were written by Nemotron" + (f" ({100 * nemotron // used}%)" if used else "")
-    parts = ["<h2>Served models</h2>", f"<p>{_e(share)}. MODEL_MISMATCH: {mismatches}. Discarded by the Nemotron policy: {discarded}.</p>"]
+    parts = ["<h2>Served models</h2>", f"<p>{_e(share)}. MODEL_MISMATCH: {mismatches}. Failed calls: {failed}. Discarded by the Nemotron policy: {discarded}.</p>"]
     if not rows:
         parts.append('<p class="muted">No LLM calls were recorded for this run.</p>')
         return "\n".join(parts)
-    parts.append("<table><tr><th>Served model</th><th>Calls</th><th>MODEL_MISMATCH</th><th>Discarded by policy</th><th>Median s</th><th>Max s</th></tr>")
+    parts.append("<table><tr><th>Served model</th><th>Calls</th><th>MODEL_MISMATCH</th><th>Failed calls</th><th>Discarded by policy</th><th>Median s</th><th>Max s</th></tr>")
     for row in rows:
         parts.append(
             "<tr>"
             f"<td><code>{_e(row.get('served_model'))}</code></td>"
             f"<td>{_e(row.get('calls'))}</td>"
             f"<td>{_e(row.get('mismatches'))}</td>"
+            f"<td>{_e(row.get('failed', 0))}</td>"
             f"<td>{_e(row.get('discarded', 0))}</td>"
             f"<td>{_e('' if row.get('median_s') is None else row.get('median_s'))}</td>"
             f"<td>{_e('' if row.get('max_s') is None else row.get('max_s'))}</td>"

@@ -120,7 +120,7 @@
         <button type="button" id="step">Step</button>
         <span class="muted" id="play-status"></span>
       </div>
-      <p class="muted">Each row is one trace line: agent, requested model, served model, seconds, status. MODEL_MISMATCH is the flag on an LLM line whose served model is missing or outside nvidia/nemotron-*. A different Nemotron size is the same family and is not a mismatch. SOURCE_ERROR appears when a line records that status. Seconds stay blank when the line has no elapsed_s, seconds, or latency_ms.</p>
+      <p class="muted">Each row is one trace line: agent, requested model, served model, seconds, status. MODEL_MISMATCH means the served id is missing or outside nvidia/nemotron-* on a call whose answer was used. A failed attempt is flagged CALL_FAILED. A different Nemotron size is the same family and is not a mismatch. Scored v3 traces predate this and may show MODEL_MISMATCH on failed lines. SOURCE_ERROR appears when a line records that status. Seconds stay blank when the line has no elapsed_s, seconds, or latency_ms.</p>
       <h2>Served models</h2>
       <div id="served-models"><p class="muted">Choose a replay.</p></div>
       <div id="steps"></div>
@@ -400,6 +400,7 @@
     node.innerHTML =
       "<p><strong>" + esc(models.answers_by_nemotron || 0) + " of " + esc(used) + "</strong> answers used were written by Nemotron" +
       (used ? " (" + esc(share) + "%)" : "") + ". <strong>MODEL_MISMATCH</strong> lines: " + esc(models.model_mismatch_count) +
+      ". <strong>CALL_FAILED</strong> lines: " + esc(models.call_failed_count || 0) +
       ". Discarded by the Nemotron policy: " + esc(models.discarded_by_policy || 0) + ".</p>" +
       "<table><thead><tr><th>Served model</th><th>Calls</th></tr></thead><tbody>" + rows + "</tbody></table>";
   }
