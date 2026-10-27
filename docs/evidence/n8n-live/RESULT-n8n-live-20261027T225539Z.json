@@ -1,0 +1,10 @@
+{
+  "run_id": "n8n-live-20261027T225539Z",
+  "run_hash": "7037c3a4dbeb53a66691ee4ee9acc5b34046a350f8547175247c8c98a4faf81c",
+  "ok": true,
+  "error": "",
+  "source_url": "http://localhost:5678/webhook/phoenix-evidence",
+  "requested_url": "https://github.com/Erudika/para",
+  "response_excerpt": "{\"url\": \"https://github.com/Erudika/para\", \"status\": 200, \"text_excerpt\": \"\\n\\n\\n\\n  \\n\\n<!DOCTYPE html>\\n<html\\n  lang=\\\"en\\\"\\n  \\n  data-color-mode=\\\"auto\\\" data-light-theme=\\\"light\\\" data-dark-theme=\\\"dark\\\"\\n  data-a11y-animated-images=\\\"system\\\" data-a11y-link-underlines=\\\"true\\\"\\n  data-css-features=\\\"site_disable_smooth_scrolling\\\"\\n  >\\n\\n\\n\\n\\n  <head>\\n    <meta charset=\\\"utf-8\\\">\\n  <li",
+  "trace": "docs/evidence/n8n-live/trace-n8n-live-20261027T225539Z.jsonl"
+}
