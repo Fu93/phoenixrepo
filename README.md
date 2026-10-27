@@ -20,13 +20,13 @@ Run the tests:
 python -m pytest -q
 ```
 
-On this checkout that command ended with:
+On this checkout, after this README rewrite, that command ended with:
 
 ```text
-738 passed, 4 skipped, 1 warning in 194.45s
+738 passed, 4 skipped, 1 warning in 192.61s
 ```
 
-The warning is `StarletteDeprecationWarning` from FastAPI's test client (`httpx` versus `httpx2`). It is not a failure. The pass count is `738 passed, 4 skipped`.
+The warning is `StarletteDeprecationWarning` from FastAPI's test client (`httpx` versus `httpx2`). It is not a failure. The stable result is `738 passed, 4 skipped`. The seconds change between runs.
 
 Check one scored trace. `scripts/verify_trace.py` requires a trace path; the flag alone does not run. SelfDB is the replay `GET /ui` opens on.
 
