@@ -1,0 +1,217 @@
+{
+  "repo_id": "Carvenjizaks/gc-sync-webhook",
+  "gate1": {
+    "verdict": "CANDIDATE",
+    "total": 48.33,
+    "flags": [],
+    "run_id": "judge-20261026212325",
+    "run_hash": "459b10a988b87c68d9c15bb846073a20e793a8b92e891a74f24f54afb840c27b"
+  },
+  "drafted_by": "model",
+  "requested_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "served_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "positioning": {
+    "target_user": "Global Control users with website forms",
+    "job": "auto-sync contact submissions to Global Control with proper tags",
+    "gap": "maintained free OSS alternatives lack Global Control–specific tag mapping and self-hostable webhook deployment",
+    "evidence": [
+      "candidate:Carvenjizaks/gc-sync-webhook",
+      "must_beat:web:https://www.staticforms.dev/blog/send-form-submissions-to-n8n-webhook",
+      "assessment:differentiation"
+    ]
+  },
+  "stages": [
+    {
+      "stage": "REVIVE",
+      "items": [
+        {
+          "title": "Add test command and verify both sync endpoints",
+          "why": "Gate 2 requires a test command; the repo has a manifest but no visible test path, and feasibility notes curl-based testing instructions for two endpoints",
+          "acceptance": "Running `npm test` (or equivalent) executes without error and validates POST /api/sync and POST /api/batch-sync against a mock Global Control API",
+          "quote": "two documented endpoints (/api/sync, /api/batch-sync), explicit environment variable configuration (GLOBALCONTROL_API_KEY, GLOBALCONTROL_API_URL), curl-based testing instructions",
+          "evidence": [
+            "repo:tree",
+            "assessment:feasibility"
+          ]
+        },
+        {
+          "title": "Confirm serverless deployments work on Vercel and Netlify",
+          "why": "The candidate advertises deployment to Vercel, Netlify, or any serverless platform; vercel.json exists in the repo root",
+          "acceptance": "A clean deploy to Vercel and Netlify succeeds and the /api/sync endpoint returns 200 for a valid payload",
+          "quote": "Deploy to Vercel, Netlify, or any serverless platform",
+          "evidence": [
+            "candidate:Carvenjizaks/gc-sync-webhook",
+            "repo:tree",
+            "assessment:feasibility"
+          ]
+        },
+        {
+          "title": "Validate tag mapping for the three documented tags",
+          "why": "The pain point is manually mapping submissions to specific tags (NL-FF newsletter, MGM, TT4Men); the candidate lists these mappings",
+          "acceptance": "A test payload with each tag value results in the correct Global Control tag being applied (verified via mock or sandbox)",
+          "quote": "manually mapping contact submissions to specific tags (NL-FF newsletter, MGM, TT4Men)",
+          "evidence": [
+            "candidate:Carvenjizaks/gc-sync-webhook",
+            "assessment:problem_severity"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "OPTIMISE",
+      "items": [
+        {
+          "title": "Add automated test suite with CI",
+          "why": "Only curl-based testing instructions exist; repo shows a scripts folder and package.json but no test script",
+          "acceptance": "GitHub Actions (or similar) runs unit and integration tests on every push; coverage >80% for api/ routes",
+          "quote": "curl-based testing instructions",
+          "evidence": [
+            "repo:tree",
+            "assessment:feasibility"
+          ]
+        },
+        {
+          "title": "Pin and audit dependencies; add dependabot",
+          "why": "node_modules and package-lock.json are present; no evidence of automated dependency updates or security auditing",
+          "acceptance": "Dependabot alerts resolved; `npm audit` reports zero high/critical vulnerabilities; lockfile updated",
+          "quote": "repository root: .env.local, .gitignore, README.md, api, node_modules, package-lock.json, package.json, scripts, vercel.json",
+          "evidence": [
+            "repo:tree"
+          ]
+        },
+        {
+          "title": "Complete API documentation with request/response schemas",
+          "why": "The candidate README truncates the /api/sync body example; feasibility says endpoints are documented but the text is incomplete",
+          "acceptance": "README.md contains full JSON schemas for both endpoints, including all fields, tag values, error codes, and example curl commands",
+          "quote": "email\": \"require",
+          "evidence": [
+            "candidate:Carvenjizaks/gc-sync-webhook",
+            "assessment:feasibility"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "UPGRADE",
+      "items": [
+        {
+          "title": "Harden the five differentiating capabilities with contract tests and docs",
+          "why": "Differentiation assessment lists five capabilities not covered by any maintained free OSS alternative; the candidate quotes them but they need verification and explicit documentation",
+          "acceptance": "Each capability (auto-sync with tag mapping, serverless deploy, form webhook config, single sync, batch sync) has a contract test and a dedicated docs section",
+          "quote": "Missing capabilities: 'Auto-sync contact data with tag mapping', 'Deploy webhook to serverless platform', 'Configure website form with webhook URL', 'Sync single contact to Global Control', 'Sync multiple contacts at once' (5 not covered by any maintained free OSS alternative)",
+          "evidence": [
+            "assessment:differentiation"
+          ]
+        },
+        {
+          "title": "Add webhook authentication and rate limiting to strengthen self-hostable advantage",
+          "why": "Must-beat notes the alternative has no free tier or permissive licence while the candidate is free and self-hostable; adding auth and rate limiting makes the self-hosted offering production-grade without sacrificing the free/self-hosted edge",
+          "acceptance": "Endpoints accept a shared secret header (e.g., X-GC-Sync-Token); requests exceeding configurable rate return 429; docs explain setup",
+          "quote": "candidate is free and self-hostable; the alternative has no free tier or permissive licence",
+          "evidence": [
+            "must_beat:web:https://www.staticforms.dev/blog/send-form-submissions-to-n8n-webhook",
+            "assessment:moat"
+          ]
+        },
+        {
+          "title": "Publish a Docker image and npm package for zero-config deployment",
+          "why": "Productization path notes the addressable audience is undefined and no go-to-market channel beyond self-serve; a published Docker image and npm package lower the barrier for Global Control users",
+          "acceptance": "Docker image on GHCR/Docker Hub and npm package `gc-sync-webhook` installable; `docker run` and `npx gc-sync-webhook` start the server with env vars",
+          "quote": "Clear developer-oriented deployment path exists, but the addressable audience (Global Control users with web forms) is undefined in size, no pricing or revenue model is articulated, and no go-to-market channel is identified beyond self-serve deployment",
+          "evidence": [
+            "assessment:productization_path",
+            "assessment:differentiation"
+          ]
+        }
+      ]
+    }
+  ],
+  "must_beat": [
+    {
+      "alternative": "web:https://www.staticforms.dev/blog/send-form-submissions-to-n8n-webhook (Static Forms → n8n)",
+      "how_to_win": "Keep the free, self-hostable, Global Control–specific tag-mapping webhook; the alternative lacks a free tier, permissive licence, and Global Control integration",
+      "evidence": [
+        "must_beat:web:https://www.staticforms.dev/blog/send-form-submissions-to-n8n-webhook"
+      ]
+    }
+  ],
+  "risks": [
+    "Demand signal is weak and ambiguous for Global Control–specific sync (assessment:demand_evidence)",
+    "No structural moat; the integration is replicable in a weekend with basic HTTP/JSON knowledge (assessment:moat)",
+    "Addressable audience size undefined; no pricing or revenue model articulated (assessment:productization_path)",
+    "Upstream Global Control API changes could break sync without notice"
+  ],
+  "organised": {
+    "status": "needs_test_command",
+    "detail": "A manifest is present but no test path is visible in the root: gate 2 would stop at NEEDS_REVIEW until a test command exists.",
+    "manifests": [
+      "package.json"
+    ],
+    "test_paths": []
+  },
+  "rejected_items": [],
+  "evidence": [
+    {
+      "id": "candidate:Carvenjizaks/gc-sync-webhook",
+      "kind": "candidate",
+      "url": "https://github.com/Carvenjizaks/gc-sync-webhook",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://www.staticforms.dev/blog/send-form-submissions-to-n8n-webhook",
+      "kind": "prior",
+      "url": "https://www.staticforms.dev/blog/send-form-submissions-to-n8n-webhook",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://www.staticforms.dev/blog/send-form-submissions-to-n8n-webhook",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:problem_severity",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:demand_evidence",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:differentiation",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:feasibility",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:productization_path",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:moat",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "repo:tree",
+      "kind": "repo",
+      "url": "https://github.com/Carvenjizaks/gc-sync-webhook",
+      "content_hash": ""
+    }
+  ],
+  "run_id": "rescue-carvenjizaks__gc-sync-webhook-20261027T204557Z",
+  "run_hash": "332d1cfe373e11ce964da21ce9b7eae829b61e9f1c7bd378229b2c5e49859564"
+}

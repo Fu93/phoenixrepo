@@ -1,0 +1,19 @@
+﻿samuelarogbonlo/knetvis | gate1 26bab56e6000ffabea1a35917075e255bcd0c058c812bf3cec9ca91df106f338 | plan c36efde5526a2c082912e628e22d3babb6e5a0e96521d767794cb34c34aa9016 | PASS | nemotron: 1 of 1 answers used (providers: nvidia-direct 1; discarded by policy: 0)
+ | items: REVIVE 1, OPTIMISE 2, UPGRADE 3; dropped by the check: 0; gate 2 can verify: verifiable
+ | docs/rescue/trace-rescue-samuelarogbonlo__knetvis-20261027T204407Z.jsonl
+Carvenjizaks/gc-sync-webhook | gate1 459b10a988b87c68d9c15bb846073a20e793a8b92e891a74f24f54afb840c27b | plan 332d1cfe373e11ce964da21ce9b7eae829b61e9f1c7bd378229b2c5e49859564 | PASS | nemotron: 1 of 1 answers used (providers: nvidia-direct 1; discarded by policy: 0)
+ | items: REVIVE 3, OPTIMISE 3, UPGRADE 3; dropped by the check: 0; gate 2 can verify: needs_test_command
+ | docs/rescue/trace-rescue-carvenjizaks__gc-sync-webhook-20261027T204557Z.jsonl
+ri-char/pwatch | gate1 ccd9ee9d98ee1e9ad96b9871f3c6e3e8a8b9241a2b7b8530284f16c9750c5ffd | plan f1735a7a927dc08e376be7fc637a185cddaf0c0a909467f30ecafb88d277ce29 | PASS | nemotron: 3 of 3 answers used (providers: nvidia-direct 3; discarded by policy: 0)
+ | items: REVIVE 2, OPTIMISE 1, UPGRADE 4; dropped by the check: 0; gate 2 can verify: needs_test_command
+ | docs/rescue/trace-rescue-ri-char__pwatch-20261027T204845Z.jsonl
+DayanK/LinkedinSyncContacts | gate1 536118df205fc09cab0b7ce47f930c3d791b19435421618e135c9a1f9ed9ebb2 | plan fe66955896446643742716558eadd22b7534691c994c4669508f81a13bbb71aa | PASS | nemotron: 1 of 1 answers used (providers: nvidia-direct 1; discarded by policy: 0)
+ | items: REVIVE 3, OPTIMISE 3, UPGRADE 4; dropped by the check: 1; gate 2 can verify: needs_test_command
+ | docs/rescue/trace-rescue-dayank__linkedinsynccontacts-20261027T205555Z.jsonl
+samwho/spacer | gate1 6f1c4392af970dc02709593ad928606aed267a60626a0a9e2c20c5cc10001a52 | plan fd453bad96a61f825cb592b9639695b2ed83685fb1fbf1e282721e1bd05a4c2f | PASS | nemotron: 1 of 1 answers used (providers: nvidia-direct 1; discarded by policy: 0)
+ | items: REVIVE 1, OPTIMISE 2, UPGRADE 1; dropped by the check: 2; gate 2 can verify: needs_test_command
+ | docs/rescue/trace-rescue-samwho__spacer-20261027T205900Z.jsonl
+oleksiiluchnikov/obsidian-localtable | gate1 2ae4aab419eb8f9a0a1d5c9a7d760d1ee09e00838ab06dfcf5badbacfa8199bc | plan 903688d4fce47e9207a4c540352e0e988819e306640c8e7a8acb0c285c793834 | PASS | nemotron: 3 of 3 answers used (providers: nvidia-direct 3; discarded by policy: 0)
+ | items: REVIVE 2, OPTIMISE 1, UPGRADE 2; dropped by the check: 0; gate 2 can verify: needs_test_command
+ | docs/rescue/trace-rescue-oleksiiluchnikov__obsidian-localtable-20261027T210137Z.jsonl
+sealdice/qq-group-files-sync | gate1 833fd205dac5cc32019a05fd92f3455a1a0856046d6a055d431ff97e4507cceb | plan cb82f3da7ad0cdfc151692134e8672853761d71371afa37736030b26c51c1b3c | PASS | nemotron: 1 of 1 answers used (providers: nightshift 1; discarded by policy: 0) | items: REVIVE 1, OPTIMISE 1, UPGRADE 1; dropped by the check: 0; gate 2 can verify: needs_test_command | docs/rescue/trace-rescue-sealdice__qq-group-files-sync-20261027T211012Z.jsonl

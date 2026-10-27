@@ -1,0 +1,305 @@
+{
+  "repo_id": "ri-char/pwatch",
+  "gate1": {
+    "verdict": "CANDIDATE",
+    "total": 41.67,
+    "flags": [],
+    "run_id": "judge-20261026214012",
+    "run_hash": "ccd9ee9d98ee1e9ad96b9871f3c6e3e8a8b9241a2b7b8530284f16c9750c5ffd"
+  },
+  "drafted_by": "deterministic",
+  "requested_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "served_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "positioning": {
+    "target_user": "unknown",
+    "job": "A cli tool to install a hardware breakpoint/watchpoint on a process in linux.",
+    "gap": "the reasons the must-beat alternatives did not block",
+    "evidence": [
+      "candidate:ri-char/pwatch"
+    ]
+  },
+  "stages": [
+    {
+      "stage": "REVIVE",
+      "items": [
+        {
+          "title": "Add a runnable test command for the stated job",
+          "why": "Without one, gate 2's execution loop cannot verify any revival and stops at NEEDS_REVIEW.",
+          "acceptance": "One command runs the tests and exits 0 on a clean checkout.",
+          "evidence": [
+            "repo:tree"
+          ],
+          "quote": "Cargo.toml",
+          "added_by": "code"
+        },
+        {
+          "title": "Make the stated job work again on current dependencies",
+          "why": "This is the job gate 1 found worth rescuing.",
+          "acceptance": "The README's main workflow runs end to end on a clean machine.",
+          "quote": "A cli tool to install a hardware breakpoint/watchpoint on a process in linux.",
+          "evidence": [
+            "candidate:ri-char/pwatch"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "OPTIMISE",
+      "items": [
+        {
+          "title": "Refactor around the existing working core",
+          "why": "The scorer's feasibility assessment of the codebase.",
+          "acceptance": "The core paths named in the assessment keep working after the refactor.",
+          "quote": "The repository contains a functional CLI with documented usage, working builds for x86_64 and arm64, support for rooted Android, and clear argument parsing.",
+          "evidence": [
+            "assessment:feasibility"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "UPGRADE",
+      "items": [
+        {
+          "title": "Keep or widen the gap against web:https://github.com/RinHizakura/kmemsnoop",
+          "why": "Recorded by gate 1 as an alternative that did not block.",
+          "acceptance": "A side-by-side check shows the revival still does what web:https://github.com/RinHizakura/kmemsnoop does not.",
+          "quote": "did not block: not mature or official: stars=0, candidate_stars=265, official=False; candidate is free and self-hostable; the alternative has no free tier or pe",
+          "evidence": [
+            "must_beat:web:https://github.com/RinHizakura/kmemsnoop"
+          ]
+        },
+        {
+          "title": "Keep or widen the gap against microdoc/process_vm_io",
+          "why": "Recorded by gate 1 as an alternative that did not block.",
+          "acceptance": "A side-by-side check shows the revival still does what microdoc/process_vm_io does not.",
+          "quote": "did not block: not mature or official: stars=5, candidate_stars=265, official=False I/O access to virtual memory contents of processes",
+          "evidence": [
+            "must_beat:microdoc/process_vm_io"
+          ]
+        },
+        {
+          "title": "Keep or widen the gap against danylo-volchenko/watchpoint-km",
+          "why": "Recorded by gate 1 as an alternative that did not block.",
+          "acceptance": "A side-by-side check shows the revival still does what danylo-volchenko/watchpoint-km does not.",
+          "quote": "did not block: last update 2025-07-06 is 477 days before 2026-10-26; not mature or official: stars=3, candidate_stars=265, official=False; candidate is free and",
+          "evidence": [
+            "must_beat:danylo-volchenko/watchpoint-km"
+          ]
+        },
+        {
+          "title": "Keep or widen the gap against web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/",
+          "why": "Recorded by gate 1 as an alternative that did not block.",
+          "acceptance": "A side-by-side check shows the revival still does what web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/ does not.",
+          "quote": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=265, officia",
+          "evidence": [
+            "must_beat:web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/"
+          ]
+        }
+      ]
+    }
+  ],
+  "must_beat": [
+    {
+      "alternative": "web:https://github.com/RinHizakura/kmemsnoop",
+      "how_to_win": "keep the capability its recorded reason says it lacks",
+      "evidence": [
+        "must_beat:web:https://github.com/RinHizakura/kmemsnoop"
+      ]
+    },
+    {
+      "alternative": "microdoc/process_vm_io",
+      "how_to_win": "keep the capability its recorded reason says it lacks",
+      "evidence": [
+        "must_beat:microdoc/process_vm_io"
+      ]
+    },
+    {
+      "alternative": "danylo-volchenko/watchpoint-km",
+      "how_to_win": "keep the capability its recorded reason says it lacks",
+      "evidence": [
+        "must_beat:danylo-volchenko/watchpoint-km"
+      ]
+    },
+    {
+      "alternative": "web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/",
+      "how_to_win": "keep the capability its recorded reason says it lacks",
+      "evidence": [
+        "must_beat:web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/"
+      ]
+    },
+    {
+      "alternative": "web:https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger",
+      "how_to_win": "keep the capability its recorded reason says it lacks",
+      "evidence": [
+        "must_beat:web:https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger"
+      ]
+    },
+    {
+      "alternative": "web:https://github.com/torvalds/linux/blob/master/arch/x86/kernel/hw_breakpoint.c",
+      "how_to_win": "keep the capability its recorded reason says it lacks",
+      "evidence": [
+        "must_beat:web:https://github.com/torvalds/linux/blob/master/arch/x86/kernel/hw_breakpoint.c"
+      ]
+    },
+    {
+      "alternative": "web:https://sourceware.org/gdb/current/onlinedocs/gdb.html/Set-Watchpoints.html",
+      "how_to_win": "keep the capability its recorded reason says it lacks",
+      "evidence": [
+        "must_beat:web:https://sourceware.org/gdb/current/onlinedocs/gdb.html/Set-Watchpoints.html"
+      ]
+    }
+  ],
+  "risks": [],
+  "organised": {
+    "status": "needs_test_command",
+    "detail": "A manifest is present but no test path is visible in the root: gate 2 would stop at NEEDS_REVIEW until a test command exists.",
+    "manifests": [
+      "Cargo.toml"
+    ],
+    "test_paths": []
+  },
+  "rejected_items": [],
+  "evidence": [
+    {
+      "id": "candidate:ri-char/pwatch",
+      "kind": "candidate",
+      "url": "https://github.com/ri-char/pwatch",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://github.com/RinHizakura/kmemsnoop",
+      "kind": "prior",
+      "url": "https://github.com/RinHizakura/kmemsnoop",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/",
+      "kind": "prior",
+      "url": "https://edwardtay.github.io/awesome-reverse-engineering/c/memory/",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger",
+      "kind": "prior",
+      "url": "https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://github.com/torvalds/linux/blob/master/arch/x86/kernel/hw_breakpoint.c",
+      "kind": "prior",
+      "url": "https://github.com/torvalds/linux/blob/master/arch/x86/kernel/hw_breakpoint.c",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://sourceware.org/gdb/current/onlinedocs/gdb.html/Set-Watchpoints.html",
+      "kind": "prior",
+      "url": "https://sourceware.org/gdb/current/onlinedocs/gdb.html/Set-Watchpoints.html",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:microdoc/process_vm_io",
+      "kind": "prior",
+      "url": "https://github.com/microdoc/process_vm_io",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:block/stoic",
+      "kind": "prior",
+      "url": "https://github.com/block/stoic",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:danylo-volchenko/watchpoint-km",
+      "kind": "prior",
+      "url": "https://github.com/danylo-volchenko/watchpoint-km",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://github.com/RinHizakura/kmemsnoop",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:microdoc/process_vm_io",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:danylo-volchenko/watchpoint-km",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://github.com/torvalds/linux/blob/master/arch/x86/kernel/hw_breakpoint.c",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://sourceware.org/gdb/current/onlinedocs/gdb.html/Set-Watchpoints.html",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:problem_severity",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:demand_evidence",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:differentiation",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:feasibility",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:productization_path",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:moat",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "repo:tree",
+      "kind": "repo",
+      "url": "https://github.com/ri-char/pwatch",
+      "content_hash": ""
+    }
+  ],
+  "run_id": "rescue-ri-char__pwatch-20261027T204845Z",
+  "run_hash": "f1735a7a927dc08e376be7fc637a185cddaf0c0a909467f30ecafb88d277ce29"
+}

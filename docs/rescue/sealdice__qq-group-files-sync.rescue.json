@@ -1,0 +1,221 @@
+{
+  "repo_id": "sealdice/qq-group-files-sync",
+  "gate1": {
+    "verdict": "CANDIDATE",
+    "total": 56.67,
+    "flags": [],
+    "run_id": "judge-20261026222820",
+    "run_hash": "833fd205dac5cc32019a05fd92f3455a1a0856046d6a055d431ff97e4507cceb"
+  },
+  "drafted_by": "model",
+  "requested_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "served_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "positioning": {
+    "target_user": "Teachers, training institution managers, and community operators who need to sync files across multiple QQ groups",
+    "job": "sync QQ group files with incremental sync, command-line mode, interactive QQ-group sync, and auto-generated display page",
+    "gap": "alternatives lack free/permissive licence, are unmaintained, and do not provide the five capabilities (group file download, incremental sync, interactive QQ sync, command-line sync, auto-generated display page) that the candidate offers",
+    "evidence": [
+      "candidate:sealdice/qq-group-files-sync",
+      "assessment:differentiation",
+      "must_beat:web:https://qq.kailum.cn/sync-between-groups/",
+      "must_beat:web:https://qq.kailum.cn/features/",
+      "must_beat:lyjjl/qq-group-files-sync-python",
+      "must_beat:kaishu666/qq-group-file-sync"
+    ]
+  },
+  "stages": [
+    {
+      "stage": "REVIVE",
+      "items": [
+        {
+          "title": "Add test command and CI configuration",
+          "why": "Gate 2 stops at NEEDS_REVIEW until a test command is visible in the root",
+          "acceptance": "running the test command from the repository root passes",
+          "quote": "The repository description contains no mention of a test suite or CI pipeline",
+          "evidence": [
+            "assessment:feasibility",
+            "repo:tree"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "OPTIMISE",
+      "items": [
+        {
+          "title": "Implement multi-threaded download for small files",
+          "why": "The TODO list notes missing multi-threaded download for small files, indicating a prototype with missing performance optimizations",
+          "acceptance": "small file downloads complete faster with concurrent workers and no data corruption",
+          "quote": "the TODO list notes missing multi-threaded download for small files",
+          "evidence": [
+            "assessment:feasibility"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "UPGRADE",
+      "items": [
+        {
+          "title": "Ensure all five capabilities are functional and documented",
+          "why": "to close the differentiation gap against maintained free OSS alternatives",
+          "acceptance": "user can run `go run . -a` for command-line sync, use `.同步当前` in interactive mode, download group files, perform incremental sync, and generate the display page",
+          "quote": "Missing capabilities: 'Group file download', 'Incremental file synchronization', 'Interactive QQ group sync', 'Auto-generated display page', 'Command line sync mode' (5 not covered by any maintained free OSS alternative with external user demand pull).",
+          "evidence": [
+            "candidate:sealdice/qq-group-files-sync",
+            "assessment:differentiation"
+          ]
+        }
+      ]
+    }
+  ],
+  "must_beat": [
+    {
+      "alternative": "web:https://qq.kailum.cn/sync-between-groups/ (no licence, unmaintained)",
+      "how_to_win": "candidate is free, self-hostable, provides group file download, incremental sync, interactive QQ sync, command-line and UI modes, and auto-generated display page",
+      "evidence": [
+        "must_beat:web:https://qq.kailum.cn/sync-between-groups/",
+        "candidate:sealdice/qq-group-files-sync"
+      ]
+    },
+    {
+      "alternative": "web:https://qq.kailum.cn/features/ (no licence, unmaintained)",
+      "how_to_win": "candidate supplies the full feature set including incremental sync and interactive QQ control, unlike the alternative",
+      "evidence": [
+        "must_beat:web:https://qq.kailum.cn/features/",
+        "candidate:sealdice/qq-group-files-sync"
+      ]
+    },
+    {
+      "alternative": "lyjjl/qq-group-files-sync-python (unmaintained)",
+      "how_to_win": "candidate is Go-based, has UI, command-line and interactive QQ sync, and is free and self-hostable",
+      "evidence": [
+        "must_beat:lyjjl/qq-group-files-sync-python",
+        "candidate:sealdice/qq-group-files-sync"
+      ]
+    },
+    {
+      "alternative": "kaishu666/qq-group-file-sync (no licence, unmaintained)",
+      "how_to_win": "candidate offers free self-hostable sync with UI, incremental sync, command-line and interactive QQ control",
+      "evidence": [
+        "must_beat:kaishu666/qq-group-file-sync",
+        "candidate:sealdice/qq-group-files-sync"
+      ]
+    }
+  ],
+  "risks": [
+    "no structural moat (moat score 0); functionality easily replicated",
+    "feasibility score 1 indicates prototype-level code with missing tests and CI",
+    "productization_path score 1: no clear monetization or distribution channel beyond open-source sharing",
+    "commercial alternative (QQ群文件同步助手) may capture market mindshare despite candidate being free"
+  ],
+  "organised": {
+    "status": "needs_test_command",
+    "detail": "A manifest is present but no test path is visible in the root: gate 2 would stop at NEEDS_REVIEW until a test command exists.",
+    "manifests": [
+      "go.mod"
+    ],
+    "test_paths": []
+  },
+  "rejected_items": [],
+  "evidence": [
+    {
+      "id": "candidate:sealdice/qq-group-files-sync",
+      "kind": "candidate",
+      "url": "https://github.com/sealdice/qq-group-files-sync",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://qq.kailum.cn/sync-between-groups/",
+      "kind": "prior",
+      "url": "https://qq.kailum.cn/sync-between-groups/",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://qq.kailum.cn/features/",
+      "kind": "prior",
+      "url": "https://qq.kailum.cn/features/",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:lyjjl/qq-group-files-sync-python",
+      "kind": "prior",
+      "url": "https://github.com/lyjjl/qq-group-files-sync-python",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:kaishu666/qq-group-file-sync",
+      "kind": "prior",
+      "url": "https://github.com/kaishu666/qq-group-file-sync",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://qq.kailum.cn/sync-between-groups/",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://qq.kailum.cn/features/",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:lyjjl/qq-group-files-sync-python",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:kaishu666/qq-group-file-sync",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:problem_severity",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:demand_evidence",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:differentiation",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:feasibility",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:productization_path",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:moat",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "repo:tree",
+      "kind": "repo",
+      "url": "https://github.com/sealdice/qq-group-files-sync",
+      "content_hash": ""
+    }
+  ],
+  "run_id": "rescue-sealdice__qq-group-files-sync-20261027T211012Z",
+  "run_hash": "cb82f3da7ad0cdfc151692134e8672853761d71371afa37736030b26c51c1b3c"
+}

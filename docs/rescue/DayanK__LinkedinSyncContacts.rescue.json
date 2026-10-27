@@ -1,0 +1,315 @@
+{
+  "repo_id": "DayanK/LinkedinSyncContacts",
+  "gate1": {
+    "verdict": "CANDIDATE",
+    "total": 36.67,
+    "flags": [],
+    "run_id": "judge-20261026214937",
+    "run_hash": "536118df205fc09cab0b7ce47f930c3d791b19435421618e135c9a1f9ed9ebb2"
+  },
+  "drafted_by": "model",
+  "requested_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "served_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "positioning": {
+    "target_user": "Professionals who need to extract, back up, and access LinkedIn connections across devices without manual effort",
+    "job": "Extract, sync, and manage LinkedIn connections with cloud backup and multi-device access",
+    "gap": "No maintained free and self-hostable alternative covers contact extraction from LinkedIn, cloud sync and backup, search and filter contacts, CSV export, and user registration and login together",
+    "evidence": [
+      "candidate:DayanK/LinkedinSyncContacts",
+      "assessment:problem_severity",
+      "assessment:differentiation",
+      "must_beat:web:https://leaddelta.com/product/auto-sync",
+      "must_beat:web:https://www.n8nflow.net/workflows/8041-weekly-linkedin-connections-sync-and-analysis-with-apify-and-google-sheets"
+    ]
+  },
+  "stages": [
+    {
+      "stage": "REVIVE",
+      "items": [
+        {
+          "title": "Add a runnable test command for the stated job",
+          "why": "Without one, gate 2's execution loop cannot verify any revival and stops at NEEDS_REVIEW.",
+          "acceptance": "One command runs the tests and exits 0 on a clean checkout.",
+          "evidence": [
+            "repo:tree"
+          ],
+          "quote": ".gitignore",
+          "added_by": "code"
+        },
+        {
+          "title": "Verify backend starts and serves the API on the documented port",
+          "why": "README quick start claims backend runs on http://localhost:300 but the port appears truncated; the job requires a working backend",
+          "acceptance": "cd backend && npm install && npm run dev starts a server that responds to a health endpoint",
+          "quote": "Running on http://localhost:300",
+          "evidence": [
+            "candidate:DayanK/LinkedinSyncContacts"
+          ]
+        },
+        {
+          "title": "Confirm browser extension loads and can authenticate against the local backend",
+          "why": "The stated job includes a browser extension with auto-sync; feasibility calls the project prototype status with no production hardening evidence",
+          "acceptance": "Extension installs in Chrome/Firefox, completes OAuth flow with local backend, and shows a successful sync",
+          "quote": "Browser Extension - Chrome/Firefox with auto-sync",
+          "evidence": [
+            "candidate:DayanK/LinkedinSyncContacts",
+            "assessment:feasibility"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "OPTIMISE",
+      "items": [
+        {
+          "title": "Add automated tests for backend API, frontend components, and extension background scripts",
+          "why": "Feasibility scores 1 citing no test suite; a test suite is needed before any upgrade work",
+          "acceptance": "Test coverage reported for backend routes, React components, and extension message passing; all tests pass in CI",
+          "quote": "provides no evidence of a test suite, CI pipeline, or production hardening; indicates prototype status",
+          "evidence": [
+            "assessment:feasibility",
+            "candidate:DayanK/LinkedinSyncContacts"
+          ]
+        },
+        {
+          "title": "Pin and audit dependencies across backend, frontend, and extension",
+          "why": "Feasibility notes prototype status; dependency drift is a risk for a multi-component system",
+          "acceptance": "npm audit reports no high or critical vulnerabilities; lockfiles committed; dependabot or equivalent configured",
+          "quote": "provides no evidence of a test suite, CI pipeline, or production hardening; indicates prototype status",
+          "evidence": [
+            "assessment:feasibility",
+            "repo:tree"
+          ]
+        },
+        {
+          "title": "Document the OAuth setup for LinkedIn and email/password auth in a single SETUP.md",
+          "why": "README references LinkedIn OAuth ready and email/password auth but SETUP.md exists separately; operators need one authoritative guide",
+          "acceptance": "SETUP.md contains step-by-step LinkedIn developer app creation, callback URLs, JWT secret generation, and first-user registration",
+          "quote": "Authentication - Email/Password + LinkedIn OAuth ready",
+          "evidence": [
+            "candidate:DayanK/LinkedinSyncContacts",
+            "repo:tree"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "UPGRADE",
+      "items": [
+        {
+          "title": "Implement contact extraction from LinkedIn via the browser extension using the documented auto-sync",
+          "why": "Differentiation lists 'Contact extraction from LinkedIn' as a missing capability not covered by any maintained free OSS alternative; the candidate claims auto-sync in the extension",
+          "acceptance": "Extension extracts at least name, headline, company, and profile URL for 1st-degree connections and stores them in the local backend",
+          "quote": "Missing capabilities: 'Contact extraction from LinkedIn', 'Cloud sync and backup', 'Search and filter contacts', 'CSV export', 'User registration and login' (5 not covered by any maintained free OSS alternative)",
+          "evidence": [
+            "assessment:differentiation",
+            "candidate:DayanK/LinkedinSyncContacts"
+          ]
+        },
+        {
+          "title": "Harden cloud sync and backup with conflict resolution and incremental sync",
+          "why": "Differentiation lists 'Cloud sync and backup' as a missing capability; must_beat LeadDelta and n8n workflow offer sync but are not free or self-hostable",
+          "acceptance": "Repeated syncs from multiple devices merge without data loss; backend retains last-synced timestamp per contact",
+          "quote": "Cloud Sync - All contacts backed up to database",
+          "evidence": [
+            "assessment:differentiation",
+            "must_beat:web:https://leaddelta.com/product/auto-sync",
+            "must_beat:web:https://www.n8nflow.net/workflows/8041-weekly-linkedin-connections-sync-and-analysis-with-apify-and-google-sheets",
+            "candidate:DayanK/LinkedinSyncContacts"
+          ]
+        },
+        {
+          "title": "Add search, filter, and CSV export to the web dashboard",
+          "why": "Differentiation lists 'Search and filter contacts' and 'CSV export' as missing capabilities; candidate README claims both are built but feasibility says prototype",
+          "acceptance": "Dashboard shows real-time filtered results as user types; CSV export downloads all visible columns for current filter",
+          "quote": "Missing capabilities: 'Contact extraction from LinkedIn', 'Cloud sync and backup', 'Search and filter contacts', 'CSV export', 'User registration and login' (5 not covered by any maintained free OSS alternative)",
+          "evidence": [
+            "assessment:differentiation",
+            "candidate:DayanK/LinkedinSyncContacts"
+          ]
+        },
+        {
+          "title": "Complete user registration, login, and JWT session management for multi-device access",
+          "why": "Differentiation lists 'User registration and login' as a missing capability; candidate claims both email/password and LinkedIn OAuth ready",
+          "acceptance": "New user can register, verify email, log in on two devices, and see identical contact lists after sync",
+          "quote": "Missing capabilities: 'Contact extraction from LinkedIn', 'Cloud sync and backup', 'Search and filter contacts', 'CSV export', 'User registration and login' (5 not covered by any maintained free OSS alternative)",
+          "evidence": [
+            "assessment:differentiation",
+            "candidate:DayanK/LinkedinSyncContacts"
+          ]
+        }
+      ]
+    }
+  ],
+  "must_beat": [
+    {
+      "alternative": "LeadDelta (web:https://leaddelta.com/product/auto-sync)",
+      "how_to_win": "Remain free and self-hostable while delivering auto-sync, enrichment, and export that LeadDelta gates behind a paid tier",
+      "evidence": [
+        "must_beat:web:https://leaddelta.com/product/auto-sync"
+      ]
+    },
+    {
+      "alternative": "n8n + Apify workflow (web:https://www.n8nflow.net/workflows/8041-weekly-linkedin-connections-sync-and-analysis-with-apify-and-google-sheets)",
+      "how_to_win": "Provide a self-hostable, no-code-required alternative that does not depend on Apify credits or Google Sheets",
+      "evidence": [
+        "must_beat:web:https://www.n8nflow.net/workflows/8041-weekly-linkedin-connections-sync-and-analysis-with-apify-and-google-sheets"
+      ]
+    },
+    {
+      "alternative": "polonia/contact-manager",
+      "how_to_win": "Ship a maintained release with a test suite and CI; the alternative has not been updated in 649 days and has only 2 stars",
+      "evidence": [
+        "must_beat:polonia/contact-manager"
+      ]
+    }
+  ],
+  "risks": [
+    "LinkedIn may block or rate-limit the extraction method used by the browser extension, making the core job unreliable",
+    "No external demand signal was found (demand_evidence score 0), so adoption may not justify ongoing maintenance",
+    "No structural moat identified (moat score 0); the functionality is replicable and similar tools already exist",
+    "Productization path is undefined (score 1): no pricing, target persona definition, or distribution channel"
+  ],
+  "organised": {
+    "status": "needs_test_command",
+    "detail": "No manifest and no test path in the root: gate 2 would stop at NEEDS_REVIEW until a build and test command exist.",
+    "manifests": [],
+    "test_paths": []
+  },
+  "rejected_items": [
+    {
+      "stage": "REVIVE",
+      "title": "Add a test command and CI pipeline so the round-trip job is verifiable",
+      "reason": "quote not found verbatim in the cited evidence"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "candidate:DayanK/LinkedinSyncContacts",
+      "kind": "candidate",
+      "url": "https://github.com/DayanK/LinkedinSyncContacts",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://www.linkedin-makeover.com/2012/01/09/backup-your-linkedin-account",
+      "kind": "prior",
+      "url": "https://www.linkedin-makeover.com/2012/01/09/backup-your-linkedin-account",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://github.com/calebnewtonusc/linkedin-clay-sync",
+      "kind": "prior",
+      "url": "https://github.com/calebnewtonusc/linkedin-clay-sync",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://connectsafely.ai/articles/export-linkedin-contacts-connections-guide-2026",
+      "kind": "prior",
+      "url": "https://connectsafely.ai/articles/export-linkedin-contacts-connections-guide-2026",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://mailsoftly.com/blog/export-linkedin-contacts",
+      "kind": "prior",
+      "url": "https://mailsoftly.com/blog/export-linkedin-contacts",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://contactful.app/",
+      "kind": "prior",
+      "url": "https://contactful.app/",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://leaddelta.com/product/auto-sync",
+      "kind": "prior",
+      "url": "https://leaddelta.com/product/auto-sync",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://www.n8nflow.net/workflows/8041-weekly-linkedin-connections-sync-and-analysis-with-apify-and-google-sheets",
+      "kind": "prior",
+      "url": "https://www.n8nflow.net/workflows/8041-weekly-linkedin-connections-sync-and-analysis-with-apify-and-google-sheets",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:mwpenn94/stewardly-command-center",
+      "kind": "prior",
+      "url": "https://github.com/mwpenn94/stewardly-command-center",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:bhealy/linkedin",
+      "kind": "prior",
+      "url": "https://github.com/bhealy/linkedin",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:polonia/contact-manager",
+      "kind": "prior",
+      "url": "https://github.com/polonia/contact-manager",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://leaddelta.com/product/auto-sync",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://www.n8nflow.net/workflows/8041-weekly-linkedin-connections-sync-and-analysis-with-apify-and-google-sheets",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:polonia/contact-manager",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:problem_severity",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:demand_evidence",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:differentiation",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:feasibility",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:productization_path",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:moat",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "repo:tree",
+      "kind": "repo",
+      "url": "https://github.com/DayanK/LinkedinSyncContacts",
+      "content_hash": ""
+    }
+  ],
+  "run_id": "rescue-dayank__linkedinsynccontacts-20261027T205555Z",
+  "run_hash": "fe66955896446643742716558eadd22b7534691c994c4669508f81a13bbb71aa"
+}

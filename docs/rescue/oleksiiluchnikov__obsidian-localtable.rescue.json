@@ -1,0 +1,192 @@
+{
+  "repo_id": "oleksiiluchnikov/obsidian-localtable",
+  "gate1": {
+    "verdict": "CANDIDATE",
+    "total": 43.33,
+    "flags": [],
+    "run_id": "judge-20261026221854",
+    "run_hash": "2ae4aab419eb8f9a0a1d5c9a7d760d1ee09e00838ab06dfcf5badbacfa8199bc"
+  },
+  "drafted_by": "deterministic",
+  "requested_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "served_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "positioning": {
+    "target_user": "unknown",
+    "job": "Browse linked records from notes and sync note links with Airtable integration.",
+    "gap": "the reasons the must-beat alternatives did not block",
+    "evidence": [
+      "candidate:oleksiiluchnikov/obsidian-localtable"
+    ]
+  },
+  "stages": [
+    {
+      "stage": "REVIVE",
+      "items": [
+        {
+          "title": "Add a runnable test command for the stated job",
+          "why": "Without one, gate 2's execution loop cannot verify any revival and stops at NEEDS_REVIEW.",
+          "acceptance": "One command runs the tests and exits 0 on a clean checkout.",
+          "evidence": [
+            "repo:tree"
+          ],
+          "quote": "package.json",
+          "added_by": "code"
+        },
+        {
+          "title": "Make the stated job work again on current dependencies",
+          "why": "This is the job gate 1 found worth rescuing.",
+          "acceptance": "The README's main workflow runs end to end on a clean machine.",
+          "quote": "Browse linked records from notes and sync note links with Airtable integration.",
+          "evidence": [
+            "candidate:oleksiiluchnikov/obsidian-localtable"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "OPTIMISE",
+      "items": [
+        {
+          "title": "Refactor around the existing working core",
+          "why": "The scorer's feasibility assessment of the codebase.",
+          "acceptance": "The core paths named in the assessment keep working after the refactor.",
+          "quote": "The repository provides a working plugin distributable via BRAT or manual install (main.js, manifest.json, styles.css) and documents setup clearly.",
+          "evidence": [
+            "assessment:feasibility"
+          ]
+        }
+      ]
+    },
+    {
+      "stage": "UPGRADE",
+      "items": [
+        {
+          "title": "Keep or widen the gap against web:https://community.obsidian.md/plugins/auto-note-importer",
+          "why": "Recorded by gate 1 as an alternative that did not block.",
+          "acceptance": "A side-by-side check shows the revival still does what web:https://community.obsidian.md/plugins/auto-note-importer does not.",
+          "quote": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative",
+          "evidence": [
+            "must_beat:web:https://community.obsidian.md/plugins/auto-note-importer"
+          ]
+        },
+        {
+          "title": "Keep or widen the gap against uppinote20/obsidian-auto-note-importer",
+          "why": "Recorded by gate 1 as an alternative that did not block.",
+          "acceptance": "A side-by-side check shows the revival still does what uppinote20/obsidian-auto-note-importer does not.",
+          "quote": "did not block: not mature or official: stars=18, candidate_stars=0, official=False Two-way sync between Obsidian and your databases — Airtable, SeaTable, Supaba",
+          "evidence": [
+            "must_beat:uppinote20/obsidian-auto-note-importer"
+          ]
+        }
+      ]
+    }
+  ],
+  "must_beat": [
+    {
+      "alternative": "web:https://community.obsidian.md/plugins/auto-note-importer",
+      "how_to_win": "keep the capability its recorded reason says it lacks",
+      "evidence": [
+        "must_beat:web:https://community.obsidian.md/plugins/auto-note-importer"
+      ]
+    },
+    {
+      "alternative": "uppinote20/obsidian-auto-note-importer",
+      "how_to_win": "keep the capability its recorded reason says it lacks",
+      "evidence": [
+        "must_beat:uppinote20/obsidian-auto-note-importer"
+      ]
+    }
+  ],
+  "risks": [],
+  "organised": {
+    "status": "needs_test_command",
+    "detail": "A manifest is present but no test path is visible in the root: gate 2 would stop at NEEDS_REVIEW until a test command exists.",
+    "manifests": [
+      "package.json"
+    ],
+    "test_paths": []
+  },
+  "rejected_items": [],
+  "evidence": [
+    {
+      "id": "candidate:oleksiiluchnikov/obsidian-localtable",
+      "kind": "candidate",
+      "url": "https://github.com/oleksiiluchnikov/obsidian-localtable",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://obsidian.md/help/import/airtable",
+      "kind": "prior",
+      "url": "https://obsidian.md/help/import/airtable",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:web:https://community.obsidian.md/plugins/auto-note-importer",
+      "kind": "prior",
+      "url": "https://community.obsidian.md/plugins/auto-note-importer",
+      "content_hash": ""
+    },
+    {
+      "id": "prior:uppinote20/obsidian-auto-note-importer",
+      "kind": "prior",
+      "url": "https://github.com/uppinote20/obsidian-auto-note-importer",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:web:https://community.obsidian.md/plugins/auto-note-importer",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "must_beat:uppinote20/obsidian-auto-note-importer",
+      "kind": "must_beat",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:problem_severity",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:demand_evidence",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:differentiation",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:feasibility",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:productization_path",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "assessment:moat",
+      "kind": "assessment",
+      "url": "",
+      "content_hash": ""
+    },
+    {
+      "id": "repo:tree",
+      "kind": "repo",
+      "url": "https://github.com/oleksiiluchnikov/obsidian-localtable",
+      "content_hash": ""
+    }
+  ],
+  "run_id": "rescue-oleksiiluchnikov__obsidian-localtable-20261027T210137Z",
+  "run_hash": "903688d4fce47e9207a4c540352e0e988819e306640c8e7a8acb0c285c793834"
+}
