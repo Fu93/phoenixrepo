@@ -134,6 +134,12 @@ Provider, counted from the 16 scored files under `data/replays/` (status `error`
 - **158** `LLM_CALL` lines have no `provider` field. Each of those 158 carries Nightshift's routing block (`mode`, `requested_model`, `routed_model`, `winning_model`, `winning_provider`) and no `fallback_reason`. `routing_meta` copies that block from a Nightshift response. The Nightshift HTTP 200 path passes `provider="nightshift"` into `_store` (`app/agents/relevance.py` around line 1113). `_observe` omits `provider` when the value is `nightshift` (the default argument, around lines 685 and 722). `winning_provider` on that block is `nvidia`: Nightshift's label for the upstream it picked, not the trace field `provider`. One of the 158 is a `cache_hit`. A cache hit copies the cached provider, so a cached `nvidia-direct` answer would still show the field. This cache hit has the Nightshift routing block and no `provider` field. Served on these 158 lines: Ultra 140 (124 fast, 16 deep) and Super-VL 18 (fast). Requested on the fast lines is Super.
 - **10** `LLM_SCORE` lines have no `provider` field. `scripts/score_candidates.py` writes `LLM_SCORE` with `output_summary` `{"parsed": true}` and never sets `provider`, on any route. Those 10 are not the Nightshift omission. Served: Ultra 7, Lightning 3. They are the rest of the 168 lines with no `provider` field (218 used answers − 50 explicit `nvidia-direct`).
 
+In total the 218 used answers are 50 `nvidia-direct` `LLM_CALL` answers, 158 `LLM_CALL`
+answers with no `provider` field, and 10 `LLM_SCORE` lines with no `provider` field. Three
+further `nvidia-direct` `LLM_CALL` attempts have status `error` and are not used answers;
+they are not counted in the 50. The checker's `Nightshift 168` is a default label for
+"no `provider` field" (158 + 10), not a recorded route for all 168 lines.
+
 The blocks between `BEGIN numbers` and `END numbers` are the `scripts/fill_results.py` slots already in the file. They were not regenerated. The writer is `scripts/fill_results.py logs/eval-nemotron-v3.json --write`. That command was not run for this page. `logs/eval-nemotron-v3.json` is gitignored.
 
 <!-- BEGIN numbers: nemotron-answer-share -->
@@ -415,23 +421,26 @@ behaviour of this branch. Pull request #58 is on `main`.
 
 **Pull requests #59, #62, #65, and #66 (not merged).** Each switch is default off. It runs only when set to `1`, `true`, `yes`, `on`, or `enabled`. Unset stays off. None of them are on this branch, and none are part of any number on this page. The names are `PHOENIX_UNKNOWN_BLOCKER_REVIEW` (#59), `PHOENIX_WEB_GITHUB_API_LOOKUP` (#62), `PHOENIX_QUOTE_FAIL_FLAG` (#65), and `PHOENIX_COMMODITY_CATEGORY_RULE` (#66). An offline reading of Rule B on the recorded `must_beat` lines is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). It is not a live run.
 
-**Pull request #57 (merged).** `scripts/verify_nemotron_evidence.py` is present on
-this branch and recomputes the committed evidence offline. It does not call a model.
-
 ### Tonight's disclosure plan; verdicts unchanged
 
-Status snapshot: 27 October 2026, 17:18 UTC. [#67](https://github.com/Fu93/phoenixrepo/pull/67)
-is still open. After it is merged and deployed, new traces can record the raw
-verdict and gate path as `GATE_DECISION`; this does not backfill old v3 traces.
-The event can also be disabled, so its presence must be checked on each new run.
-
+Status snapshot: 27 October 2026, 19:30 UTC, from `gh pr list`. Open proposals:
 [#59](https://github.com/Fu93/phoenixrepo/pull/59),
 [#62](https://github.com/Fu93/phoenixrepo/pull/62),
-[#65](https://github.com/Fu93/phoenixrepo/pull/65), and
-[#66](https://github.com/Fu93/phoenixrepo/pull/66) remain unmerged proposals with
-default-off switches. They need an unseen labelled set before activation; the
-same 16 cases used to design them cannot establish generalisation. They are
-excluded from tonight's changes and all v3 figures.
+[#63](https://github.com/Fu93/phoenixrepo/pull/63),
+[#65](https://github.com/Fu93/phoenixrepo/pull/65),
+[#66](https://github.com/Fu93/phoenixrepo/pull/66), and
+[#76](https://github.com/Fu93/phoenixrepo/pull/76) (Rule B; supersedes #59).
+[#67](https://github.com/Fu93/phoenixrepo/pull/67) is closed, not merged as a pull
+request; its change is on `main` as commit `37ab838`, so new traces can record the
+raw verdict and gate path as `GATE_DECISION`. That does not backfill old v3 traces,
+and the event can be disabled, so check for it on each new run. #70 and #72 are also
+closed with their changes on `main`; #71 is closed and superseded by this pull
+request.
+
+These are unmerged proposals with default-off switches (Rule B in #76/#59, and
+#62, #65, #66). They need an unseen labelled set before activation; the same 16
+cases used to design them cannot establish generalisation. They are excluded from
+tonight's changes and all v3 figures.
 [#63](https://github.com/Fu93/phoenixrepo/pull/63) is deferred tonight. Licence-gate
 widening remains inactive: this checkout has no implemented relaxation switch.
 No `.env`, default, or verdict policy is changed by this disclosure update.

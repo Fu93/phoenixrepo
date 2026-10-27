@@ -27,10 +27,16 @@ without a model call when no unique historical response can be linked. The v3
 single-repo runner put its cache under a temporary snapshot that was removed on
 normal completion; persistent caches from other runs cannot substitute for it.
 
-Pull request #67 is open at this disclosure check. After deployment it can add
-`GATE_DECISION` to new runs, subject to its trace switch. It cannot restore that
-event to v3. Pull request #63 is deferred tonight. None of the proposed policy
+Pull request #67 is closed (not merged as a pull request); its change is on `main`
+as commit `37ab838`. It can add `GATE_DECISION` to new runs, subject to its trace
+switch. It cannot restore that event to v3. Pull request #63 is deferred tonight. None of the proposed policy
 changes below is merged or enabled by this document update.
+
+Provider counts for the 16 scored traces: 50 `nvidia-direct` `LLM_CALL` answers (plus
+3 failed `nvidia-direct` attempts, status `error`, not used answers), and 158 other
+`LLM_CALL` answers with no `provider` field, plus 10 `LLM_SCORE` lines (Ultra 7,
+Lightning 3) with no `provider` field. The checker's `Nightshift 168` is a default
+label for a missing `provider` field (158 + 10), not a recorded route.
 
 The separate post-v3 Zetaris eval16 run uses newly collected evidence for the
 same repository names. It is not the old CSV evidence, a held-out set, or a
