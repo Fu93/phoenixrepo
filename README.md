@@ -17,9 +17,10 @@ Check the two committed gate-1 traces against the run hashes published here. Pas
 ```bash
 python scripts/verify_trace.py data/replays/dsregoitia-calendarsyncproject/trace.jsonl --expected-run-hash 2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0 --require-nemotron
 python scripts/verify_trace.py data/replays/tharani-2006-invoice-generator-application/trace.jsonl --expected-run-hash cfbe3cc16adb981ee3d7e5ec240424505eb9fe32fe10f1f54b3110f3c56f340f --require-nemotron
+python scripts/verify_all_replays.py
 ```
 
-What that command repeats is the recorded file and its hash chain. Re-running the model is a new run: CalendarSyncProject has returned `CANDIDATE`, `NEEDS_REVIEW`, and the scored `NEEDS_PRIOR_ART`.
+`scripts/verify_all_replays.py` runs that check on every replay whose `trace_class` is RECORDED. What the command repeats is the recorded file and its hash chain. Re-running the model is a new run: CalendarSyncProject has returned `CANDIDATE`, `NEEDS_REVIEW`, and the scored `NEEDS_PRIOR_ART`.
 
 No install at all: **https://fu93.github.io/phoenixrepo/** is the same page as a static copy, rebuilt from `main` by `.github/workflows/pages.yml` (`scripts/export_static_ui.py`; the chain and tamper results there were computed by `scripts/verify_trace.py` at export time). Or `docker build -t phoenixrepo . && docker run --rm -p 8000:8000 phoenixrepo`. The page plays the catalog in `data/replays/`: two RECORDED gate-1 traces (CalendarSyncProject and Invoice-generator-application) and SAMPLE seals over committed files. It shows which model answered each call, the alternative, the quote that was checked word for word, and the hash chain. **Tamper** flips one character of a copy in memory, without re-sealing, and that copy fails the chain. A re-sealed file needs `--expected-run-hash` with the hash above. Replays labelled SAMPLE are reconstructions; RECORDED ones are real trace files copied byte for byte.
 
