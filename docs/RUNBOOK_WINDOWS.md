@@ -49,7 +49,7 @@ Recommended `.env` for the first real run (then tighten from the measured latenc
 ```
 PHOENIX_NEMOTRON_POLICY=require
 PHOENIX_LLM_ATTEMPT_TIMEOUT_S=180
-PHOENIX_LLM_TOTAL_TIMEOUT_S=420
+PHOENIX_LLM_TOTAL_TIMEOUT_S=360
 PHOENIX_ALTERNATIVES_BUDGET_S=900
 PHOENIX_LLM_DEEP_EXTRA_BODY={"temperature":0.6,"top_p":0.95}
 ```
