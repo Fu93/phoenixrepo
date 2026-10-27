@@ -103,6 +103,8 @@ Between `API contract` and `SAMPLE_MODE` the script prints a sample `POST /run` 
 
 Token-free replay page: `python main.py`, then open `http://127.0.0.1:8000/ui`. The page opens on `selfdb-io-selfdb`. A static copy is published by `.github/workflows/pages.yml` at <https://fu93.github.io/phoenixrepo/> (HTTP 200 on 27 Oct 2026; the HTML contains `selfdb-io-selfdb`, `zetaris-gate1`, and `e3-goodreasonai`). `docker build -t phoenixrepo . && docker run --rm -p 8000:8000 phoenixrepo` serves the same app. `main.py` binds `0.0.0.0` and `$PORT` (default 8000).
 
+`/ui` and the static export (`scripts/export_static_ui.py`) pass `recorded_run.run_hash` from `record.json` into `scripts.verify_trace.verify` when the manifest `trace_class` is RECORDED and that field is set. A re-sealed RECORDED file with a different hash fails on the page. A RECORDED replay with no recorded hash is shown as no recorded hash to compare, not as a pass. A SAMPLE replay says sample, not a recorded run: hash not compared, and is not shown as a failure when that hash differs. The static copy shows the export commit and `exported_at` (`docs/replay-export.md`).
+
 ## The decision, read as VRIO
 
 The two gates follow the four VRIO questions. The trace records what was checked. A missing or failed search does not answer a question: it is `NEEDS_REVIEW` or `UNJUDGED`.

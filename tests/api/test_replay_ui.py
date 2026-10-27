@@ -50,7 +50,9 @@ def test_invoice_replay_returns_steps_and_numbers_from_repo_files():
     assert body["trace_class"] == "SAMPLE"
     assert body["data_class"] == "RECORDED"
     assert len(body["steps"]) >= 2
-    assert body["verification"]["ok"] is True
+    assert body["verification"]["state"] == "sample"
+    assert body["verification"]["ok"] is False
+    assert body["verification"]["detail"] == "sample, not a recorded run: hash not compared"
     verdict = body["verdict"]
     assert verdict["verdict"] == "ALREADY_EXISTS"
     scores = (ROOT / "docs/revival/venture_scores.json").read_text(encoding="utf-8")
@@ -127,7 +129,9 @@ def test_gate2_sample_shows_not_attempted_and_is_labeled_sample():
     blocked = next(step for step in body["steps"] if step["action"] == "REVIVE_BLOCKED_BY_GATE1")
     assert blocked["status"] == "blocked"
     assert blocked["seconds"] is None
-    assert body["verification"]["ok"] is True
+    assert body["verification"]["state"] == "sample"
+    assert body["verification"]["ok"] is False
+    assert body["verification"]["detail"] == "sample, not a recorded run: hash not compared"
 
 
 def test_tamper_fails_verification_and_leaves_the_file(tmp_path):
@@ -141,7 +145,8 @@ def test_tamper_fails_verification_and_leaves_the_file(tmp_path):
     assert "line_hash" in body["detail"] or "prev_hash" in body["detail"] or "JSON" in body["detail"]
     assert trace.read_bytes() == before
     again = CLIENT.get(f"/api/replays/{replay_id}").json()
-    assert again["verification"]["ok"] is True
+    assert again["verification"]["state"] == "sample"
+    assert again["verification"]["detail"] == "sample, not a recorded run: hash not compared"
 
 
 def test_live_judge_is_disabled_without_a_nightshift_token():
