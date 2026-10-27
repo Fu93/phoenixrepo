@@ -1,3 +1,4 @@
+Code: f5416a92dfd8d839c6db1a30e24ed99a5eded4a0 (worktree phoenixrepo-zeval16 HEAD at run time per rev-parse; uncommitted changes: yes)
 Zetaris eval16 run evidence manifest
 Source worktree: C:\Users\nn201\phoenixrepo-zeval16\logs\zetaris-eval16 (originals untouched; files copied with Copy-Item semantics, SHA256 compared)
 Human label = top-level acceptable/forbidden of each case in data/eval/gate1_labels.json on main (not in the per-run scores JSON).
