@@ -17,7 +17,16 @@ python scripts/fill_results.py logs/eval-nemotron-v3.json --write
 A live run on one machine, not a stored accuracy.
 
 <!-- BEGIN numbers: eval-summary-table -->
-**TBD.**
+| Measure | Result |
+| --- | --- |
+| Labelled repositories judged | 16 of 16 in the report |
+| Verdict inside the human label's acceptable set | 10 of 16 |
+| Over-refusals (ALREADY_EXISTS where the label says it should not be) | 1 of 11 |
+| False passes (not refused where the label says ALREADY_EXISTS) | 4 of 5 |
+| Model answers used that NVIDIA Nemotron wrote | 218 of 218 |
+| Served models (all LLM call lines) | `(missing)` 3 (failed or discarded calls with no answer, not answers used), `nvidia/nemotron-3-ultra-550b-a55b` 197, `nvidia/nemotron-3.5-lightning-30b-a3b` 3, `nvidia/nemotron-3.5-super-vl-120b-a12b` 18 |
+
+Source: `logs/eval-nemotron-v3.json`, summarised by `scripts/eval_summary.py`. A live run on one machine, not a stored accuracy.
 <!-- END numbers: eval-summary-table -->
 
 What is already fixed in the repository, with no live count attached:
@@ -30,19 +39,19 @@ What is already fixed in the repository, with no live count attached:
 - `DSRegoitia/CalendarSyncProject` was rejected by the older Phoenix because FullCalendar "displays public Google Calendar events". The human label calls that a WRONG over-rejection: the candidate pushes events the other way. The acceptable set is `CANDIDATE` or `NEEDS_REVIEW`. Two independent runs, with different generated queries, returned `CANDIDATE` and `NEEDS_REVIEW`. `NEEDS_REVIEW` on this case is a partial overlap with a verbatim quote handed to a human.
 
 <!-- BEGIN numbers: nemotron-answer-share -->
-Answers by NVIDIA Nemotron on the scored run: **TBD** of **TBD**.
+Answers by NVIDIA Nemotron on the scored run: **218** of **218** answers used (16 of 16 case traces verified, `logs/eval-nemotron-v3.json`). The final-verdict answer (the `discovery` step) was written by Nemotron in **16** of the **16** cases whose trace has one.
 <!-- END numbers: nemotron-answer-share -->
 
 <!-- BEGIN numbers: provider-split -->
-Provider split, Nightshift answers used / `nvidia-direct` answers used (`verify_trace.py --require-nemotron`): **TBD** / **TBD**. `nvidia-direct` requests `nvidia/nemotron-3-ultra-550b-a55b`, because the API answered 404 for the 120B Super model on this account; the served model per provider is counted from the traces.
+Provider split on that run, from `verify_trace.py --require-nemotron` over each case trace: nightshift **168**, nvidia-direct **50**. 1 of the used answers were replayed from the LLM cache: an earlier run asked the same prompt with the same input, and the cached line keeps the model and provider that answered then. Served model per provider: nightshift: `nvidia/nemotron-3-ultra-550b-a55b` 147, `nvidia/nemotron-3.5-lightning-30b-a3b` 3, `nvidia/nemotron-3.5-super-vl-120b-a12b` 18; nvidia-direct: `nvidia/nemotron-3-ultra-550b-a55b` 50.
 <!-- END numbers: provider-split -->
 
 <!-- BEGIN numbers: calendarsync-final-verdict -->
-CalendarSyncProject verdict on the recorded run: **TBD**.
+Final verdict on the recorded run (`judge-20261026202603`): **NEEDS_PRIOR_ART** (disagrees with the human label). Reason: Zero alternatives checked in prior-art search.
 <!-- END numbers: calendarsync-final-verdict -->
 
 <!-- BEGIN numbers: calendarsync-final-run-hash -->
-CalendarSyncProject run hash: **TBD**.
+Final run hash: `2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0`. Check it with `python scripts/verify_trace.py logs/trace-judge-20261026202603.jsonl --expected-run-hash 2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0 --require-nemotron`.
 <!-- END numbers: calendarsync-final-run-hash -->
 
 The 25 Oct 2026 batch of 30 repositories, described in the README under Current status, is an earlier run. It is not this table.
@@ -74,7 +83,7 @@ Limits: no AI-written patch has fixed a real repository yet, and the code was wr
 - **Build window:** 22 to 27 Oct 2026. Everything after `62a1540` was built in it: the Zetaris REST client and gate-1 Zetaris evidence; the Meterless Runtime provider; H-MEM and Markovian; the roles and validator; gate 1 (`scripts/judge_repo.py`, `scripts/score_candidates.py`, `app/agents/relevance.py`, multi-source prior-art search); the two Nemotron tiers and `fallback-nvidia`; the batch and rerun tools; gate 2 (`app/revive_loop.py`, `app/revive_verify.py`, `scripts/revive.py`); the evidence report, trace renderer, and `/ui` replay page; the tests and this README.
 
 <!-- BEGIN numbers: build-window-commit-count -->
-Commit count after the skeleton, on the final submitted commit: **TBD**. Command: `git rev-list --count 62a1540..main`. Paste that integer here when `main` is the commit you submit. Do not reuse a count from an earlier commit.
+Commit count after the skeleton, on the commit these numbers were written from: **124** (`git rev-list --count 62a1540..HEAD`). Run `scripts/fill_results.py` again on the final commit.
 <!-- END numbers: build-window-commit-count -->
 
 ## (iv) AI-assistance disclosure

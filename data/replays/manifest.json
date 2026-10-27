@@ -31,6 +31,22 @@
       "data_class": "RECORDED",
       "trace_class": "SAMPLE",
       "summary": "Local revive() short-circuit. State NOT_ATTEMPTED_GATE1 comes from the function, not from a past run."
+    },
+    {
+      "id": "dsregoitia-calendarsyncproject",
+      "title": "DSRegoitia/CalendarSyncProject — recorded NEEDS_PRIOR_ART",
+      "repo_id": "DSRegoitia/CalendarSyncProject",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict NEEDS_PRIOR_ART for DSRegoitia/CalendarSyncProject."
+    },
+    {
+      "id": "tharani-2006-invoice-generator-application",
+      "title": "tharani-2006/Invoice-generator-application — recorded CANDIDATE",
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for tharani-2006/Invoice-generator-application."
     }
   ],
   "missing": [
