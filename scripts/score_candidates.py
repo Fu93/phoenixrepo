@@ -1206,6 +1206,7 @@ def _do_score_candidates(
                         trace=trace,
                         candidate=candidate,
                     )
+                    quote_claims = list(getattr(problem_alternatives, "unverified_full_overlap_claims", []) or [])
                     trace.event(
                         agent_name="orchestrator",
                         action="ALTERNATIVES_VERIFIED",
@@ -1247,6 +1248,7 @@ def _do_score_candidates(
                         source_status=getattr(search_results, "source_status", None),
                         source_counts=getattr(search_results, "source_counts", None),
                         insufficient_coverage=getattr(search_results, "insufficient_coverage", False),
+                        unverified_full_overlap_claims=quote_claims,
                     )
                     verdict, reason = judged
                     judgement_evidence = list(getattr(judged, "evidence", []) or [])
