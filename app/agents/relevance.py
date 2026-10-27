@@ -136,15 +136,15 @@ def sent_request_settings(payload: dict[str, Any]) -> dict[str, Any]:
     return sent
 
 
-# Two Nemotron tiers. Many short overlap judgements go to the fast model (MODEL_NAME, usually
-# a small Nemotron with thinking off). The steps in PHOENIX_DEEP_STEPS (default: the final
-# discovery verdict) go to PHOENIX_DEEP_MODEL with its own body, so a larger Nemotron can reason
-# where the verdict is made. Unset PHOENIX_DEEP_MODEL keeps one model for every step.
+# Two Nemotron tiers. Many short overlap judgements go to the fast model (MODEL_NAME).
+# The steps in PHOENIX_DEEP_STEPS (default: the final discovery verdict) go to
+# PHOENIX_DEEP_MODEL with its own body. Unset PHOENIX_DEEP_MODEL keeps one model for every step.
 DEFAULT_DEEP_STEPS = ("discovery",)
 NEMOTRON_POLICIES = ("label", "require", "fallback-nvidia")
 DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 REASONING_EXCERPT_CHARS = 1200
 _THINK_RE = re.compile(r"<think>(.*?)</think>", re.S | re.I)
+_THINK_LONE_CLOSE = re.compile(r"</think>", re.I)
 
 
 def _env_text(*names: str) -> str:
@@ -170,9 +170,30 @@ def nemotron_policy_from_env() -> str:
     return value
 
 
-def reasoning_excerpt(message: Any, text: str) -> str:
-    """The model's own reasoning when the reply carries it: a reasoning field or a <think> block.
+def _reasoning_before_lone_close(text: str) -> str:
+    """Text before a lone ``</think>`` when a JSON object follows that tag.
 
+    Nightshift Ultra puts reasoning in the content and closes it with ``</think>``
+    and no opening tag. A ``</think>`` that sits inside the answer has no JSON
+    object after it, so it is not a boundary: the answer is not copied into the
+    reasoning excerpt. The last such boundary wins, so an example of the tag
+    inside the reasoning does not cut the excerpt short of the answer.
+    """
+
+    chosen = ""
+    for match in _THINK_LONE_CLOSE.finditer(text):
+        if extract_json_object(text[match.end() :]) is None:
+            continue
+        chosen = text[: match.start()]
+    return chosen
+
+
+def reasoning_excerpt(message: Any, text: str) -> str:
+    """The model's own reasoning when the reply carries it.
+
+    A separate reasoning field, a complete <think>...</think> pair, or text before
+    a lone </think> that is followed by a JSON object. The text after that tag
+    stays in the reply the verdict parser reads; this function only copies an excerpt.
     Kept short (head and tail) for the trace. It is shown as the model's account; the verdict
     still stands or falls on the verbatim quote checks, not on this text.
     """
@@ -187,6 +208,8 @@ def reasoning_excerpt(message: Any, text: str) -> str:
         match = _THINK_RE.search(text)
         if match:
             raw = match.group(1)
+        else:
+            raw = _reasoning_before_lone_close(text)
     raw = raw.strip()
     if len(raw) <= REASONING_EXCERPT_CHARS:
         return raw

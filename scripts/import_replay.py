@@ -40,6 +40,9 @@ def import_replay(
     repo: str | None = None,
     replay_id: str | None = None,
     replays_root: Path | None = None,
+    title: str | None = None,
+    banner: str | None = None,
+    summary: str | None = None,
 ) -> dict[str, Any]:
     """Copy ``trace`` unchanged and add one verdict row to the replay manifest."""
 
@@ -69,12 +72,21 @@ def import_replay(
         # redacted here without breaking it. Refuse instead of committing it.
         raise ImportError(f"trace contains {leak}; it was not imported. Re-run the judgement with the current code, which redacts it.")
     record = _record(chosen_id, row, data, verdict, trace_text)
+    # Optional labels for a RECORDED trace that is not the scored run (an experiment). Only the
+    # catalog text changes; the copied trace bytes and the run hash stay as they were.
+    if title:
+        record["title"] = title
+    if banner:
+        record["banner"] = banner
+    if summary:
+        record["summary"] = summary
     directory = root / chosen_id
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "trace.jsonl").write_bytes(trace.read_bytes())
     (directory / "record.json").write_text(
         json.dumps(record, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
+        newline="\n",  # LF on Windows too: the committed catalog files are LF
     )
     entry = {
         "id": chosen_id,
@@ -273,7 +285,7 @@ def _upsert_manifest(root: Path, entry: dict[str, Any]) -> None:
     replays.append(entry)
     manifest["replays"] = replays
     manifest.setdefault("missing", [])
-    path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -283,6 +295,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", default=None, help="owner/name when the verdict file has more than one repository")
     parser.add_argument("--id", dest="replay_id", default=None, help="catalog id (default: slug of the repository)")
     parser.add_argument("--replays-dir", type=Path, default=None, help="catalog directory (default: data/replays)")
+    parser.add_argument("--title", default=None, help="catalog title (default: '<repo> recorded <verdict>')")
+    parser.add_argument("--banner", default=None, help="banner shown above the timeline (default: the RECORDED-copy text)")
+    parser.add_argument("--summary", default=None, help="one-line catalog summary")
     args = parser.parse_args(argv)
     try:
         entry = import_replay(
@@ -291,6 +306,9 @@ def main(argv: list[str] | None = None) -> int:
             repo=args.repo,
             replay_id=args.replay_id,
             replays_root=args.replays_dir,
+            title=args.title,
+            banner=args.banner,
+            summary=args.summary,
         )
     except ImportError as exc:
         print(str(exc), file=sys.stderr)

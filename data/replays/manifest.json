@@ -167,6 +167,22 @@
       "data_class": "RECORDED",
       "trace_class": "RECORDED",
       "summary": "Copied unchanged from the Zetaris-backed gate 1 run (EVIDENCE_SOURCE=zetaris, run id zetaris-gate1, run hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad, 27 of 27 answers by Nemotron). Verdict ALREADY_EXISTS for tharani-2006/Invoice-generator-application. The same trace also covers SergioMendolia/ytkb (CANDIDATE, a false pass); only this repository's verdict is shown here."
+    },
+    {
+      "id": "e3-goodreasonai-scrapeserv",
+      "title": "Experiment E3 (NVIDIA direct; final verdict only: thinking on, temperature 1.0; bulk steps thinking off, temperature 0), not the scored run",
+      "repo_id": "goodreasonai/ScrapeServ",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "goodreasonai/ScrapeServ, E3 run judge-20261027042854: ALREADY_EXISTS (the scored v3 run said CANDIDATE)."
+    },
+    {
+      "id": "e3-dsregoitia-calendarsyncproject",
+      "title": "Experiment E3 (NVIDIA direct; final verdict only: thinking on, temperature 1.0; bulk steps thinking off, temperature 0), not the scored run",
+      "repo_id": "DSRegoitia/CalendarSyncProject",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "DSRegoitia/CalendarSyncProject, E3 run judge-20261027041913: CANDIDATE (the scored v3 run said NEEDS_PRIOR_ART)."
     }
   ],
   "missing": [

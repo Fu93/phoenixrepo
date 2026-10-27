@@ -51,14 +51,14 @@ PHOENIX_NEMOTRON_POLICY=require
 PHOENIX_LLM_ATTEMPT_TIMEOUT_S=180
 PHOENIX_LLM_TOTAL_TIMEOUT_S=360
 PHOENIX_ALTERNATIVES_BUDGET_S=900
-PHOENIX_LLM_DEEP_EXTRA_BODY={"temperature":0.6,"top_p":0.95}
+PHOENIX_LLM_DEEP_EXTRA_BODY={"temperature":1.0,"top_p":0.95}
 ```
 
-The last line is NVIDIA's published sampling numbers (temperature 0.6, top_p 0.95) applied only when `MODEL_NAME_DEEP` is set. The scored run left `PHOENIX_LLM_DEEP_EXTRA_BODY` empty. The overlap checks stay at temperature 0. The line does nothing unless `MODEL_NAME_DEEP` is set.
+The last line is what NVIDIA's Ultra model card suggests (temperature 1.0, top_p 0.95), applied only when `MODEL_NAME_DEEP` is set. It is not the scored run. The scored-run .env is not in the repo and the traces do not record request settings. The operator's configured fast-tier setting was enable_thinking=false; whether Nightshift applied it is unknown. Temperature 0 is the code default in app/agents/relevance.py and neither tier's extra body sets it. Experiment E3's discovery lines record temperature 1.0 and top_p 1.0, which is not the model-card pair. The line does nothing unless `MODEL_NAME_DEEP` is set.
 
 180 s per attempt is three times the slowest probe reply (57 s) and below the ~330 s at which Nightshift's 502 used to arrive, so a hung call is cut sooner. After the pagerbeauty run, the report's served-model table shows the median and maximum seconds per model; set the attempt timeout to about twice that maximum.
 
-1. Copy the probe's lines into `.env`. When it found a second, larger Nemotron it also prints `MODEL_NAME_DEEP`: the fast model handles the many overlap checks, the deep one writes the final verdict. On the scored run, 0 of 16 final verdicts carried a reasoning field.
+1. Copy the probe's lines into `.env`. When it found a second, larger Nemotron it also prints `MODEL_NAME_DEEP`. Two requested tiers: Super for bulk checks, Ultra for the verdict. On the scored run the `nemotron-evidence` slot says fast-tier answers used were Ultra 174 and Super-VL 18; the 16 verdicts were served by Ultra. The same slot's no-tier row is Ultra 7 and Lightning 3. That slot is not a provider split. The scored traces recorded no reasoning text for the final verdict. The counter that wrote them recognised only a separate reasoning field or a complete `<think>…</think>` pair (0 of 16 in that slot), and Nightshift's answers carry reasoning inline before a bare `</think>`, so the scored traces cannot say whether the model reasoned. The scored-run .env is not in the repo and the traces do not record request settings. The operator's configured fast-tier setting was enable_thinking=false; whether Nightshift applied it is unknown. Temperature 0 is the code default in app/agents/relevance.py and neither tier's extra body sets it.
 2. Choose the policy in `.env`:
    - `PHOENIX_NEMOTRON_POLICY=require`: a non-Nemotron answer is discarded and asked again through Nightshift. Use it when the probe shows Nemotron is served most of the time.
    - `PHOENIX_NEMOTRON_POLICY=fallback-nvidia`: a non-Nemotron answer, a timeout or a 5xx is replaced by the same Nemotron model at the NVIDIA API. Needs `NVIDIA_API_KEY` in `.env` (the key you added to Nightshift's Providers tab). This line is marked `provider: nvidia-direct` in the trace, so it is visible that it bypassed Meterless.

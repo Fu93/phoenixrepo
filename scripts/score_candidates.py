@@ -1633,6 +1633,42 @@ def _do_score_candidates(
         status="ok",
     )
 
+    # 5b. Meterless H-MEM verdict memory: records each verdict, flags a change from the last
+    # remembered one. It never changes a verdict and never stops the run (app/verdict_memory.py).
+    from app.verdict_memory import remember as hmem_remember, served_model_from_reason
+
+    hmem_rows = [
+        {"repo_id": r.get("repo_id"), "verdict": r.get("verdict"), "reason": r.get("reason")}
+        for r in [*ineligible_repos, *candidates_output]
+    ]
+    served_by_repo: dict[str, str] = {}
+    for row in ineligible_repos:
+        repo_key = str(row.get("repo_id") or "").strip()
+        if repo_key:
+            served_by_repo[repo_key] = served_model_from_reason(row.get("reason"))
+    for item in eligible_candidates:
+        repo_key = str((item.get("candidate") or {}).get("repo_id") or "").strip()
+        if repo_key:
+            served_by_repo[repo_key] = served_model_from_reason(item.get("reason"))
+    try:
+        hmem_summary = hmem_remember(
+            hmem_rows, trace=trace, log_dir=active_log_dir, run_id=active_run_id, served_by_repo=served_by_repo,
+        )
+    except Exception as exc:
+        # remember() already catches its own failures. This is the last guard so a
+        # bug there cannot skip the seal or change a verdict already stored on the row.
+        hmem_summary = []
+        try:
+            trace.event(
+                agent_name="hmem",
+                action="HMEM_VERDICT_MEMORY",
+                input_summary={"run_id": active_run_id},
+                output_summary={"error": f"{type(exc).__name__}: {str(exc)[:200]}"},
+                status="error",
+            )
+        except Exception:
+            pass
+
     # 6. Seal trace
     run_hash = trace.seal()
 
@@ -1659,6 +1695,7 @@ def _do_score_candidates(
         "protagonist": protagonist_data,
         "candidates": candidates_output,
         "ineligible": ineligible_repos,
+        "hmem_verdict_memory": hmem_summary,
     }
 
     active_output_json.parent.mkdir(parents=True, exist_ok=True)

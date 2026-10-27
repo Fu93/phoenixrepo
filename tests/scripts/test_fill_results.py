@@ -46,7 +46,9 @@ def test_fill_writes_only_verified_numbers(tmp_path: Path):
     assert f"nightshift: `{NEMO}` 2; nvidia-direct: `{NEMO}` 2" in values["provider-split"]
     assert "Nemotron in **2** of the **2** cases" in values["nemotron-answer-share"]
     assert f"`{NEMO}` (nvidia-direct)" in values["per-case-table"]
-    assert "1 of the used answers were replayed from the LLM cache" in values["provider-split"]
+    assert "1 of the used answer was replayed from the LLM cache" in values["provider-split"]
+    assert fr._cache_clause(2).startswith(" 2 of the used answers were replayed")
+    assert fr._cache_clause(0) == ""
     assert "**CANDIDATE** (agrees with the human label)" in values["calendarsync-final-verdict"]
     assert h1 in values["calendarsync-final-run-hash"] and "--require-nemotron" in values["calendarsync-final-run-hash"]
     table = values["per-case-table"]

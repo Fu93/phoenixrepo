@@ -1,4 +1,8 @@
 import math
+import os
+import threading
+
+import pytest
 
 from app.engines.hmem.ledger import TrustLedgerService
 from app.engines.hmem.retrieval import MemoryRetrievalService, blend_score, jaccard
@@ -186,6 +190,127 @@ def test_repeated_evidence_refreshes_one_memory(tmp_path):
     assert len([record for record in store.all_records() if record.extra.get("kind") == "evidence"]) == 1
     assert store.get(first.id).goal_run_id == "run-2"
     assert any(entry.action == "update" for entry in ledger.entries)
+
+
+def test_two_writers_keep_both_records(tmp_path):
+    path = tmp_path / "store.json"
+    ledger_path = tmp_path / "ledger.jsonl"
+
+    def make():
+        return MemoryStoreService(
+            ledger=TrustLedgerService(ledger_path, clock=lambda: 5),
+            path=path,
+            clock=lambda: 5,
+        )
+
+    first = make()
+    first.hydrate()
+    second = make()
+    second.hydrate()
+    first.add("from-a", source="s", origin="manual", label="t")
+    second.add("from-b", source="s", origin="manual", label="t")
+    loaded = make()
+    loaded.hydrate()
+    assert {record.content for record in loaded.records.values()} == {"from-a", "from-b"}
+    assert "from-a" in path.read_text(encoding="utf-8")
+
+
+def test_a_failed_replace_leaves_the_previous_file(tmp_path, monkeypatch):
+    store, _retrieval, _ledger = _services(tmp_path)
+    store.add("alpha café", source="s", origin="manual", label="t")
+    original = (tmp_path / "store.json").read_bytes()
+    assert "café".encode("utf-8") in original
+
+    def boom(_src, _dst):
+        raise OSError("disk")
+
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(OSError):
+        store.add("beta", source="s", origin="manual", label="t")
+    assert (tmp_path / "store.json").read_bytes() == original
+
+
+def test_parallel_adds_keep_both_records(tmp_path):
+    path = tmp_path / "store.json"
+    ledger_path = tmp_path / "ledger.jsonl"
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def worker(label: str) -> None:
+        try:
+            store = MemoryStoreService(
+                ledger=TrustLedgerService(ledger_path, clock=lambda: 5),
+                path=path,
+                clock=lambda: 5,
+            )
+            store.hydrate()
+            barrier.wait(timeout=5)
+            store.add(label, source="s", origin="manual", label="t")
+        except BaseException as exc:  # the test thread must report this, not die silent
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(label,)) for label in ("alpha", "beta")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+        assert not thread.is_alive()
+    assert errors == []
+    loaded = MemoryStoreService(
+        ledger=TrustLedgerService(ledger_path, clock=lambda: 5),
+        path=path,
+        clock=lambda: 5,
+    )
+    loaded.hydrate()
+    assert {record.content for record in loaded.records.values()} == {"alpha", "beta"}
+
+
+def test_lock_closes_the_handle_when_locking_raises(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    from app.engines.hmem.store import _FileLock
+
+    fake = types.ModuleType("msvcrt")
+    fake.LK_LOCK = 0
+    fake.LK_UNLCK = 1
+
+    def locking(*_args):
+        raise OSError("lock failed")
+
+    fake.locking = locking
+    monkeypatch.setitem(sys.modules, "msvcrt", fake)
+    monkeypatch.setattr("app.engines.hmem.store.os.name", "nt")
+    opened = []
+    real_open = open
+
+    def tracking(*args, **kwargs):
+        handle = real_open(*args, **kwargs)
+        opened.append(handle)
+        return handle
+
+    monkeypatch.setattr("builtins.open", tracking)
+    lock = _FileLock(tmp_path / "gate1_verdicts.json.lock")
+    with pytest.raises(OSError, match="lock failed"):
+        with lock:
+            pass
+    assert opened and opened[0].closed
+    assert lock._handle is None
+
+
+def test_find_verdicts_matches_repo_id_case_insensitively(tmp_path):
+    store, _retrieval, _ledger = _services(tmp_path)
+    store.add(
+        "owner/repo gate-1 verdict CANDIDATE",
+        source="run-1",
+        origin="model_response",
+        label="gate1_verdict",
+        layer="long_term",
+        entities=["Owner/Repo"],
+        extra={"kind": "verdict", "verdict": "CANDIDATE"},
+    )
+    assert len(store.find_verdicts("owner/repo")) == 1
+    assert store.find_verdicts("other/repo") == []
 
 
 def test_superseded_memory_is_penalized_not_deleted(tmp_path):
