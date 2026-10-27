@@ -522,6 +522,46 @@ def test_differentiation_requires_quotes_and_evaluates_gaps():
     assert "External user demand quote" in crit.rationale
 
 
+def test_none_push_date_prints_unknown_instead_of_noned():
+    """A missing push date is display text. The score stays the one-gap score."""
+    from scripts.score_candidates import compute_differentiation
+
+    candidate = {
+        "repo_id": "test/candidate",
+        "description": "A tool with missing_feature support.",
+    }
+    prior_rows = [
+        {
+            "alternative_id": "comp/undated-alt",
+            "url": "https://github.com/comp/undated-alt",
+            "licence_spdx": "MIT",
+            "pushed_at": None,
+            "days_since_push": None,
+            "collected_at": "2026-10-22T00:00:00Z",
+            "excerpt": "A tool that does not mention the missing capability.",
+        }
+    ]
+    cand_ev_id = "candidate:test/candidate"
+    evidence_index = {
+        cand_ev_id: {
+            "id": cand_ev_id,
+            "url": "https://github.com/test/candidate",
+            "text": candidate["description"],
+        }
+    }
+    crit = compute_differentiation(
+        candidate,
+        prior_rows,
+        [],
+        evidence_index,
+        candidate_capabilities=[{"name": "missing_feature", "quote": "missing_feature support"}],
+    )
+    assert crit.score == 1
+    assert "unmaintained (push date unknown)" in crit.rationale
+    assert "Noned" not in crit.rationale
+    assert "comp/undated-alt" in crit.rationale
+
+
 def test_three_candidates_different_evidence_strength_different_totals(tmp_path):
     """Offline test verifying that candidates of different evidence strength receive strictly different totals."""
     snap_dir = tmp_path / "snapshot"

@@ -218,6 +218,16 @@ def extract_multi_term_quote(text: str, terms: list[str], max_len: int = 200) ->
     return ""
 
 
+def _format_push_age(days: int | None, *, unmaintained: bool = False) -> str:
+    """Rationale text for a push age. A missing date must not render as 'Noned'."""
+
+    if days is None:
+        return "unmaintained (push date unknown)" if unmaintained else "(push date unknown)"
+    if unmaintained:
+        return f"unmaintained {days}d"
+    return f"{days}d"
+
+
 def compute_differentiation(
     candidate: dict[str, Any],
     prior_rows: list[dict[str, Any]],
@@ -336,10 +346,11 @@ def compute_differentiation(
         lic = str(mf.get("licence_spdx") or "")
         days = observed_days(mf)
         covered_list = [c_name for c_name, (a_id, _) in covered_caps.items() if a_id == alt_id]
+        age = _format_push_age(days)
         if covered_list:
-            alts_checked_desc.append(f"{alt_id} (maintained free {lic}, {days}d; covers {', '.join(covered_list)})")
+            alts_checked_desc.append(f"{alt_id} (maintained free {lic}, {age}; covers {', '.join(covered_list)})")
         else:
-            alts_checked_desc.append(f"{alt_id} (maintained free {lic}, {days}d; covers none)")
+            alts_checked_desc.append(f"{alt_id} (maintained free {lic}, {age}; covers none)")
     for oth in other_alts:
         alt_id = str(oth.get("alternative_id") or "")
         lic = str(oth.get("licence_spdx") or "no licence")
@@ -348,7 +359,7 @@ def compute_differentiation(
         if lic not in FREE_OSS_LICENCES:
             reasons.append(f"licence={lic}")
         if days is None or days > ABANDONED_AFTER_DAYS:
-            reasons.append(f"unmaintained {days}d")
+            reasons.append(_format_push_age(days, unmaintained=True))
         alts_checked_desc.append(f"{alt_id} ({', '.join(reasons)})")
 
     # Score based on uncovered capabilities
