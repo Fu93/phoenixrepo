@@ -6,7 +6,7 @@ Read each model line as Requested, Served, and Policy. Say Ultra only when Serve
 
 ## Why Nemotron, in short
 
-- **Two tiers.** Overlap checks request Super (`nvidia/nemotron-3-super-120b-a12b`); the verdict step requests Ultra (`nvidia/nemotron-3-ultra-550b-a55b`). On the scored v3 traces Nightshift served Ultra on 140 of its 158 `LLM_CALL` lines, including 124 fast-tier lines that requested Super. Requested and served ids are both on every line.
+- **Two tiers.** Overlap checks request Super (`nvidia/nemotron-3-super-120b-a12b`); the verdict step requests Ultra (`nvidia/nemotron-3-ultra-550b-a55b`). On the scored v3 traces Nightshift served Ultra on 140 of its 158 `LLM_CALL` lines, including 124 fast-tier lines that requested Super. Requested and served ids are both on every `ok` line.
 - **Thinking only at the verdict.** Scored v3 traces do not record thinking. Two other committed traces do. E3 (`data/replays/e3-goodreasonai-scrapeserv/`, NVIDIA direct) has `enable_thinking` true on 1 of 17 calls, the verdict, at temperature 1.0, and false at temperature 0 on the other 16. The live single-repo demo (`docs/evidence/single-repo-demo/`) has it true on 1 of 10, the verdict, at temperature 0. Both keep a reasoning excerpt.
 - **Quotes checked by code.** A claim that an alternative already does the job needs a quote that `quote_in_text` finds in that alternative's own text. An unverified quote cannot block a repository.
 - **Served model inside the hash chain.** `served_model` is part of each line's hash. Checked with `--expected-run-hash`, an edited or re-sealed trace fails.
