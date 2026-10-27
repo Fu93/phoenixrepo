@@ -1341,6 +1341,59 @@ def test_llm_flag_exits_code_2_when_unconfigured(monkeypatch, capsys):
     assert "METERLESS_RUNTIME_TOKEN" in captured.err or "--llm was passed but" in captured.err
 
 
+def test_failed_calls_do_not_change_fixture_verdicts(tmp_path):
+    """An error line with an empty serve is not a model swap and does not move a fixture verdict."""
+
+    output_json = tmp_path / "scores.json"
+    output_md = tmp_path / "scores.md"
+    log_dir = tmp_path / "logs"
+    toolbox = _create_mock_toolbox()
+    client = _create_mock_relevance_client(tmp_path)
+    original = client.mock_handler
+    seeded = {"done": False}
+
+    def handler(prompt, system_prompt):
+        if not seeded["done"]:
+            seeded["done"] = True
+            client._observe(
+                client.model, "", "SergioMendolia/ytkb", "problem",
+                status="error", provider="nvidia-direct",
+            )
+            client._observe(
+                client.model, "", "tharani-2006/Invoice-generator-application", "alternative",
+                status="error", provider="nvidia-direct",
+            )
+        return original(prompt, system_prompt)
+
+    client.mock_handler = handler
+    results = score_all(
+        data_dir=REAL_DATA,
+        output_json=output_json,
+        output_md=output_md,
+        max_calls=40,
+        max_seconds=300.0,
+        use_llm=False,
+        run_id="test-failed-call-verdicts",
+        log_dir=log_dir,
+        custom_toolbox=toolbox,
+        relevance_client=client,
+    )
+    invoice = next(item for item in results["ineligible"] if item["repo_id"] == "tharani-2006/Invoice-generator-application")
+    ytkb = next(item for item in results["candidates"] if item["repo_id"] == "SergioMendolia/ytkb")
+    assert invoice["verdict"] == "ALREADY_EXISTS"
+    assert "invoify" in invoice["reason"]
+    assert results["protagonist"]["repo_id"] == "SergioMendolia/ytkb"
+    assert results["protagonist"]["total"] >= 50.0
+    assert "MODEL_MISMATCH" not in (ytkb.get("flags") or [])
+    assert "SergioMendolia/ytkb" not in client.repo_mismatches
+    assert "tharani-2006/Invoice-generator-application" not in client.repo_mismatches
+    assert results["model_mismatch_count"] == 0
+    assert results["call_failed_count"] == 2
+    markdown = output_md.read_text(encoding="utf-8")
+    assert "**MODEL_MISMATCH**: 0" in markdown
+    assert "**CALL_FAILED**: 2" in markdown
+
+
 def test_model_mismatch_flag_and_call_summary(tmp_path):
     """Bug 4: Add MODEL_MISMATCH flag when served != requested, and include model_calls in JSON/MD output."""
     output_json = tmp_path / "scores.json"

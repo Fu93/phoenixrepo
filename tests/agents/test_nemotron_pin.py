@@ -168,6 +168,21 @@ def test_evidence_report_has_a_per_run_served_model_table(tmp_path):
     assert by_model[ULTRA]["calls"] == 1 and by_model[ULTRA]["mismatches"] == 0
     assert by_model[GEMINI]["calls"] == 1 and by_model[GEMINI]["mismatches"] == 1
     assert by_model["(missing)"]["calls"] == 1 and by_model["(missing)"]["mismatches"] == 1
+    failed = HackathonTrace("failed-report", tmp_path / "logs")
+    failed.event(
+        agent_name="orchestrator",
+        action="LLM_CALL",
+        status="error",
+        llm={"requested_model": NEMOTRON, "served_model": ""},
+    )
+    failed_events = [json.loads(line) for line in failed.path.read_text(encoding="utf-8").splitlines()]
+    failed_rows = served_model_rows(failed_events)
+    assert failed_rows[0]["served_model"] == "(missing)"
+    assert failed_rows[0]["mismatches"] == 0
+    assert failed_rows[0]["failed"] == 1
+    failed_page = render_repo_html("o/r", "NEEDS_REVIEW", "because", {}, run_id="failed-report", model_rows=failed_rows)
+    assert "Failed calls: 1" in failed_page
+    assert "MODEL_MISMATCH: 0" in failed_page
     page = render_repo_html("o/r", "NEEDS_REVIEW", "because", {}, run_id="report", model_rows=rows)
     assert "Served models" in page
     assert ULTRA in page and GEMINI in page and "(missing)" in page
@@ -205,6 +220,90 @@ def test_revive_requests_nemotron_through_meterless_and_honors_model_name(tmp_pa
     assert flagged["flags"] == ["MODEL_MISMATCH"]
 
 
+def test_error_empty_served_is_a_failed_call_not_a_mismatch(tmp_path):
+    """A failed attempt with no answer is CALL_FAILED. It is not a model swap."""
+
+    trace = HackathonTrace("fail", tmp_path / "logs")
+    client, _seen = _client(tmp_path, NEMOTRON, trace=trace)
+    client._observe(NEMOTRON, "", "o/r", "problem", status="error", provider="nvidia-direct")
+    line = _llm_lines(trace)[0]
+    assert line["status"] == "error"
+    assert line["served_model"] == ""
+    assert "MODEL_MISMATCH" not in (line.get("flags") or [])
+    assert "CALL_FAILED" in line["flags"]
+    assert "o/r" not in client.repo_mismatches
+    assert client.mismatch_count == 0
+    assert trace.model_mismatch_count() == 0
+    assert trace.call_failed_count() == 1
+
+
+def test_failed_direct_attempt_then_nemotron_answer_is_not_a_repo_mismatch(tmp_path, monkeypatch):
+    """Nightshift 502, then a direct attempt that times out, then a Nemotron answer.
+
+    The failed direct line must not carry MODEL_MISMATCH and must not put the repo
+    in repo_mismatches. The answer that was used is the later Nemotron serve.
+    """
+
+    monkeypatch.setattr("app.agents.relevance.time.sleep", lambda _s: None)
+    nightshift_calls = {"n": 0}
+
+    def nightshift(_request: httpx.Request) -> httpx.Response:
+        nightshift_calls["n"] += 1
+        if nightshift_calls["n"] == 1:
+            return httpx.Response(502, text="bad gateway")
+        return httpx.Response(
+            200,
+            json={"model": NEMOTRON, "choices": [{"message": {"content": '{"ok": true}'}}]},
+        )
+
+    def nvidia(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out")
+
+    trace = HackathonTrace("direct-fail", tmp_path / "logs")
+    client = RelevanceClient(
+        token="test-token",
+        cache_dir=tmp_path / "cache-direct",
+        transport=httpx.MockTransport(nightshift),
+        nemotron_policy="fallback-nvidia",
+        nvidia_api_key="nvapi-test-key",
+        nvidia_transport=httpx.MockTransport(nvidia),
+        trace=trace,
+    )
+    text, _requested, served = client.complete("prompt", "system", repo_id="knetvis/knetvis", step="problem")
+    assert text == '{"ok": true}'
+    assert served == NEMOTRON
+    lines = _llm_lines(trace)
+    failed = [line for line in lines if line.get("status") == "error"]
+    used = [line for line in lines if line.get("status") == "ok"]
+    assert failed and used
+    assert all(line.get("served_model") == "" for line in failed)
+    assert all("MODEL_MISMATCH" not in (line.get("flags") or []) for line in failed)
+    assert all("CALL_FAILED" in (line.get("flags") or []) for line in failed)
+    assert "MODEL_MISMATCH" not in (used[-1].get("flags") or [])
+    assert used[-1]["served_model"] == NEMOTRON
+    assert "knetvis/knetvis" not in client.repo_mismatches
+    assert client.mismatch_count == 0
+    assert trace.model_mismatch_count() == 0
+    assert trace.call_failed_count() == len(failed)
+
+
+def test_rejected_non_nemotron_is_discarded_not_a_mismatch(tmp_path):
+    """A reply the policy discarded was not used, so it is not MODEL_MISMATCH."""
+
+    trace = HackathonTrace("rejected", tmp_path / "logs")
+    trace.event(
+        agent_name="orchestrator",
+        action="LLM_CALL",
+        status="rejected",
+        llm={"requested_model": NEMOTRON, "served_model": GEMINI},
+    )
+    line = _llm_lines(trace)[0]
+    assert line["served_model"] == GEMINI
+    assert "MODEL_MISMATCH" not in line["flags"]
+    assert line["flags"] == ["DISCARDED_BY_POLICY"]
+    assert trace.model_mismatch_count() == 0
+
+
 def test_run_summary_counts_mismatch_flags(tmp_path):
     from scripts.score_candidates import _render_markdown
 
@@ -215,6 +314,7 @@ def test_run_summary_counts_mismatch_flags(tmp_path):
         "llm_used": True,
         "model_calls": {ULTRA: 2, GEMINI: 1, "(missing)": 1},
         "model_mismatch_count": 2,
+        "call_failed_count": 4,
         "warnings": [],
         "protagonist": {"repo_id": None, "reason": "none"},
         "candidates": [],
@@ -224,13 +324,15 @@ def test_run_summary_counts_mismatch_flags(tmp_path):
     assert "MODEL_MISMATCH" in markdown
     assert "| `gemini-3.1-pro-preview` | 1 |" in markdown or GEMINI in markdown
     assert "**MODEL_MISMATCH**: 2" in markdown or "MODEL_MISMATCH count: 2" in markdown or "| 2 |" in markdown
+    assert "**CALL_FAILED**: 4" in markdown
 
 
 def test_capped_fallback_flags_mismatch_and_drops_a_late_serve(tmp_path):
-    """A call the wall-clock cap abandons records an empty serve and MODEL_MISMATCH.
+    """A call the wall-clock cap abandons records an empty serve and CALL_FAILED.
 
     The worker may still return HTTP 200 after the join times out. That late model id
-    must not land on the client, the cache, or the trace.
+    must not land on the client, the cache, or the trace. The abandoned call produced
+    no answer, so it is not MODEL_MISMATCH.
     """
 
     release = threading.Event()
@@ -292,8 +394,12 @@ def test_capped_fallback_flags_mismatch_and_drops_a_late_serve(tmp_path):
     for path in (tmp_path / "cache").glob("*.json"):
         assert "late-served-model" not in path.read_text(encoding="utf-8")
     lines = [json.loads(line) for line in blob.splitlines() if line.strip()]
-    flagged = [line for line in lines if "MODEL_MISMATCH" in (line.get("flags") or [])]
-    assert flagged
-    assert all(line.get("requested_model") == NEMOTRON for line in flagged)
-    assert all(line.get("served_model") == "" for line in flagged)
-    assert trace.model_mismatch_count() == len(flagged)
+    failed = [line for line in lines if "CALL_FAILED" in (line.get("flags") or [])]
+    assert failed
+    assert all("MODEL_MISMATCH" not in (line.get("flags") or []) for line in failed)
+    assert all(line.get("status") == "error" for line in failed)
+    assert all(line.get("requested_model") == NEMOTRON for line in failed)
+    assert all(line.get("served_model") == "" for line in failed)
+    assert trace.model_mismatch_count() == 0
+    assert trace.call_failed_count() == len(failed)
+    assert "phillipdupuis/pydantic-to-typescript" not in client.repo_mismatches

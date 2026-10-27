@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from api.run import app
 from app.agents.rescue import from_candidate_row
-from app.replay_ui import step_from_event
+from app.replay_ui import model_summary, step_from_event
 
 ROOT = Path(__file__).resolve().parents[2]
 CLIENT = TestClient(app)
@@ -279,6 +279,42 @@ def test_import_replay_copies_the_trace_and_the_page_shows_the_model_table(tmp_p
         import_replay(trace.path, verdict_path, replays_root=replays)
     with pytest.raises(ReplayImportError):
         import_replay(trace.path, verdict_path, replays_root=replays, repo="")
+
+
+def test_error_line_is_not_relabelled_as_a_model_mismatch():
+    failed = step_from_event(
+        {
+            "agent_name": "orchestrator",
+            "action": "LLM_CALL",
+            "status": "error",
+            "requested_model": "nvidia/nemotron-3-super-120b-a12b",
+            "served_model": "",
+            "flags": ["CALL_FAILED"],
+            "input_summary": "{}",
+            "output_summary": "{}",
+        },
+        1,
+    )
+    assert "MODEL_MISMATCH" not in failed["flags"]
+    assert "CALL_FAILED" in failed["flags"]
+    # A scored v3 line stored MODEL_MISMATCH on the failure. The hash is unchanged, so the flag stays.
+    historical = step_from_event(
+        {
+            "agent_name": "orchestrator",
+            "action": "LLM_CALL",
+            "status": "error",
+            "requested_model": "nvidia/nemotron-3-super-120b-a12b",
+            "served_model": "",
+            "flags": ["MODEL_MISMATCH"],
+            "input_summary": "{}",
+            "output_summary": "{}",
+        },
+        2,
+    )
+    assert "MODEL_MISMATCH" in historical["flags"]
+    summary = model_summary([failed, historical])
+    assert summary["call_failed_count"] == 1
+    assert summary["model_mismatch_count"] == 1
 
 
 def test_step_parser_surfaces_mismatch_source_error_and_seconds():

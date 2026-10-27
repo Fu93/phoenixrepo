@@ -240,12 +240,19 @@ class HackathonTrace:
             record["requested_model"] = str(llm.get("requested_model") or "")
             served = llm.get("served_model")
             record["served_model"] = served
-            if model_mismatch(served):
-                # Visible on the line. Do not replace served_model with the requested id.
-                record["flags"] = ["MODEL_MISMATCH"]
-                if status == "rejected":
+            # Visible on the line. Do not replace served_model with the requested id.
+            # error/rejected produced no answer that was used. An empty serve on those
+            # lines is a failed attempt, not a model swap.
+            if status in {"error", "rejected"}:
+                flags: list[str] = []
+                if status == "error" or not model_mismatch(served):
+                    flags.append("CALL_FAILED")
+                if status == "rejected" and model_mismatch(served):
                     # A Nemotron-only policy discarded this answer; it did not inform a verdict.
-                    record["flags"].append("DISCARDED_BY_POLICY")
+                    flags.append("DISCARDED_BY_POLICY")
+                record["flags"] = flags
+            elif model_mismatch(served):
+                record["flags"] = ["MODEL_MISMATCH"]
             if llm.get("prompt_version"):
                 record["prompt_version"] = str(llm["prompt_version"])
             settings = kept_request_settings(llm.get("request_settings"))
@@ -268,8 +275,23 @@ class HackathonTrace:
         self._write(line)
         return record
 
+    def _flag_count(self, name: str) -> int:
+        count = 0
+        for line in self._lines:
+            try:
+                flags = json.loads(line).get("flags") or []
+            except json.JSONDecodeError:
+                continue
+            if name in flags:
+                count += 1
+        return count
+
     def model_mismatch_count(self) -> int:
-        """How many LLM lines in this run were flagged MODEL_MISMATCH."""
+        """How many LLM lines flagged MODEL_MISMATCH on an answer that was used.
+
+        A discarded reply is not counted: that line carries DISCARDED_BY_POLICY and
+        not MODEL_MISMATCH. A failed attempt carries CALL_FAILED.
+        """
 
         count = 0
         for line in self._lines:
@@ -280,6 +302,11 @@ class HackathonTrace:
             if "MODEL_MISMATCH" in flags and "DISCARDED_BY_POLICY" not in flags:
                 count += 1
         return count
+
+    def call_failed_count(self) -> int:
+        """How many LLM lines recorded a failed attempt whose answer was not used."""
+
+        return self._flag_count("CALL_FAILED")
 
     def _write(self, line: str) -> None:
         """Truncate on the first line of this run, append after that.
