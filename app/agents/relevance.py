@@ -32,7 +32,7 @@ import httpx
 
 from app.errors import InvestigationError
 from app.prompts import load_prompt
-from app.trace_log import kept_request_settings, request_settings_sha256
+from app.trace_log import inference_settings_sha256, kept_request_settings, request_settings_sha256
 from config.settings import DEFAULT_NIGHTSHIFT_MODEL, model_mismatch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -830,16 +830,19 @@ class RelevanceClient:
         total_cap = self.total_timeout if call_budget_s is None else min(self.total_timeout, max(0.0, call_budget_s))
         prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
         input_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-        # The sanitized sampling settings of the body this call would post (the same
-        # allowlist and normalisation as the trace's request_settings) are part of the key.
-        # A fast and a deep body, or another temperature or reasoning flag, therefore never
-        # share a cached answer. Entries written before this change have a different key and
-        # no request_settings_sha256, so they are never reused (see the check on a hit below).
-        sampling: dict[str, Any] = {"temperature": 0, "max_tokens": int(self.max_tokens)}
+        # The cache identity covers the whole inference side of the request body this call would
+        # post: model id, temperature, max_tokens and every extra-body key (seed, min_p, ...),
+        # but not the messages (hashed above), credentials, headers, or endpoint. Only the sha256
+        # is hashed into the key and stored in the record; a hit must match it. The public
+        # trace keeps its own allowlisted request_settings / request_settings_sha256. Entries
+        # written before this change have a different key and no inference_settings_sha256,
+        # so they are never reused (see the check on a hit below).
+        sampling: dict[str, Any] = {"model": model, "temperature": 0, "stream": False, "max_tokens": int(self.max_tokens)}
         sampling.update(body_extra)
+        inference_sha = inference_settings_sha256(sampling)
         settings_sha = request_settings_sha256(sent_request_settings(sampling))
         cache_key = hashlib.sha256(
-            f"{model}\n---\n{prompt_hash}\n---\n{input_hash}\n---\n{settings_sha}".encode("utf-8")
+            f"{model}\n---\n{prompt_hash}\n---\n{input_hash}\n---\n{inference_sha}".encode("utf-8")
         ).hexdigest()
         cache_file = self.cache_dir / f"{cache_key}.json"
         self.last_reasoning = ""
@@ -847,9 +850,9 @@ class RelevanceClient:
         if cache_file.exists():
             try:
                 cached = json.loads(cache_file.read_text(encoding="utf-8"))
-                if cached.get("request_settings_sha256") != settings_sha:
+                if cached.get("inference_settings_sha256") != inference_sha:
                     # No settings hash (written before it existed) or another body: ask again.
-                    raise ValueError("cache entry was not made under these request settings")
+                    raise ValueError("cache entry was not made under these inference settings")
                 raw_served = cached.get("served_model")
                 served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
@@ -894,6 +897,7 @@ class RelevanceClient:
                 "prompt_sha256": prompt_hash,
                 "input_sha256": input_hash,
                 "request_settings_sha256": settings_sha,
+                "inference_settings_sha256": inference_sha,
                 "requested_model": model,
                 "served_model": served,
                 "provider": provider,
