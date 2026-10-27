@@ -196,6 +196,7 @@ def ensure_env(
     timeout: int = 300,
     install_timeout: int = 900,
     repairs: list[dict[str, Any]] | None = None,
+    install_runner: Runner | None = None,
 ) -> CmdResult:
     """Run the test command. If a platform package is missing, `npm install --no-save` it and re-run.
 
@@ -209,7 +210,7 @@ def ensure_env(
         if not missing:
             return result
         cmd = f"npm install --no-save {NPM_FAST_FLAGS} {_shell_arg(missing)}"
-        installed = runner(cmd, repo, install_timeout)
+        installed = (install_runner or runner)(cmd, repo, install_timeout)
         result = runner(test_cmd, repo, timeout)
         record = {"package": missing, "install_cmd": cmd, "install_exit": installed.code, "test_exit": result.code, "seconds": round(float(installed.seconds or 0), 3)}
         if repairs is not None:
@@ -1352,7 +1353,7 @@ def unverified_lines(result: ReviveResult) -> list[str]:
     return lines
 
 
-def revive(
+def _revive_impl(
     repo: Path,
     client: Any,
     trace: Any,
@@ -1373,6 +1374,7 @@ def revive(
     commit_each_item: bool = False,
     run_dir: Path | None = None,
 ) -> ReviveResult:
+    phase_aware = _accepts_phase(runner)
     approval = normalize_human_approval(human_approval, verdict=gate_verdict, reason=gate_reason)
     if not revival_allowed(gate_verdict, approval):
         # ALREADY_EXISTS and NO_GO stay blocked even when someone supplies an approval.
@@ -1433,7 +1435,7 @@ def revive(
         result.unverified = unverified_lines(result)
         return result
 
-    def _run(cmd: str, cwd: Path, timeout: int) -> CmdResult:
+    def _run(cmd: str, cwd: Path, timeout: int, *, environ: dict[str, str] | None = None, phase: str = "exec") -> CmdResult:
         remaining = deadline_at - time.monotonic()
         if remaining <= 0 or stopped["phase"]:
             stopped["phase"] = stopped["phase"] or "command"
@@ -1442,17 +1444,25 @@ def revive(
         if step_timeout_s:
             limit = max(1, min(limit, int(step_timeout_s)))
         try:
+            if phase_aware:
+                return runner(cmd, cwd, limit, environ=environ, phase=phase)  # type: ignore[call-arg]
             return runner(cmd, cwd, limit)
         except Exception as exc:  # noqa: BLE001
             return CmdResult(cmd, 1, f"runner error: {type(exc).__name__}")
 
     env_repairs: list[dict[str, Any]] = []
 
+    def _run_test(cmd: str, cwd: Path, timeout: int) -> CmdResult:
+        return _run(cmd, cwd, timeout, phase="test")
+
+    def _run_install(cmd: str, cwd: Path, timeout: int) -> CmdResult:
+        return _run(cmd, cwd, timeout, phase="install")
+
     def _ensure() -> CmdResult:
-        return ensure_env(repo, _run, test, trace=trace, timeout=test_timeout, install_timeout=install_timeout, repairs=env_repairs)
+        return ensure_env(repo, _run_test, test, trace=trace, timeout=test_timeout, install_timeout=install_timeout, repairs=env_repairs, install_runner=_run_install)
 
     def _install(cmd: str) -> CmdResult:
-        inst = _run(cmd, repo, install_timeout)
+        inst = _run(cmd, repo, install_timeout, phase="install")
         trace.event(
             agent_name="builder",
             action="REVIVE_INSTALL",
@@ -1544,7 +1554,7 @@ def revive(
         files, lines = _changes()
         return qg.run_quality_gate(
             repo,
-            _run,
+            lambda c, p, t: _run(c, p, t, phase="verify"),
             test,
             test_timeout=test_timeout,
             changed_files=files,
@@ -1935,7 +1945,7 @@ def revive(
                 run = _ensure()
                 acceptance_cmd = str(item.get("acceptance_command") or test)
                 expected = str(item.get("expected") or "exit code 0")
-                acc = run if acceptance_cmd == test else _run(acceptance_cmd, repo, test_timeout)
+                acc = run if acceptance_cmd == test else _run(acceptance_cmd, repo, test_timeout, phase="test")
                 gate = _gate(run, prd)
                 regs = regression_ids(accepted_checks, gate)
                 # ensure_env has already run. An environment failure that survives it can be reverted;
@@ -2071,7 +2081,7 @@ def revive(
         result.verification = verify_revival(
             original_tree,
             patched_tree,
-            _run,
+            lambda c, p, t: _run(c, p, t, phase="verify"),
             test_cmd=test,
             build_cmd=build_cmd,
             prd=prd,
@@ -2085,6 +2095,42 @@ def revive(
     _finish(result)
     _emit_result()
     return result
+
+
+def _accepts_phase(runner: Any) -> bool:
+    """True when the runner takes an explicit phase=... keyword (CommandRunner or compatible)."""
+    import inspect
+
+    try:
+        params = inspect.signature(runner).parameters
+    except (TypeError, ValueError):
+        return False
+    return "phase" in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
+def revive(*args: Any, sandbox_mode: str = "host", **kwargs: Any) -> ReviveResult:
+    """Run the revival loop. sandbox_mode="host" (default) is the unchanged host behaviour.
+
+    sandbox_mode="docker" creates one DockerSandboxRunner for this run (when no runner was passed)
+    and always removes its container, also on exceptions. See docs/GATE2_SANDBOX.md.
+    """
+    owned = None
+    if kwargs.get("runner") is None:
+        kwargs.pop("runner", None)
+        if (sandbox_mode or "host") != "host":
+            from app.revive_sandbox import get_runner
+
+            trace = args[2] if len(args) > 2 else kwargs.get("trace")
+            owned = get_runner(mode=sandbox_mode, run_id=str(getattr(trace, "run_id", "") or "") or None)
+            kwargs["runner"] = owned
+    try:
+        return _revive_impl(*args, **kwargs)
+    finally:
+        if owned is not None:
+            owned.close()
+
+
+revive.__wrapped__ = _revive_impl  # type: ignore[attr-defined]
 
 
 def _failure_text(regs: list[str], gate: list[dict[str, Any]]) -> str:

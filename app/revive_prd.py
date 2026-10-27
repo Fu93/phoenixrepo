@@ -1065,9 +1065,10 @@ def render_prd_markdown(prd: dict[str, Any] | None, state: str = "", reason: str
     return "\n".join(lines)
 
 
-def write_reports(directory: Path, result: Any, repo: str, run_id: str) -> None:
-    """Write PRD.md, quality.json, and evidence.html for one revival run."""
+def write_reports(directory: Path, result: Any, repo: str, run_id: str, trace: Any = None) -> None:
+    """Write PRD.md, quality.json, verification.json (with seal), and evidence.html for one revival run."""
     import json
+    from app.revive_sandbox import seal_verification
 
     directory.mkdir(parents=True, exist_ok=True)
     prd = getattr(result, "prd", None)
@@ -1081,8 +1082,5 @@ def write_reports(directory: Path, result: Any, repo: str, run_id: str) -> None:
     payload.update({"repo": repo, "run_id": run_id, "state": state, "reason": reason, "prd_href": "prd.md"})
     quality = payload.get("quality") or {}
     (directory / "quality.json").write_text(json.dumps(quality, indent=2, ensure_ascii=False), encoding="utf-8")
-    (directory / "verification.json").write_text(
-        json.dumps(payload.get("verification") or {"checks": [], "resurrection_allowed": False, "blocked_reason": "verification was not run"}, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    seal_verification(directory, payload.get("verification"), trace=trace)  # the one authoritative seal
     (directory / "evidence.html").write_text(render_evidence_html(payload), encoding="utf-8")

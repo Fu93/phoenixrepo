@@ -54,6 +54,17 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--reviewer", default="", help="Name of the person who approved a NEEDS_REVIEW or NEEDS_PRIOR_ART revival.")
     ap.add_argument("--review-note", default="", dest="review_note", help="Why the reviewer approved this revival.")
     ap.add_argument("--no-plan", action="store_true", dest="no_plan", help="Do not write the rescue plan for a CANDIDATE.")
+    ap.add_argument(
+        "--sandbox-mode",
+        default="host",
+        choices=["host", "docker"],
+        help=(
+            "Where the candidate's install/test commands run: 'host' (default, unchanged) or 'docker' "
+            "(one persistent python:3.12-slim container per run, non-root, network only during the install phase). "
+            "Docker mode requires a running Docker Engine and has been smoke-tested only on a tiny fixture repo "
+            "(scripts/gate2_sandbox_smoke.py); no real candidate has been run through it. See docs/GATE2_SANDBOX.md."
+        ),
+    )
     ap.add_argument("--batch", type=Path, default=None, help="JSON list of repos. Each item may set url, human_approved, reviewer, review_note, gate_verdict, and gate_reason.")
     return ap
 
@@ -225,6 +236,7 @@ def run_job(args: argparse.Namespace, job: dict, index: int) -> int:
         step_timeout_s=args.step_timeout,
         commit_each_item=True,
         run_dir=ROOT / "reports" / rid,
+        sandbox_mode=getattr(args, "sandbox_mode", "host"),
     )
     if result.files_changed:
         try:
@@ -268,14 +280,14 @@ def _finish_job(trace, result, full_name: str, verdict: str, rid: str, clone: st
             input_summary=full_name,
             output_summary={"state": result.state, "reason": result.reason, "gate1": verdict, "terminal": result.terminal, "label": result.label},
         )
+    out = ROOT / "reports" / rid
+    write_reports(out, result, full_name, rid, trace=trace)
     trace.seal()
     payload = result.as_dict() | {"repo": full_name, "gate1": verdict, "run_id": rid, "run_hash": trace.run_hash}
     if clone:
         payload["clone"] = clone
     if extra:
         payload.update(extra)
-    out = ROOT / "reports" / rid
-    write_reports(out, result, full_name, rid)
     (out / "revive.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     keys = ("repo", "gate1", "state", "reason", "run_id", "terminal", "label")
     if clone:
