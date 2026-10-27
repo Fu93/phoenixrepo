@@ -81,11 +81,38 @@ class JudgeRequest(BaseModel):
     use_llm: bool = True
 
 
+def _nightshift_token_configured(settings: Settings) -> bool:
+    """True only for a real Nightshift token. Blank, placeholder, and ``rt-local`` are not."""
+
+    token = settings.meterless_runtime_token
+    return bool(token and token != "rt-local")
+
+
 @app.post("/judge")
 def judge_endpoint(request: JudgeRequest):
-    """Understand a repository, search the whole web, verify quotes, return a verdict and report path."""
+    """Judge one repository when a Nightshift token is configured.
+
+    With no token this returns HTTP 503 and does not call the judge, so no
+    phrase/keyword verdict and no report are written. ``use_llm`` false is the
+    same: that path still emits a deterministic verdict, which is a worse
+    failure than an error when the caller asked this endpoint to judge.
+    """
     from scripts import judge_repo
     from scripts.score_candidates import RelevanceLLMError
+
+    if not _nightshift_token_configured(get_settings()):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": {
+                    "type": "ModelJudgingNotConfigured",
+                    "message": (
+                        "Model judging is not configured. Set METERLESS_RUNTIME_TOKEN to a real "
+                        "Nightshift token. No verdict was produced."
+                    ),
+                }
+            },
+        )
 
     try:
         return judge_repo.judge(request.url, use_llm=request.use_llm)

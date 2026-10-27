@@ -58,8 +58,8 @@ def live_status(settings: Any) -> dict[str, Any]:
     return {
         "enabled": False,
         "reason": (
-            "No Nightshift token is configured. Set METERLESS_RUNTIME_TOKEN to a real token "
-            "before POST /judge. A placeholder such as rt-local does not count. "
+            "No Nightshift token is configured. POST /judge returns HTTP 503 and writes no verdict. "
+            "Set METERLESS_RUNTIME_TOKEN to a real token. A placeholder such as rt-local does not count. "
             "Replay mode does not use a token, the network, or Docker."
         ),
     }
