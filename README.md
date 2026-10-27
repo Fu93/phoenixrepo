@@ -4,15 +4,15 @@ The evidence is the committed traces in `data/replays/`, the case audit in `docs
 The scored v3 set is a regression and audit set: 16 cases, 10 agree, 5 must-reject, 4 false passes. The traces are what make that audit possible. It is not an accuracy benchmark.
 Read each model line as Requested, Served, and Policy. Say Ultra only when Served is `nvidia/nemotron-3-ultra-550b-a55b`. Say nvidia-direct only when the line stores `provider` `nvidia-direct`.
 
-## Why Nemotron
+## Why Nemotron, in short
 
-- **Two-tier model routing:** Bulk overlap screening requests Super (`nvidia/nemotron-3-super-120b-a12b`), while the final verdict requests deep (`nvidia/nemotron-3-ultra-550b-a55b`). Upstream Nightshift routing frequently served Ultra; every served ID is cryptographically recorded.
-- **Granular per-step thinking:** Scored v3 traces do not record thinking. Evidence from Experiment E3 (`data/replays/e3-goodreasonai-scrapeserv/trace.jsonl`) and the single-repo live demo (`docs/evidence/single-repo-demo/trace.jsonl`, added in PR #75) proves that thinking is enabled exclusively at the final discovery verdict step (`enable_thinking=true`, temperature 1.0, reasoning excerpt recorded) while disabled on bulk filtering steps (`enable_thinking=false`, temperature 0.0).
-- **Verbatim quote grounding:** Model claims are verified programmatically (`quote_in_text`) against the competitor's raw web text; unverified quotes are rejected.
-- **Cryptographic identity verification:** Every `served_model` is committed into the SHA-256 hash chain; when checked against `--expected-run-hash`, any modified or re-sealed line fails verification.
-- **Next (Roadmap):** Because Nemotron models have open weights, the entire judge pipeline can run locally and offline on NVIDIA DGX Spark.
+- **Two tiers.** Overlap checks request Super (`nvidia/nemotron-3-super-120b-a12b`); the verdict step requests Ultra (`nvidia/nemotron-3-ultra-550b-a55b`). On the scored v3 traces Nightshift served Ultra on 140 of its 158 `LLM_CALL` lines, including 124 fast-tier lines that requested Super. Requested and served ids are both on every line.
+- **Thinking only at the verdict.** Scored v3 traces do not record thinking. Two other committed traces do. E3 (`data/replays/e3-goodreasonai-scrapeserv/`, NVIDIA direct) has `enable_thinking` true on 1 of 17 calls, the verdict, at temperature 1.0, and false at temperature 0 on the other 16. The live single-repo demo (`docs/evidence/single-repo-demo/`) has it true on 1 of 10, the verdict, at temperature 0. Both keep a reasoning excerpt.
+- **Quotes checked by code.** A claim that an alternative already does the job needs a quote that `quote_in_text` finds in that alternative's own text. An unverified quote cannot block a repository.
+- **Served model inside the hash chain.** `served_model` is part of each line's hash. Checked with `--expected-run-hash`, an edited or re-sealed trace fails.
+- **Next, not done:** run the judge on open-weight Nemotron locally, for example on DGX Spark.
 
-For judge questions and trace-grounded Q&A, see [`docs/JUDGES.md`](docs/JUDGES.md).
+Judge card: [`docs/JUDGES.md`](docs/JUDGES.md). Live single-repo trace: [`docs/evidence/single-repo-demo/`](docs/evidence/single-repo-demo/).
 
 ## Quickstart
 
