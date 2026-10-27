@@ -12,17 +12,23 @@ latency and HTTP status, and prints .env lines for the fastest variant that was 
 
 Exit code is 0 when at least one variant was served by Nemotron, 1 otherwise, 2 on a usage
 or connection error. It reports; it does not change any configuration.
+
+`--redact` writes a report with no routing block and no response body. That is the file
+safe to commit. The default `logs/` report can contain routing headers and is not for git.
+The script never prints a token, a header value, or an account id.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -54,6 +60,53 @@ PROMPT = (
     "You are checking a JSON contract. Reply with ONLY this JSON object and nothing else: "
     '{"ok": true, "task": "phoenix-probe"}'
 )
+
+# Response bodies and headers are not printed. This catches a token that leaked into an error
+# string before that string is stored. It does not need the caller's secret to run.
+_SECRET_TEXT = re.compile(
+    r"(?i)(bearer\s+[A-Za-z0-9._\-]{8,}|nvapi-[A-Za-z0-9_\-]{8,}|"
+    r"gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|"
+    r"(?:api[_-]?key|token|authorization|account[_-]?id)[\"']?\s*[:=]\s*[\"']?[^\s\"',}]{4,})"
+)
+
+
+def scrub(text: str) -> str:
+    return _SECRET_TEXT.sub("[REDACTED]", text)
+
+
+def public_base(url: str) -> str:
+    """Scheme, host, and path. Userinfo and query strings are dropped."""
+
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    netloc = f"{host}:{parts.port}" if parts.port else host
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
+def redact_report(report: dict[str, Any]) -> dict[str, Any]:
+    """A copy safe to commit: no routing headers, no response body, no userinfo in the URL."""
+
+    attempts = []
+    for attempt in report.get("attempts") or []:
+        if not isinstance(attempt, dict):
+            continue
+        attempts.append({
+            "requested_model": attempt.get("requested_model") or "",
+            "variant": attempt.get("variant") or "",
+            "status": attempt.get("status"),
+            "seconds": attempt.get("seconds"),
+            "served_model": attempt.get("served_model") or "",
+            "nemotron": bool(attempt.get("nemotron")),
+            "json_ok": bool(attempt.get("json_ok")),
+        })
+    return {
+        "probed_at": report.get("probed_at"),
+        "base_url": public_base(str(report.get("base_url") or "")),
+        "redacted": True,
+        "listed_nemotron": report.get("listed_nemotron") or [],
+        "attempts": attempts,
+        "recommended_env": report.get("recommended_env"),
+    }
 
 
 @dataclass
@@ -121,7 +174,8 @@ def probe_once(
         return Attempt(model, variant, None, round(time.monotonic() - started, 2), error=type(exc).__name__)
     seconds = round(time.monotonic() - started, 2)
     if resp.status_code != 200:
-        detail = resp.text[:160].replace("\n", " ")
+        # Keep a short scrubbed note for the local logs/ file. The printed row does not show it.
+        detail = scrub(resp.text[:160].replace("\n", " "))
         return Attempt(model, variant, resp.status_code, seconds, error=detail)
     try:
         data = resp.json()
@@ -174,11 +228,27 @@ def recommend(attempts: list[Attempt]) -> dict[str, str] | None:
     return env
 
 
+def _note(a: Attempt) -> str:
+    """A status word. Never the response body, a header, or an account id."""
+
+    if not a.error:
+        return ""
+    if a.error.startswith("timeout"):
+        return "timeout"
+    if a.status is None:
+        return "error"
+    if a.status != 200:
+        return "http error"
+    if a.error in {"empty content", "non-JSON body"}:
+        return a.error
+    return "error"
+
+
 def _row(a: Attempt) -> str:
     served = a.served_model or "-"
     mark = "nemotron" if a.nemotron else ("MISMATCH" if a.status == 200 else "-")
     status = str(a.status) if a.status is not None else "ERR"
-    return f"{a.requested_model:<42} {a.variant:<22} {status:>4} {a.seconds:>7.1f}s  {mark:<8} {served:<40} {a.error[:60]}"
+    return f"{a.requested_model:<42} {a.variant:<22} {status:>4} {a.seconds:>7.1f}s  {mark:<8} {served:<40} {_note(a)}"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -192,6 +262,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--timeout", type=float, default=180.0, help="Seconds per call (default 180).")
     ap.add_argument("--budget", type=float, default=900.0, help="Stop starting new calls after this many seconds (default 900).")
     ap.add_argument("--out", type=Path, default=None, help="JSON report path (default logs/nightshift_probe-<utc>.json).")
+    ap.add_argument(
+        "--redact",
+        action="store_true",
+        help="Write a commit-safe report: no routing headers, no response body, no userinfo in the base URL.",
+    )
     args = ap.parse_args(argv)
 
     from config.settings import Settings
@@ -211,10 +286,10 @@ def main(argv: list[str] | None = None) -> int:
         try:
             listed = list_models(client, base_url, headers)
         except (RuntimeError, httpx.HTTPError, ValueError) as exc:
-            sys.stderr.write(f"Could not list models at {base_url}: {exc}\n")
+            sys.stderr.write(f"Could not list models at {public_base(base_url)}: {type(exc).__name__}\n")
             return 2
         models = args.models or order_candidates(listed)
-        print(f"Nightshift {base_url}: {len(listed)} model ids listed, {sum(1 for m in listed if m.startswith(NEMOTRON_FAMILY_PREFIX))} nvidia/nemotron-*")
+        print(f"Nightshift {public_base(base_url)}: {len(listed)} model ids listed, {sum(1 for m in listed if m.startswith(NEMOTRON_FAMILY_PREFIX))} nvidia/nemotron-*")
         unlisted = [m for m in models if m not in listed]
         if unlisted:
             print(f"Not in GET /models (Nightshift may reroute these): {', '.join(unlisted)}")
@@ -240,6 +315,8 @@ def main(argv: list[str] | None = None) -> int:
         "attempts": [asdict(a) for a in attempts],
         "recommended_env": env,
     }
+    if args.redact:
+        report = redact_report(report)
     out = args.out or ROOT / "logs" / f"nightshift_probe-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
