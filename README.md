@@ -7,9 +7,9 @@ Read each model line as Requested, Served, and Policy. Say Ultra only when Serve
 ## Why Nemotron
 
 - **Two-tier model routing:** Bulk overlap screening requests Super (`nvidia/nemotron-3-super-120b-a12b`), while the final verdict requests deep (`nvidia/nemotron-3-ultra-550b-a55b`). Upstream Nightshift routing frequently served Ultra; every served ID is cryptographically recorded.
-- **Granular per-step thinking:** In Experiment E3, thinking is enabled exclusively at the verdict step (`enable_thinking=true`, temperature 1.0) while disabled on bulk filtering steps (temperature 0.0), recorded explicitly in the trace lines.
+- **Granular per-step thinking:** Scored v3 traces do not record thinking. Evidence from Experiment E3 (`data/replays/e3-goodreasonai-scrapeserv/trace.jsonl`) and the single-repo live demo (`docs/evidence/single-repo-demo/trace.jsonl`, added in PR #75) proves that thinking is enabled exclusively at the final discovery verdict step (`enable_thinking=true`, temperature 1.0, reasoning excerpt recorded) while disabled on bulk filtering steps (`enable_thinking=false`, temperature 0.0).
 - **Verbatim quote grounding:** Model claims are verified programmatically (`quote_in_text`) against the competitor's raw web text; unverified quotes are rejected.
-- **Cryptographic identity verification:** Every `served_model` is committed into the SHA-256 hash chain; tampering with a single character breaks chain verification.
+- **Cryptographic identity verification:** Every `served_model` is committed into the SHA-256 hash chain; when checked against `--expected-run-hash`, any modified or re-sealed line fails verification.
 - **Next (Roadmap):** Because Nemotron models have open weights, the entire judge pipeline can run locally and offline on NVIDIA DGX Spark.
 
 For judge questions and trace-grounded Q&A, see [`docs/JUDGES.md`](docs/JUDGES.md).
