@@ -67,7 +67,7 @@ def line_hash(record: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_body(record).encode("utf-8")).hexdigest()
 
 
-# Closed allowlist for a new LLM line. Not part of the cache key. Old traces omit the field.
+# Closed allowlist for a new LLM line. Its sha256 is also part of the LLM cache key. Old traces omit the field.
 # reasoning_budget is kept only when an extra body sent a safe scalar; it is not a default.
 _REQUEST_SETTING_SCALARS = ("temperature", "top_p", "max_tokens", "reasoning_effort", "reasoning_budget")
 
