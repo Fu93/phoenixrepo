@@ -10,7 +10,7 @@ One repository, Zetaris SQL rows as the evidence source, a team of roles, and a 
 
 ## Problem
 
-Abandoned repositories are cheap to restart and expensive to regret. A revival wastes time when the idea is a commodity clone, the licence will not travel, or nobody can show that the code still has a test signal. Idea repositories from the vibe-coding era are a separate cohort: they usually have about zero stars because they were never finished, so those stars are not how PhoenixRepo finds them and not how it measures demand. PhoenixRepo runs a small team of agents over one SQL surface and stops at one of five evidence verdicts:
+Abandoned repositories are cheap to restart and expensive to regret. A revival wastes time when the licence will not travel, or when nobody can show that the code still has a test signal. This track does not refuse a repository because the product is well known. `similar_repo_count` is a note on a close-substitute search total (`app/agents/policy.py`); it does not, by itself, change the verdict. Gate 1, which is a different path, also has no category-popularity signal (`README.md`). Idea repositories from the vibe-coding era are a separate cohort: they usually have about zero stars because they were never finished, so those stars are not how PhoenixRepo finds them and not how it measures demand. PhoenixRepo runs a small team of agents over one SQL surface and stops at one of five evidence verdicts:
 
 | Verdict | Meaning in this core |
 | --- | --- |
