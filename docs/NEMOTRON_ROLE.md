@@ -56,7 +56,7 @@ Served totals for the 218 answers used: Ultra 197 (174 fast, 16 deep discovery, 
 
 The 16 traces contain 211 `LLM_CALL` lines and 10 `LLM_SCORE` lines.
 
-- 158 `LLM_CALL` lines (status `ok`) carry no `provider` field. That absence is the Nightshift record: `_observe` omits `provider` when the value is `nightshift`. The string `provider: nightshift` is not stored. Each of the 158 carries the Nightshift routing block `mode`, `requested_model`, `routed_model`, `winning_model`, `winning_provider`. `winning_provider` is `nvidia` on all 158. That key is Nightshift's label for the upstream it picked. It is not the trace field `provider`. One of the 158 is a `cache_hit`; it has the same routing block and no `provider` field. Served on the 158: Ultra 140 (124 fast, 16 deep) and Super-VL 18 (fast).
+- 158 `LLM_CALL` lines (status `ok`) carry no `provider` field. That absence is the Nightshift record: `_observe` omits `provider` when the value is `nightshift`. The string `provider: nightshift` is not stored. Each of the 158 carries the Nightshift routing block `mode`, `requested_model`, `routed_model`, `winning_model`, `winning_provider`. `winning_provider` is `nvidia` on all 158. That key is Nightshift's label for the upstream it picked. It is not the trace field `provider`. One of the 158 is a `cache_hit`; it has the same routing block and no `provider` field. Served on the 158: Ultra 140 (124 tier `fast`, 16 tier `deep`) and Super-VL 18 (tier `fast`). The 124 tier `fast` Ultra lines have `requested_model` `nvidia/nemotron-3-super-120b-a12b`.
 - 53 `LLM_CALL` lines store `provider` `nvidia-direct`. 50 are status `ok` and 3 are status `error`.
 - The 50 `ok` lines are served Ultra. Each has `routing.fallback_reason` `nightshift HTTP 502` and no other routing key. Those 50 are the NVIDIA-direct answers the traces show.
 - The 3 `error` lines store an empty `served_model`, tier `fast`, requested id `nvidia/nemotron-3-ultra-550b-a55b`, flag `MODEL_MISMATCH`, and no `fallback_reason`. They are `0xMH/fichero-printer` line 37, `Selfdb-io/SelfDB` line 40, and `samwho/spacer` line 42. They are not answers used. The traces do not show a served model on them.
@@ -66,7 +66,9 @@ The 16 traces contain 211 `LLM_CALL` lines and 10 `LLM_SCORE` lines.
 
 ## Temperature and reasoning
 
-Scored v3 traces do not record temperature or thinking mode. Neither is inferred from code defaults or later runs. A recount of the 16 files finds no `temperature`, `top_p`, `max_tokens`, `enable_thinking`, `thinking`, `reasoning_effort`, or `request_settings` on the model lines, and no `reasoning` field. The v3 eval's 0/16 reasoning figure is not recorded.
+Scored v3 traces do not record thinking or temperature. Neither is inferred from code defaults or later runs. A recount of the 16 files finds no `temperature`, `top_p`, `max_tokens`, `enable_thinking`, `thinking`, `reasoning_effort`, or `request_settings` on the model lines, and no `reasoning` field. The v3 eval's 0/16 reasoning figure is not recorded.
+
+`data/replays/e3-goodreasonai-scrapeserv/trace.jsonl` is not one of the 16 scored v3 traces. It has 17 `LLM_CALL` lines. `request_settings.chat_template_kwargs.enable_thinking` is true on 1 line (step `discovery`, `temperature` 1.0) and false on 16 lines (`temperature` 0).
 
 ## Eligibility conditions for Best use of NVIDIA Nemotron
 
@@ -102,7 +104,7 @@ H-MEM is this repository's implementation of the public Meterless spec. `app/eng
 
 ## Single-repo demo
 
-The single-repo demo trace is docs/evidence/single-repo-demo (PR #75, not yet on main). That path is not in this checkout.
+The single-repo demo trace is [`docs/evidence/single-repo-demo/`](evidence/single-repo-demo/). `trace.jsonl` in that folder has 10 `LLM_CALL` lines. `request_settings.chat_template_kwargs.enable_thinking` is true on 1 line (step `discovery`, `temperature` 0) and false on 9 lines (`temperature` 0).
 
 ## What this page does not claim
 
