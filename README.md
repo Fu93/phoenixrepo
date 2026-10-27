@@ -12,7 +12,7 @@ Read each model line as Requested, Served, and Policy. Say Ultra only when Serve
 - **Served model inside the hash chain.** `served_model` is part of each line's hash. Checked with `--expected-run-hash`, an edited or re-sealed trace fails.
 - **Next, not done:** run the judge on open-weight Nemotron locally, for example on DGX Spark.
 
-Judge card: [`docs/JUDGES.md`](docs/JUDGES.md). Live single-repo trace: [`docs/evidence/single-repo-demo/`](docs/evidence/single-repo-demo/).
+Judge card: [`docs/JUDGES.md`](docs/JUDGES.md). Live single-repo trace: [`docs/evidence/single-repo-demo/`](docs/evidence/single-repo-demo/). Nemotron role: [`docs/NEMOTRON_ROLE.md`](docs/NEMOTRON_ROLE.md).
 
 ## Quickstart
 
