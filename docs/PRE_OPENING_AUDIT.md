@@ -1,5 +1,7 @@
 # Pre-opening audit
 
+Historical pre-opening document, dated for the foundation audit before scored development opened on 2026-10-22 00:00 UTC. The rows below that say Zetaris and Meterless are `INTERFACE_ONLY / NOT_YET_CONNECTED` describe that date. Current behaviour is in `README.md`. Where this file disagrees with the README, the README is current.
+
 Status: OPENING-READY for foundation only. Scored resurrection has not started.
 
 ## G1 Repository integrity

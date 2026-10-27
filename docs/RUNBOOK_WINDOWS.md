@@ -54,11 +54,11 @@ PHOENIX_ALTERNATIVES_BUDGET_S=900
 PHOENIX_LLM_DEEP_EXTRA_BODY={"temperature":0.6,"top_p":0.95}
 ```
 
-The last line uses NVIDIA's recommended sampling for Nemotron 3 with reasoning on (temperature 0.6, top_p 0.95) for the verdict step only; the overlap checks stay at temperature 0. It does nothing unless `MODEL_NAME_DEEP` is set.
+The last line is NVIDIA's published sampling numbers (temperature 0.6, top_p 0.95) applied only when `MODEL_NAME_DEEP` is set. The scored run left `PHOENIX_LLM_DEEP_EXTRA_BODY` empty. The overlap checks stay at temperature 0. The line does nothing unless `MODEL_NAME_DEEP` is set.
 
 180 s per attempt is three times the slowest probe reply (57 s) and below the ~330 s at which Nightshift's 502 used to arrive, so a hung call is cut sooner. After the pagerbeauty run, the report's served-model table shows the median and maximum seconds per model; set the attempt timeout to about twice that maximum.
 
-1. Copy the probe's lines into `.env`. When it found a second, larger Nemotron it also prints `MODEL_NAME_DEEP`: the fast model handles the many overlap checks, the deep one writes the final verdict with its reasoning on.
+1. Copy the probe's lines into `.env`. When it found a second, larger Nemotron it also prints `MODEL_NAME_DEEP`: the fast model handles the many overlap checks, the deep one writes the final verdict. On the scored run, 0 of 16 final verdicts carried a reasoning field.
 2. Choose the policy in `.env`:
    - `PHOENIX_NEMOTRON_POLICY=require`: a non-Nemotron answer is discarded and asked again through Nightshift. Use it when the probe shows Nemotron is served most of the time.
    - `PHOENIX_NEMOTRON_POLICY=fallback-nvidia`: a non-Nemotron answer, a timeout or a 5xx is replaced by the same Nemotron model at the NVIDIA API. Needs `NVIDIA_API_KEY` in `.env` (the key you added to Nightshift's Providers tab). This line is marked `provider: nvidia-direct` in the trace, so it is visible that it bypassed Meterless.
