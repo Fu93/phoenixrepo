@@ -252,8 +252,9 @@ def _write_rescue_plan(trace, full_name: str, scores_path: Path, out: Path) -> N
         plan = build_plan(row, client=build_relevance_client(trace=trace), trace=trace, tree=repo_tree(full_name))
         plan["gate1"].update({"run_id": data.get("run_id"), "run_hash": data.get("run_hash")})
         slug = full_name.replace("/", "__")
-        (out / f"{slug}.rescue.md").write_text(render_markdown(plan, run_id=trace.run_id), encoding="utf-8")
-        (out / f"{slug}.rescue.json").write_text(to_json(plan), encoding="utf-8")
+        for name, text in ((f"{slug}.rescue.md", render_markdown(plan, run_id=trace.run_id)), (f"{slug}.rescue.json", to_json(plan))):
+            with open(out / name, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(text)
     except Exception as exc:  # noqa: BLE001
         trace.event(agent_name="rescue_planner", action="RESCUE_PLAN", input_summary=full_name,
                     output_summary={"error": f"{type(exc).__name__}: {str(exc)[:200]}"}, status="error")

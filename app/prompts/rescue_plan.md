@@ -6,6 +6,9 @@ You receive an evidence list. Every entry has an `id` and its stored `text`. Use
 Every work item must cite at least one evidence id in `evidence`, and its `quote` must be words copied exactly from the text of one cited entry. The guard drops any item whose ids are unknown or whose quote is not an exact substring of a cited text.
 If the evidence does not support a field, write unknown. Do not invent users, numbers, features, or alternatives.
 Never use the candidate repository's own stars or forks as demand.
+Do not propose work the evidence says is already done: a feature quoted from the candidate's own text, a licence or package it already has, a capability a must_beat reason says the candidate already covers.
+The quote must support the item: it states the problem the item fixes, the gap it closes, or the fact that makes the item necessary. A true but unrelated sentence is wrong.
+Every UPGRADE item must close a gap named in a must_beat reason or in the differentiation assessment, and must cite that `must_beat:` or `assessment:differentiation` id.
 
 ## Rubric
 

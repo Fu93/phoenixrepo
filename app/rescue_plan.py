@@ -170,6 +170,10 @@ def check_item(item: dict[str, Any], index: dict[str, dict[str, Any]]) -> str:
     return ""
 
 
+def _upgrade_targets_a_gap(item: dict[str, Any]) -> bool:
+    return any(e.startswith("must_beat:") or e == "assessment:differentiation" for e in item["evidence"])
+
+
 def verify_plan(obj: dict[str, Any], index: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     rejected: list[dict[str, Any]] = []
     stages: list[dict[str, Any]] = []
@@ -181,6 +185,8 @@ def verify_plan(obj: dict[str, Any], index: dict[str, dict[str, Any]]) -> tuple[
             if item is None:
                 continue
             why = check_item(item, index)
+            if not why and stage == "UPGRADE" and not _upgrade_targets_a_gap(item):
+                why = "UPGRADE item cites no must-beat gap or differentiation assessment"
             if why:
                 rejected.append({"stage": stage, "title": item.get("title") or "", "reason": why})
             elif len(kept) < MAX_ITEMS_PER_STAGE:

@@ -74,7 +74,8 @@ def test_nemotron_evidence_counts_tiers_latency_and_failures(tmp_path: Path):
         ({"tier": "fast", "elapsed_s": 10.0}, "ok"),
         ({"tier": "fast", "elapsed_s": 30.0}, "ok"),
         ({"tier": "fast"}, "error"),
-        ({"tier": "deep", "elapsed_s": 90.0, "provider": "nvidia-direct", "reasoning": "x" * 5000}, "ok"),
+        ({"tier": "deep", "elapsed_s": 90.0, "provider": "nvidia-direct", "routing": {"fallback_reason": "nightshift HTTP 502"}, "reasoning": "x" * 5000}, "ok"),
+        ({"tier": "fast", "provider": "nvidia-direct", "routing": {"fallback_reason": "nightshift HTTP 502"}, "elapsed_s": 20.0}, "ok"),
         ({"tier": "fast", "cache_hit": True}, "ok"),
     ]
     for extra, status in rows:
@@ -85,10 +86,12 @@ def test_nemotron_evidence_counts_tiers_latency_and_failures(tmp_path: Path):
     trace.seal()
     report = {"results": [{"repo_id": "Selfdb-io/SelfDB", "verdict": "ALREADY_EXISTS", "reason": "x", "run_id": "ev"}]}
     out = fr.nemotron_evidence(fr.collect(report, LABELS, logs))
-    assert f"| fast | `{NEMO}` 3 |" in out and f"| deep | `{NEMO}` 1 |" in out
-    assert f"| `{NEMO}` | 3 | 30 | 90 |" in out
-    assert "reasoning kept in the trace: **1** of **1**" in out
-    assert "failed (timeout, HTTP 5xx or non-Nemotron answer): **1**" in out and "(`nvidia-direct`): **1**" in out
+    assert f"| fast | `{NEMO}` 4 |" in out and f"| deep | `{NEMO}` 1 |" in out
+    assert f"| `{NEMO}` | 4 | 25 | 90 |" in out
+    assert "reasoning field or `<think>` block: **1** of **1**" in out
+    assert "non-Nemotron answer: **2** (answered **2**, failed **0**, rejected **0**)" in out
+    assert "the recorded reason on the answered ones: HTTP 502 2" in out
+    assert "other Nightshift errors traced: **1**" in out
 
 
 def test_per_case_table_counts_false_passes_by_verdict(tmp_path: Path):
