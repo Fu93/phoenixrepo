@@ -405,6 +405,8 @@ H-MEM is this repository's own implementation of the public Meterless spec (`app
 - `model_mismatch` in `config/settings.py` is true unless the served id starts with `nvidia/nemotron-`. An empty id is a mismatch. The sample stand-in name is not. `MODEL_MISMATCH` means the served id is missing or outside the Nemotron family on a call whose answer was used. Failed attempts are flagged `CALL_FAILED`. The scored v3 traces predate this and may show `MODEL_MISMATCH` on failed lines.
 - Per-repository judgement takes about 10 minutes, mostly sequential Nemotron calls (median 42 s on Ultra in the scored v3 run). Next: run the independent overlap checks in parallel.
 
+Next: let Nemotron choose ToolBox tools itself through tool calling, with n8n workflows as an extensible toolbox.
+
 ## Pre-existing components
 
 `git log` shows 17 commits on 8 Oct 2026, from `54d52c1` (`chore: initialize PhoenixRepo foundation`, 2026-10-08 17:42:19 +0000) through `62a1540` (`chore: complete pre-opening foundation audit`, 2026-10-08 18:27:02 +0000), and no commits from 9 Oct through 21 Oct 2026. The next commit is `7f01da0` at 2026-10-22 13:13:06 +0000.
@@ -420,6 +422,7 @@ That skeleton includes the FastAPI process, the Docker image, the evidence graph
 | `app/verdict_memory.py`, `app/engines/hmem/` | H-MEM, including the gate-1 verdict memory |
 | `app/engines/markovian.py` | `POST /run` chunk loop |
 | `app/investigation.py` | Evidence-policy track |
+| app/tools/ (ToolBox, N8nTool) | Gate-1 tools. The n8n webhook tool is registered when N8N_WEBHOOK_URL is set. One live call through the ToolBox to an n8n workflow is recorded in docs/evidence/n8n-live/ (sealed trace). Gate 1's search does not call n8n. |
 | `app/adapters/zetaris_evidence.py`, `app/sql_catalog.py` | Zetaris reads for gate 1 |
 | `scripts/score_candidates.py` | Gate-1 batch |
 | `scripts/judge_repo.py` | One repository, HTML report, `evidence_source=csv` |
@@ -441,7 +444,7 @@ These pull requests are open. They are not merged, and they are not the behaviou
 
 Gate 2 Docker sandbox: draft PR #84 (opt-in, default host). Tested on three fixtures only; no real CANDIDATE has run in it; not a proven security boundary.
 
-PR #77 (default off): the same 16 cases re-run with PHOENIX_GATE1_EVIDENCE_REPAIR on. False passes by the eval_summary definition: 2 of 5 (v3: 4 of 5); judged CANDIDATE: 1 of 5. In-sample (the fix was designed on these cases), mixed cache conditions, not the scored record. Per-case table in the PR.
+PR #77 (default off): the same 16 cases re-run with PHOENIX_GATE1_EVIDENCE_REPAIR on. False passes by the eval_summary definition: 2 of 5 (v3: 4 of 5); judged CANDIDATE: 1 of 5. In-sample (the fix was designed on these cases), mixed cache conditions, not the scored record. Per-case table in the PR. To try it: git fetch origin pull/77/head:repair && git checkout repair, then set PHOENIX_GATE1_EVIDENCE_REPAIR=1.
 
 **Pull requests #59, #62, #65, and #66 (not merged).** Each switch is default off. It runs only when set to `1`, `true`, `yes`, `on`, or `enabled`. Unset stays off. None of them are on this branch, and none are part of any number on this page. The names are `PHOENIX_UNKNOWN_BLOCKER_REVIEW` (#59), `PHOENIX_WEB_GITHUB_API_LOOKUP` (#62), `PHOENIX_QUOTE_FAIL_FLAG` (#65), and `PHOENIX_COMMODITY_CATEGORY_RULE` (#66). An offline reading of Rule B on the recorded `must_beat` lines is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). It is not a live run.
 
