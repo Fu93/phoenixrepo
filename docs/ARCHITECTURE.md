@@ -58,6 +58,12 @@ The revival planner still emits revive, refactor, and upgrade. The discovery pla
 
 The trace hash chain is unchanged in what it proves. It shows the record was not altered after a run. It does not show that the record is true. LLM events still store `requested_model`, `served_model`, and, when a role prompt was loaded, `prompt_version`.
 
+## Gate decision trace
+
+`judge_discovery` in `app/agents/relevance.py` writes one `GATE_DECISION` line on that same hash chain after the model's raw per-repository verdict is known. The line is on unless `PHOENIX_TRACE_GATE_DECISION` is `0`, `false`, `no`, or `off`. It records the raw verdict, the alternative the model named (`id`, `url`, and `title` only), which of checks A–E passed or failed or which shortcut applied (`own-identity` or `first_party_vendor_docs`), the final verdict, and a short path label. `P1` is a raw `CANDIDATE`. `P3` is the maturity gate overturning `ALREADY_EXISTS`. `BF` is a full-overlap row that already passed A–E. `own-identity` is the model citing this repository. `gate-pass` is the gate agreeing with `ALREADY_EXISTS`. The line does not change the verdict, the reason, or any score. It does not store a secret or page text.
+
+The scored v3 traces do not carry `GATE_DECISION`. The model's raw verdict in v3 remains inferred.
+
 ## Story the demo prints
 
 `scripts/discovery_story.py` prints the committed verdicts without a network call: filter (`ALREADY_EXISTS` or no external demand), rescue the idea that passes, and leave hygen on its revival track. The later fork work is [Fu93/hygen#1](https://github.com/Fu93/hygen/pull/1), commits U1 through U7. The U7 workflow run was still `in_progress` with a null conclusion when the jobs had already succeeded. That run is not described as green.

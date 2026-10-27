@@ -444,3 +444,106 @@ def _result(blocks: bool, role: str, reasons: list[str], kind: str) -> dict[str,
         "page_kind": kind,
         "verdict_if_blocked": "ALREADY_EXISTS" if blocks else None,
     }
+
+
+_GATE_LETTERS = ("A", "B", "C", "D", "E")
+
+
+def _failed_letter(reason: str) -> str | None:
+    """Map one existing blocker reason onto A-E. Success notes map to nothing."""
+    text = str(reason or "").strip().casefold()
+    if not text:
+        return None
+    if "maintenance fields were not fetched" in text or "host api returned no facts" in text:
+        return "E"
+    if "is not an alternative" in text or "not the same job" in text or text.startswith("overlap is"):
+        return "A"
+    if text == "archived" or "no push or release date" in text or "days before" in text:
+        return "B"
+    if text.startswith("not mature or official"):
+        return "C"
+    if "access mismatch" in text or "no free tier" in text or "permissive licence" in text:
+        return "D"
+    return None
+
+
+def _short_reason(reason: str, limit: int = 160) -> str:
+    text = " ".join(str(reason or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
+def describe_blocker_outcome(
+    decision: dict[str, Any],
+    alternative: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Which of A-E failed or passed, and which shortcut applied.
+
+    Reads the decision ``evaluate_blocker`` already returned. It does not decide
+    a verdict and it does not copy page text.
+    """
+    reasons = [str(item) for item in (decision.get("reasons") or [])]
+    role = str(decision.get("role") or "")
+    blocks = bool(decision.get("blocks"))
+    shortcut = None
+    if alternative is not None:
+        official, _why = first_party_vendor_docs(alternative)
+        if official and _verified_quote(alternative):
+            shortcut = "first_party_vendor_docs"
+    elif any("first-party vendor docs" in item for item in reasons):
+        shortcut = "first_party_vendor_docs"
+
+    if blocks:
+        checks = {letter: "pass" for letter in _GATE_LETTERS}
+        if shortcut:
+            checks["B"] = "shortcut"
+            checks["C"] = "shortcut"
+        return {
+            "applied": True,
+            "outcome": "passed",
+            "checks": checks,
+            "failed": [],
+            "fail_reasons": {},
+            "shortcut": shortcut,
+            "role": role,
+            "blocks": True,
+        }
+
+    failed: dict[str, str] = {}
+    for reason in reasons:
+        letter = _failed_letter(reason)
+        if letter and letter not in failed:
+            failed[letter] = _short_reason(reason)
+    early_fetch = (
+        role == "source_error"
+        and any("maintenance fields were not fetched" in item.casefold() for item in reasons)
+        and "host api returned no facts" not in " ".join(reasons).casefold()
+        and not any(letter in failed for letter in "ABCD")
+    )
+    checks: dict[str, str] = {}
+    if early_fetch:
+        for letter in "ABCD":
+            checks[letter] = "not_reached"
+        checks["E"] = "fail"
+    elif not failed and any("did not pass a-e" in item.casefold() for item in reasons):
+        for letter in _GATE_LETTERS:
+            checks[letter] = "unknown"
+    else:
+        for letter in _GATE_LETTERS:
+            if letter in failed:
+                checks[letter] = "fail"
+            elif shortcut and letter in {"B", "C"}:
+                checks[letter] = "shortcut"
+            else:
+                checks[letter] = "pass"
+    return {
+        "applied": True,
+        "outcome": "failed",
+        "checks": checks,
+        "failed": [letter for letter in _GATE_LETTERS if checks.get(letter) == "fail"],
+        "fail_reasons": {letter: failed[letter] for letter in _GATE_LETTERS if letter in failed},
+        "shortcut": shortcut,
+        "role": role,
+        "blocks": False,
+    }

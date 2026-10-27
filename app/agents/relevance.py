@@ -1712,6 +1712,120 @@ def _evidence_rows(rows: list[dict[str, Any]] | None) -> list[dict[str, str]]:
     return out
 
 
+_GATE_DECISION_OFF = {"0", "false", "no", "off"}
+
+
+def gate_decision_tracing_enabled() -> bool:
+    """GATE_DECISION is on unless PHOENIX_TRACE_GATE_DECISION is 0, false, no, or off."""
+    raw = os.environ.get("PHOENIX_TRACE_GATE_DECISION")
+    if raw is None or not str(raw).strip():
+        return True
+    return str(raw).strip().casefold() not in _GATE_DECISION_OFF
+
+
+def _clip_trace_text(value: Any, limit: int = 180) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
+def _alt_identity(row: dict[str, Any] | None) -> dict[str, str]:
+    """Id, url, and title only. Descriptions, excerpts, and quotes stay out of the trace."""
+    if not row:
+        return {"id": "", "url": "", "title": ""}
+    return {
+        "id": _clip_trace_text(row.get("alternative_id") or ""),
+        "url": _clip_trace_text(row.get("url") or ""),
+        "title": _clip_trace_text(row.get("title") or row.get("name") or "", 120),
+    }
+
+
+def _named_alternative(name: str | None, rows: list[dict[str, Any]]) -> dict[str, str]:
+    named = " ".join(str(name or "").split())
+    match = None
+    if named:
+        folded = named.casefold()
+        for row in rows:
+            ident = str(row.get("alternative_id") or "").strip()
+            url = str(row.get("url") or "").strip()
+            title = str(row.get("title") or row.get("name") or "").strip()
+            short = ident.split("/")[-1] if "/" in ident and ":" not in ident else ident
+            if folded and folded in {ident.casefold(), url.casefold(), title.casefold(), short.casefold()}:
+                match = row
+                break
+    if match is not None:
+        return _alt_identity(match)
+    if named.startswith("http://") or named.startswith("https://"):
+        return {"id": "", "url": _clip_trace_text(named), "title": ""}
+    return {"id": _clip_trace_text(named), "url": "", "title": ""}
+
+
+def _emit_gate_decision(
+    client: Any,
+    repo_id: str,
+    raw_verdict: str,
+    named: str | None,
+    lookup_rows: list[dict[str, Any]],
+    gate_row: dict[str, Any] | None,
+    decision: dict[str, Any] | None,
+    shortcut: str | None,
+    path_label: str,
+    final_verdict: str,
+    coverage_override: bool,
+) -> None:
+    """One hash-chained line. It does not choose the verdict."""
+    if not gate_decision_tracing_enabled():
+        return
+    trace = getattr(client, "trace", None)
+    if trace is None:
+        return
+    if shortcut == "own-identity":
+        gate = {
+            "applied": False,
+            "outcome": "shortcut",
+            "checks": {},
+            "failed": [],
+            "fail_reasons": {},
+            "shortcut": "own-identity",
+            "role": "",
+            "blocks": False,
+        }
+    elif decision is None:
+        gate = {
+            "applied": False,
+            "outcome": "not_applied",
+            "checks": {},
+            "failed": [],
+            "fail_reasons": {},
+            "shortcut": None,
+            "role": "",
+            "blocks": False,
+        }
+    else:
+        from app.agents.blocker import describe_blocker_outcome
+
+        gate = describe_blocker_outcome(decision, gate_row)
+    payload = {
+        "repo_id": _clip_trace_text(repo_id, 200),
+        "raw_verdict": raw_verdict,
+        "named_alternative": _named_alternative(named, lookup_rows),
+        "gate_alternative": _alt_identity(gate_row),
+        "gate": gate,
+        "final_verdict": final_verdict,
+        "path": path_label,
+        "coverage_override": bool(coverage_override),
+    }
+    trace.event(
+        agent_name="orchestrator",
+        action="GATE_DECISION",
+        input_summary={"repo_id": _clip_trace_text(repo_id, 200)},
+        output_summary=payload,
+        status="ok",
+        summary_limit=4000,
+    )
+
+
 def judge_discovery(
     candidate: dict[str, Any],
     prior_rows: list[dict[str, Any]],
@@ -1894,19 +2008,38 @@ def judge_discovery(
         }
 
     blocking_full: list[dict[str, Any]] = []
+    full_gate: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for row in full_overlap_rows:
         decision = _blocker(row)
+        full_gate.append((row, decision))
         if decision["blocks"]:
             blocking_full.append(row)
         else:
             must_beat.append(_must(row, decision))
 
+    # Observational only. These names are written to GATE_DECISION. They are not read
+    # by the verdict branches below.
+    path_label = "unexpected"
+    gate_decision: dict[str, Any] | None = None
+    gate_row: dict[str, Any] | None = None
+    gate_shortcut: str | None = None
+
+    def _stored(row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        for candidate_row, stored in full_gate:
+            if candidate_row is row:
+                return stored
+        return None
+
     if has_source_error and raw_verdict != "ALREADY_EXISTS":
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
+        path_label = "coverage"
     elif zero_results:
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
+        path_label = "coverage"
     elif raw_verdict == "CANDIDATE" and blocking_full:
         # The LLM called it novel, but a verified full-overlap alternative also passes the
         # maturity rule. A quote is still required: it was checked when the alternative was judged.
@@ -1918,14 +2051,19 @@ def judge_discovery(
             f"problem" + (f" (quote: '{quotes[0]}')" if quotes else "") + "; overrides LLM CANDIDATE"
         )
         picked = [{**m, "quotes": quotes, "overlap": "full", "reason": reason}]
+        path_label = "BF"
+        gate_row = m
+        gate_decision = _stored(m)
     elif raw_verdict == "CANDIDATE":
         if coverage_blocked:
             verdict = "NEEDS_REVIEW"
             reason = coverage_reason
+            path_label = "P1"
         elif not problem_quote or not quote_in_text(problem_quote, cand_text):
             verdict = "NEEDS_REVIEW"
             reason = f"unverified LLM quote: problem_quote '{problem_quote}' not found in candidate README or description"
-        elif github_partial_rows and not mainstream_overlap and _blocker(github_partial_rows[0])["role"] == "mature_partial":
+            path_label = "P1"
+        elif github_partial_rows and not mainstream_overlap and (partial_decision := _blocker(github_partial_rows[0]))["role"] == "mature_partial":
             m = github_partial_rows[0]
             verdict = "NEEDS_REVIEW"
             reason = (
@@ -1933,7 +2071,10 @@ def judge_discovery(
                 f"(overlap partial); a human must confirm the remaining gap before CANDIDATE"
             )
             picked = [{**m, "reason": reason}]
-        elif mainstream_overlap and _blocker(mainstream_overlap[0])["role"] == "mature_partial":
+            path_label = "P1"
+            gate_row = m
+            gate_decision = partial_decision
+        elif mainstream_overlap and (mainstream_decision := _blocker(mainstream_overlap[0]))["role"] == "mature_partial":
             # A maintained official or mature product on the web solves the same problem in part.
             m = mainstream_overlap[0]
             verdict = "NEEDS_REVIEW"
@@ -1942,12 +2083,23 @@ def judge_discovery(
                 f"(overlap {m.get('overlap')}); a human must confirm the remaining gap before CANDIDATE"
             )
             picked = [{**m, "reason": reason}]
+            path_label = "P1"
+            gate_row = m
+            gate_decision = mainstream_decision
         else:
+            partial_seen: tuple[dict[str, Any], dict[str, Any]] | None = None
             for row in list(github_partial_rows) + list(mainstream_overlap):
                 decision = _blocker(row)
+                if partial_seen is None:
+                    partial_seen = (row, decision)
                 if decision["role"] != "mature_partial":
                     must_beat.append(_must(row, decision))
             verdict = "CANDIDATE"
+            path_label = "P1"
+            if full_gate:
+                gate_row, gate_decision = full_gate[0]
+            elif partial_seen is not None:
+                gate_row, gate_decision = partial_seen
     elif raw_verdict == "ALREADY_EXISTS" and names_own_identity(identity, alt_repo or ""):
         # The model cited this repository's own package, docs, or mirror. That is not a blocker.
         if problem_quote and quote_in_text(problem_quote, cand_text):
@@ -1956,6 +2108,8 @@ def judge_discovery(
         else:
             verdict = "NEEDS_REVIEW"
             reason = f"unverified LLM quote: problem_quote '{problem_quote}' not found in candidate README or description"
+        path_label = "own-identity"
+        gate_shortcut = "own-identity"
     elif raw_verdict == "ALREADY_EXISTS":
         # Check alternative repo matches one in combined_priors
         matched_row = None
@@ -1978,20 +2132,27 @@ def judge_discovery(
         if matched_row is None:
             verdict = "NEEDS_REVIEW"
             reason = f"unverified LLM quote: alternative_repo '{alt_repo}' not found in candidate prior-art"
+            path_label = "unmatched"
         else:
             alt_text = f"{matched_row.get('excerpt', '')} {matched_row.get('description', '')} {matched_row.get('text', '')} {matched_row.get('readme', '')}"
             if not alt_quote or not quote_in_text(alt_quote, alt_text):
                 verdict = "NEEDS_REVIEW"
                 reason = f"unverified LLM quote: alternative_quote '{alt_quote}' not found in alternative {matched_row.get('alternative_id')} text"
                 picked = [{**matched_row, "reason": reason}]
+                path_label = "alt-quote"
+                gate_row = matched_row
             elif matched_row.get("overlap") and matched_row.get("overlap") != "full":
                 verdict = "NEEDS_REVIEW"
                 reason = f"unverified ALREADY_EXISTS: alternative '{matched_row.get('alternative_id')}' has overlap '{matched_row.get('overlap')}', requires verified full overlap"
                 picked = [{**matched_row, "quotes": [alt_quote] if alt_quote else [], "reason": reason}]
+                path_label = "overlap"
+                gate_row = matched_row
             elif any(r.get("overlap") for r in combined_priors) and not any(r.get("overlap") == "full" for r in combined_priors) and matched_row.get("overlap") != "full" and not matched_row.get("licence_spdx"):
                 verdict = "NEEDS_REVIEW"
                 reason = "unverified ALREADY_EXISTS: requires at least one verified full-overlap alternative"
                 picked = [{**matched_row, "quotes": [alt_quote] if alt_quote else [], "reason": reason}]
+                path_label = "overlap"
+                gate_row = matched_row
             else:
                 named = {
                     **matched_row,
@@ -2006,6 +2167,9 @@ def judge_discovery(
                 if decision["blocks"]:
                     verdict = "ALREADY_EXISTS"
                     picked = [{**named, "reason": reason}]
+                    path_label = "gate-pass"
+                    gate_row = named
+                    gate_decision = decision
                 elif blocking_full:
                     m = blocking_full[0]
                     quotes = [str(q) for q in (m.get("quotes") or []) if str(q).strip()]
@@ -2015,6 +2179,9 @@ def judge_discovery(
                         + (f" (quote: '{quotes[0]}')" if quotes else "")
                     )
                     picked = [{**m, "quotes": quotes, "overlap": "full", "reason": reason}]
+                    path_label = "BF"
+                    gate_row = m
+                    gate_decision = _stored(m)
                 else:
                     must_beat.append(_must(named, decision))
                     why = "did not block: " + "; ".join(decision.get("reasons") or [])
@@ -2025,6 +2192,9 @@ def judge_discovery(
                         verdict = "NEEDS_REVIEW"
                         reason = f"must beat {named.get('alternative_id')}: {why}"
                         picked = [{**named, "reason": reason}]
+                    path_label = "P3"
+                    gate_row = named
+                    gate_decision = decision
         def _quote_checks(row: dict[str, Any]) -> list[str]:
             text = f"{row.get('excerpt', '')} {row.get('description', '')} {row.get('text', '')} {row.get('readme', '')}"
             return [str(q) for q in (row.get("quotes") or []) if str(q).strip() and quote_in_text(str(q), text)]
@@ -2046,6 +2216,9 @@ def judge_discovery(
                 + f"; the model's named blocker did not verify ({unverified[:160]})"
             )
             picked = [{**m, "quotes": quotes, "overlap": "full", "reason": reason}]
+            path_label = "BF"
+            gate_row = m
+            gate_decision = _stored(m)
     elif raw_verdict == "NO_GO":
         if problem_quote and problem_quote.casefold() not in {"unknown", "none", "null", ""}:
             if not quote_in_text(problem_quote, cand_text):
@@ -2055,10 +2228,13 @@ def judge_discovery(
                 verdict = "NO_GO"
         else:
             verdict = "NO_GO"
+        path_label = "NO_GO"
     else:
         verdict = "NEEDS_REVIEW"
         reason = f"unverified LLM quote: unexpected verdict '{raw_verdict}'"
+        path_label = "unexpected"
 
+    coverage_override = False
     if verdict == "CANDIDATE" and coverage_blocked:
         # One rule for every path that can reach CANDIDATE (the own-identity and must-beat
         # paths included): a search that errored, was cut short or found nothing is not
@@ -2066,6 +2242,7 @@ def judge_discovery(
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
         picked = []
+        coverage_override = True
 
     clean_reason = reason.rstrip().rstrip(".")
     labeled_reason = f"{clean_reason}. Method: llm+verified quote (requested={req_m}, served={srv_m})."
@@ -2082,6 +2259,19 @@ def judge_discovery(
             continue
         seen_beat.add(key)
         deduped.append(item)
+    _emit_gate_decision(
+        client,
+        repo_id,
+        raw_verdict,
+        alt_repo,
+        list(prior_rows or []) + list(problem_alternatives or []),
+        gate_row,
+        gate_decision,
+        gate_shortcut,
+        path_label,
+        verdict,
+        coverage_override,
+    )
     return DiscoveryDecision(verdict, labeled_reason, show, deduped)
 
 
