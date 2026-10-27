@@ -7,6 +7,7 @@ not refuse the repository, and it never produces RESURRECTED.
 """
 from __future__ import annotations
 
+import os
 import re
 from datetime import date, datetime
 from typing import Any
@@ -443,4 +444,235 @@ def _result(blocks: bool, role: str, reasons: list[str], kind: str) -> dict[str,
         "reasons": reasons,
         "page_kind": kind,
         "verdict_if_blocked": "ALREADY_EXISTS" if blocks else None,
+    }
+
+
+# A commercial product page is not a review, a roundup, or a comparison write-up.
+_REVIEW_KINDS = {"review", "reviews", "comparison", "roundup"}
+_ARTICLE_PATH = _BLOG_PATH_LABELS | {
+    "blogs",
+    "article",
+    "articles",
+    "news",
+    "review",
+    "reviews",
+    "listicle",
+    "category",
+    "categories",
+    "alternatives",
+    "alternative-to",
+    "compare",
+    "comparison",
+    "roundup",
+}
+# Last labels that are public suffixes. "microsoft" is not one: excel.cloud.microsoft
+# keeps the whole host as its registrable name.
+_PUBLIC_SUFFIXES = {
+    "com", "org", "net", "io", "app", "dev", "ai", "co", "uk", "so", "me", "sh",
+    "tv", "us", "eu", "de", "fr", "nl", "se", "no", "fi", "es", "it", "ca", "au",
+    "jp", "br", "nz", "xyz", "info", "biz", "pro", "page", "site", "online",
+    "tools", "software", "cloud", "cn", "ru", "in", "kr", "gg", "to", "cc", "ly",
+    "fm", "md", "edu", "gov", "mil", "int",
+}
+_COMMODITY_OFF = {"0", "off", "false", "no", "disabled"}
+_PRODUCT_KINDS = {"product", "tool", "template"}
+
+
+def commodity_rule_enabled() -> bool:
+    """PHOENIX_COMMODITY_CATEGORY_RULE defaults on. 0/off/false/no/disabled turn it off."""
+    raw = os.environ.get("PHOENIX_COMMODITY_CATEGORY_RULE")
+    if raw is None or not str(raw).strip():
+        return True
+    return str(raw).strip().lower() not in _COMMODITY_OFF
+
+
+def _registrable_domain(host: str) -> str:
+    labels = [part for part in host.split(".") if part and part != "www"]
+    if not labels:
+        return ""
+    if len(labels) >= 3 and tuple(labels[-2:]) in _COMPOUND_TLDS:
+        return ".".join(labels[-3:])
+    if len(labels) >= 2 and labels[-1] in _PUBLIC_SUFFIXES:
+        return ".".join(labels[-2:])
+    return ".".join(labels)
+
+
+def _commodity_brand_tokens(host: str) -> list[str]:
+    """Registrable brand plus the other non-suffix labels (excel on excel.cloud.microsoft)."""
+    tokens = list(_brand_tokens(host))
+    labels = [part for part in host.split(".") if part and part not in _DOCS_HOST_LABELS and part != "www"]
+    if len(labels) >= 3 and tuple(labels[-2:]) in _COMPOUND_TLDS:
+        labels = labels[:-2]
+    elif labels and labels[-1] in _PUBLIC_SUFFIXES:
+        labels = labels[:-1]
+    for label in labels:
+        if len(label) >= 4 and label not in tokens:
+            tokens.append(label)
+    return [token for token in tokens if len(token) >= 4]
+
+
+def _brand_appears(tokens: list[str], text: str) -> bool:
+    """True when a brand token is in the text, including "Invoice Ninja" for invoiceninja."""
+    if _brand_in_text(tokens, text):
+        return True
+    norms = {token.replace("-", "").casefold() for token in tokens if token}
+    words = re.findall(r"[a-z0-9]+", text.casefold())
+    for width in (2, 3):
+        for start in range(0, len(words) - width + 1):
+            if "".join(words[start:start + width]) in norms:
+                return True
+    return False
+
+
+def _article_or_list_path(path: str) -> bool:
+    parts = [part for part in path.lower().split("/") if part]
+    if any(part in _ARTICLE_PATH or part.startswith("how-to") or part.startswith("howto") for part in parts):
+        return True
+    return len(parts) >= 2 and bool(re.fullmatch(r"20\d{2}", parts[0])) and bool(re.fullmatch(r"\d{1,2}", parts[1]))
+
+
+def _web_source(row: dict[str, Any]) -> bool:
+    return str(row.get("source") or "") == "web" or str(row.get("alternative_id") or "").startswith("web:")
+
+
+def _github_source(row: dict[str, Any]) -> bool:
+    """A GitHub repository row. A web result that merely links at github.com is not one."""
+    if _web_source(row):
+        return False
+    if str(row.get("source") or "") == "github":
+        return True
+    return _host(row) == "github"
+
+
+def _quote_ok(row: dict[str, Any]) -> bool:
+    """A supporter needs a quote that passed verification. A failed quote never counts."""
+    if row.get("quote_verified") is False:
+        return False
+    quotes = [str(quote).strip() for quote in (row.get("quotes") or []) if str(quote).strip()]
+    if not quotes:
+        single = str(row.get("quote") or "").strip()
+        quotes = [single] if single else []
+    if not quotes:
+        return False
+    if row.get("quote_verified") is True:
+        return True
+    from app.agents.relevance import quote_in_text
+
+    text = _page_text(row)
+    return all(quote_in_text(quote, text) for quote in quotes)
+
+
+def _commodity_access_mismatch(candidate: dict[str, Any], alternative: dict[str, Any]) -> bool:
+    """The paid-only differentiator in evaluate_blocker (the first-party access check)."""
+    cand_free = candidate.get("free", True) is not False and candidate.get("self_hostable", True) is not False
+    return bool(_paid_only(alternative) and _core_value_is_free(candidate) and cand_free)
+
+
+def _vendor_page_text(row: dict[str, Any]) -> str:
+    quotes = [str(quote) for quote in (row.get("quotes") or []) if str(quote).strip()]
+    return f"{_page_text(row)} {' '.join(quotes)}".strip()
+
+
+def _first_party_product_page(row: dict[str, Any]) -> bool:
+    """A vendor's own product, tool, or template page, not an article, listicle, or forge link.
+
+    first_party_vendor_docs requires a docs-shaped path. Commodity pages such as
+    canva.com/invoice/ and invoiceninja.com/ are product pages, so this check reuses the
+    brand and host helpers without that docs requirement.
+    """
+    host, path = _hostname(_page_url(row))
+    if not host:
+        return False
+    if any(_host_is(host, suffix) for suffix in _FORGE_SUFFIXES):
+        return False
+    if any(_host_is(host, suffix) for suffix in _PLATFORM_SUFFIXES):
+        return False
+    kind = classify_page(row)
+    if kind in NOT_AN_ALTERNATIVE or kind in _REVIEW_KINDS:
+        return False
+    if kind not in _PRODUCT_KINDS:
+        return False
+    if _article_or_list_path(path):
+        return False
+    tokens = _commodity_brand_tokens(host)
+    if not tokens or not _brand_appears(tokens, _vendor_page_text(row)):
+        return False
+    return True
+
+
+def commodity_category_overlap(
+    candidate: dict[str, Any],
+    rows: list[dict[str, Any]] | None,
+    *,
+    as_of: date,
+    identity: Any | None = None,
+    problem: str = "",
+) -> dict[str, Any] | None:
+    """ALREADY_EXISTS when at least three domains, two of them commercial vendors, fully overlap.
+
+    Supporters are full-overlap rows with same_problem and a verified quote. Forge web links,
+    listicles, category pages, aggregators, review sites, and the candidate itself are out.
+    A web row counts only as a first-party product, tool, or template page. A GitHub row
+    counts only when evaluate_blocker already refuses on it (checks A-E). Returns None when
+    the rule is off, the threshold is missed, or the candidate's free core is the paid-only
+    differentiator those pages do not match.
+    """
+    if not commodity_rule_enabled():
+        return None
+    from app.agents.own_identity import own_reason
+
+    found: list[tuple[str, bool, dict[str, Any]]] = []
+    seen: set[str] = set()
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("same_problem") is not True or str(row.get("overlap") or "").strip().lower() != "full":
+            continue
+        if not _quote_ok(row):
+            continue
+        if identity is not None and own_reason(identity, row):
+            continue
+        kind = classify_page(row)
+        if kind in NOT_AN_ALTERNATIVE or kind in _REVIEW_KINDS:
+            continue
+        row_key = str(row.get("alternative_id") or row.get("url") or "").casefold()
+        if not row_key or row_key in seen:
+            continue
+        if _web_source(row):
+            if _commodity_access_mismatch(candidate, row) or not _first_party_product_page(row):
+                continue
+            host, _path = _hostname(_page_url(row))
+            domain = _registrable_domain(host)
+            commercial = True
+        elif _github_source(row):
+            decision = evaluate_blocker(candidate, row, as_of=as_of)
+            if not decision.get("blocks"):
+                continue
+            host, _path = _hostname(_page_url(row))
+            domain = _registrable_domain(host) or "github.com"
+            commercial = False
+        else:
+            continue
+        if not domain:
+            continue
+        seen.add(row_key)
+        found.append((domain, commercial, row))
+
+    domains = sorted({domain for domain, _commercial, _row in found})
+    commercial_domains = sorted({domain for domain, commercial, _row in found if commercial})
+    if len(domains) < 3 or len(commercial_domains) < 2:
+        return None
+    problem_text = " ".join(str(problem or "").split())
+    if len(problem_text) > 180:
+        problem_text = problem_text[:177].rstrip() + "..."
+    if not problem_text:
+        problem_text = "the same problem"
+    reason = (
+        f"COMMODITY_CATEGORY: {', '.join(domains)} each fully overlap {problem_text} (verified quotes)"
+    )
+    return {
+        "reason": reason,
+        "domains": domains,
+        "commercial_domains": commercial_domains,
+        "rows": [row for _domain, _commercial, row in found],
     }
