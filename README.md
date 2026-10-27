@@ -236,7 +236,7 @@ Final-verdict (deep tier) answers that carried a separate reasoning field or `<t
 
 **Running the judge on your own Nemotron.** Both model routes are OpenAI-compatible base URLs. Pointing `METERLESS_BASE_URL` (or, for the fallback, `NVIDIA_BASE_URL`) at a local server that serves Nemotron, for example an NVIDIA NIM container on a DGX Spark, runs the same judge with the same trace and the same `--require-nemotron` check; `served_model` records whatever the local server reports. Nemotron 3 is an open model family, so a verdict can then be rerun with no external service. This path is configuration only and was not tested in this submission.
 
-The same page, with no install, is the static demo at <https://fu93.github.io/phoenixrepo/>. Replays shipped in this repository stay labelled SAMPLE until `scripts/import_replay.py` copies a real trace byte for byte and labels it RECORDED.
+The same page, with no install, is the static demo at <https://fu93.github.io/phoenixrepo/>. The four reconstructed replays shipped in this repository are labelled SAMPLE; `scripts/import_replay.py` copies a real trace byte for byte and labels it RECORDED, and the 16 v3 evaluation traces and the Zetaris-backed gate 1 trace in `data/replays/manifest.json` were imported that way.
 
 ## What it does now: two gates
 
@@ -331,7 +331,7 @@ Lane failure handling in `app/llm/provider.py`: HTTP 429, 502 and timeouts retry
 
 Each run writes `logs/trace-<run_id>.jsonl`: canonical JSON lines with `prev_hash` and `line_hash`, closed by `RUN_SEAL`. `python scripts/verify_trace.py <trace>` recomputes the chain and exits nonzero if a line was altered. `python scripts/render_trace.py <trace> --format md|html` renders the timeline for a human reviewer. The chain proves a record was not edited afterwards. It does not prove that the content is true; the verbatim-quote checks and the source links are what let someone verify the content.
 
-`GET /ui` replays the catalog under `data/replays/` with no token, no network, and no Docker. The replays shipped in this repository are labelled **SAMPLE**: each JSONL was sealed here over copies of committed files. It is not a file from `logs/`. The page shows `MODEL_MISMATCH` and a served-model table when a trace line carries `requested_model`, `served_model`, and that flag. To swap in a real trace, copy the JSONL unchanged and add the verdict to the manifest. No JSON is edited by hand:
+`GET /ui` replays the catalog under `data/replays/` with no token, no network, and no Docker. Four of the replays shipped in this repository are labelled **SAMPLE**: each of those JSONL files was sealed here over copies of committed files and is not a file from `logs/`. The others are labelled **RECORDED**: the 16 v3 evaluation traces and the Zetaris-backed gate 1 trace, copied unchanged from `logs/` (see `data/replays/manifest.json`). The page shows `MODEL_MISMATCH` and a served-model table when a trace line carries `requested_model`, `served_model`, and that flag. To swap in a real trace, copy the JSONL unchanged and add the verdict to the manifest. No JSON is edited by hand:
 
 ```bash
 python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scores.json

@@ -112,7 +112,7 @@ See `docs/RUNBOOK_WINDOWS.md` for the Windows commands. Pull requests #17, #18, 
 - [ ] Optional, with Zetaris running and nothing else judging: `python scripts/score_candidates.py --snapshot data/real --llm --output-json logs/zetaris-gate1.json --output-md logs/zetaris-gate1.md`. Its verdicts are the only gate-1 verdicts that read Zetaris; fill `zetaris-gate1-run` in the README from it, or delete that paragraph.
 - [ ] For each scored trace: `python scripts/verify_trace.py logs/trace-<run_id>.jsonl --require-nemotron`. Its `nemotron:` line is the provider split.
 - [ ] `python scripts/fill_results.py logs/eval-nemotron-v3.json --write` and commit. Check the printed warnings: a missing or failing trace stays TBD.
-- [ ] Optional: `python scripts/import_replay.py` for one real trace so `/ui` can show RECORDED. Until that import, say SAMPLE on camera.
+- [x] `python scripts/import_replay.py` was run for the 16 v3 traces and the Zetaris gate 1 trace, so `/ui` shows RECORDED for them. The four reconstructed replays stay SAMPLE; say which is which on camera.
 - [ ] **12:00 UTC 27 Oct: submit the first version** (Track 02, description, repository link, declarations). The video may follow.
 - [ ] Record `docs/VIDEO_SCRIPT.md`. Check that no token or `.env` is visible, and that the Zetaris sentence names only the two `data/real` repositories.
 - [ ] Final commit: `python -m ruff check .`, `python -m pytest -q`, `python scripts/compliance_check.py`. Paste the build-window commit count.

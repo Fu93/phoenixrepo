@@ -1,0 +1,59 @@
+{
+  "id": "shabi-x-go-file-sync",
+  "title": "Shabi-x/go-file-sync — recorded CANDIDATE",
+  "repo_id": "Shabi-x/go-file-sync",
+  "repo_url": "",
+  "data_class": "RECORDED",
+  "trace_class": "RECORDED",
+  "banner": "RECORDED trace. The JSONL was copied unchanged from the source file. The hash chain is the original chain, not a SAMPLE seal.",
+  "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for Shabi-x/go-file-sync.",
+  "model_verdict_recorded": true,
+  "sources": [
+    "reports\\judge-20261026215906\\scores.json"
+  ],
+  "recorded_run": {
+    "run_id": "judge-20261026215906",
+    "run_hash": "0842db1647fd4496a4b543da270b2e2b3e2de6ed8fef2883d9805edb95a836c1",
+    "llm_used": true,
+    "source": "reports\\judge-20261026215906\\scores.json",
+    "jsonl_committed": true
+  },
+  "verdict": {
+    "verdict": "CANDIDATE",
+    "verdict_kind": "recorded_score",
+    "reason": "",
+    "quote": "",
+    "quote_source_url": "",
+    "quote_source_path": "reports\\judge-20261026215906\\scores.json",
+    "alternatives": [],
+    "acceptable": [
+      "ALREADY_EXISTS"
+    ],
+    "gate2": {
+      "state": null,
+      "historical_trace": false,
+      "why": "The copied trace does not record REVIVE_BLOCKED_BY_GATE1 or a revive result.",
+      "rule_quote": "",
+      "rule_source": ""
+    },
+    "rescue": {
+      "score": 40.6,
+      "changes_verdict": false,
+      "source": "github_api",
+      "components": {
+        "stars": 2,
+        "forks": 0,
+        "open_issues_count": 0,
+        "external_breakage": 0,
+        "staleness_days": 386,
+        "stars_vs_staleness": 0.16,
+        "ci_state": "no_ci",
+        "ci_date": null,
+        "dependabot_open": 0,
+        "renovate_open": 0
+      },
+      "note": "Stored rescue_potential from the verdict file. Not recomputed for this replay.",
+      "inputs_source": "reports\\judge-20261026215906\\scores.json"
+    }
+  }
+}

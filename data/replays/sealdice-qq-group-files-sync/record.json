@@ -1,0 +1,60 @@
+{
+  "id": "sealdice-qq-group-files-sync",
+  "title": "sealdice/qq-group-files-sync — recorded CANDIDATE",
+  "repo_id": "sealdice/qq-group-files-sync",
+  "repo_url": "",
+  "data_class": "RECORDED",
+  "trace_class": "RECORDED",
+  "banner": "RECORDED trace. The JSONL was copied unchanged from the source file. The hash chain is the original chain, not a SAMPLE seal.",
+  "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for sealdice/qq-group-files-sync.",
+  "model_verdict_recorded": true,
+  "sources": [
+    "reports\\judge-20261026222820\\scores.json"
+  ],
+  "recorded_run": {
+    "run_id": "judge-20261026222820",
+    "run_hash": "833fd205dac5cc32019a05fd92f3455a1a0856046d6a055d431ff97e4507cceb",
+    "llm_used": true,
+    "source": "reports\\judge-20261026222820\\scores.json",
+    "jsonl_committed": true
+  },
+  "verdict": {
+    "verdict": "CANDIDATE",
+    "verdict_kind": "recorded_score",
+    "reason": "",
+    "quote": "",
+    "quote_source_url": "",
+    "quote_source_path": "reports\\judge-20261026222820\\scores.json",
+    "alternatives": [],
+    "acceptable": [
+      "CANDIDATE",
+      "NEEDS_REVIEW"
+    ],
+    "gate2": {
+      "state": null,
+      "historical_trace": false,
+      "why": "The copied trace does not record REVIVE_BLOCKED_BY_GATE1 or a revive result.",
+      "rule_quote": "",
+      "rule_source": ""
+    },
+    "rescue": {
+      "score": 48.4,
+      "changes_verdict": false,
+      "source": "github_api",
+      "components": {
+        "stars": 5,
+        "forks": 2,
+        "open_issues_count": 1,
+        "external_breakage": 0,
+        "staleness_days": 394,
+        "stars_vs_staleness": 0.39,
+        "ci_state": "no_ci",
+        "ci_date": null,
+        "dependabot_open": 0,
+        "renovate_open": 0
+      },
+      "note": "Stored rescue_potential from the verdict file. Not recomputed for this replay.",
+      "inputs_source": "reports\\judge-20261026222820\\scores.json"
+    }
+  }
+}

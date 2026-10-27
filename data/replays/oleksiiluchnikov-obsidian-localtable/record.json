@@ -1,0 +1,60 @@
+{
+  "id": "oleksiiluchnikov-obsidian-localtable",
+  "title": "oleksiiluchnikov/obsidian-localtable — recorded CANDIDATE",
+  "repo_id": "oleksiiluchnikov/obsidian-localtable",
+  "repo_url": "",
+  "data_class": "RECORDED",
+  "trace_class": "RECORDED",
+  "banner": "RECORDED trace. The JSONL was copied unchanged from the source file. The hash chain is the original chain, not a SAMPLE seal.",
+  "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for oleksiiluchnikov/obsidian-localtable.",
+  "model_verdict_recorded": true,
+  "sources": [
+    "reports\\judge-20261026221854\\scores.json"
+  ],
+  "recorded_run": {
+    "run_id": "judge-20261026221854",
+    "run_hash": "2ae4aab419eb8f9a0a1d5c9a7d760d1ee09e00838ab06dfcf5badbacfa8199bc",
+    "llm_used": true,
+    "source": "reports\\judge-20261026221854\\scores.json",
+    "jsonl_committed": true
+  },
+  "verdict": {
+    "verdict": "CANDIDATE",
+    "verdict_kind": "recorded_score",
+    "reason": "",
+    "quote": "",
+    "quote_source_url": "",
+    "quote_source_path": "reports\\judge-20261026221854\\scores.json",
+    "alternatives": [],
+    "acceptable": [
+      "CANDIDATE",
+      "NEEDS_REVIEW"
+    ],
+    "gate2": {
+      "state": null,
+      "historical_trace": false,
+      "why": "The copied trace does not record REVIVE_BLOCKED_BY_GATE1 or a revive result.",
+      "rule_quote": "",
+      "rule_source": ""
+    },
+    "rescue": {
+      "score": 69.4,
+      "changes_verdict": false,
+      "source": "github_api",
+      "components": {
+        "stars": 0,
+        "forks": 0,
+        "open_issues_count": 0,
+        "external_breakage": 0,
+        "staleness_days": 194,
+        "stars_vs_staleness": 0.0,
+        "ci_state": "ci_configured_zero_runs",
+        "ci_date": null,
+        "dependabot_open": 0,
+        "renovate_open": 0
+      },
+      "note": "Stored rescue_potential from the verdict file. Not recomputed for this replay.",
+      "inputs_source": "reports\\judge-20261026221854\\scores.json"
+    }
+  }
+}

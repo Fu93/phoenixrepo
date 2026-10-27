@@ -6,7 +6,7 @@
   "data_class": "HUMAN_LABEL",
   "trace_class": "SAMPLE",
   "banner": "SAMPLE hash chain over a human label copied from data/eval/gate1_labels.json. This is not a Nightshift trace and not a model verdict.",
-  "summary": "Human label says CANDIDATE or NEEDS_REVIEW would be acceptable. No committed file records a model verdict of NEEDS_REVIEW.",
+  "summary": "Human label says CANDIDATE or NEEDS_REVIEW would be acceptable. This replay is the human label only; a recorded model verdict of NEEDS_REVIEW is in the aa12gq-stack-file-sync-vscode replay.",
   "model_verdict_recorded": false,
   "sources": [
     "data/eval/gate1_labels.json"

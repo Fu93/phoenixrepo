@@ -22,7 +22,7 @@
       "repo_id": "orangekame3/mirrormate",
       "data_class": "HUMAN_LABEL",
       "trace_class": "SAMPLE",
-      "summary": "Human label says CANDIDATE or NEEDS_REVIEW would be acceptable. No committed file records a model verdict of NEEDS_REVIEW."
+      "summary": "Human label says CANDIDATE or NEEDS_REVIEW would be acceptable. This replay is the human label only; a recorded model verdict of NEEDS_REVIEW is in the aa12gq-stack-file-sync-vscode replay."
     },
     {
       "id": "invoice-gate2-sample",
@@ -31,6 +31,14 @@
       "data_class": "RECORDED",
       "trace_class": "SAMPLE",
       "summary": "Local revive() short-circuit. State NOT_ATTEMPTED_GATE1 comes from the function, not from a past run."
+    },
+    {
+      "id": "selfdb-io-selfdb",
+      "title": "Selfdb-io/SelfDB — recorded ALREADY_EXISTS",
+      "repo_id": "Selfdb-io/SelfDB",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict ALREADY_EXISTS for Selfdb-io/SelfDB."
     },
     {
       "id": "dsregoitia-calendarsyncproject",
@@ -47,13 +55,125 @@
       "data_class": "RECORDED",
       "trace_class": "RECORDED",
       "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for tharani-2006/Invoice-generator-application."
+    },
+    {
+      "id": "goodreasonai-scrapeserv",
+      "title": "goodreasonai/ScrapeServ — recorded CANDIDATE",
+      "repo_id": "goodreasonai/ScrapeServ",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for goodreasonai/ScrapeServ."
+    },
+    {
+      "id": "samuelarogbonlo-knetvis",
+      "title": "samuelarogbonlo/knetvis — recorded CANDIDATE",
+      "repo_id": "samuelarogbonlo/knetvis",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for samuelarogbonlo/knetvis."
+    },
+    {
+      "id": "rianvdm-raindrop-wordpress-linkblog-sync",
+      "title": "rianvdm/raindrop-wordpress-linkblog-sync — recorded CANDIDATE",
+      "repo_id": "rianvdm/raindrop-wordpress-linkblog-sync",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for rianvdm/raindrop-wordpress-linkblog-sync."
+    },
+    {
+      "id": "carvenjizaks-gc-sync-webhook",
+      "title": "Carvenjizaks/gc-sync-webhook — recorded CANDIDATE",
+      "repo_id": "Carvenjizaks/gc-sync-webhook",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for Carvenjizaks/gc-sync-webhook."
+    },
+    {
+      "id": "aa12gq-stack-file-sync-vscode",
+      "title": "aa12gq/stack-file-sync-vscode — recorded NEEDS_REVIEW",
+      "repo_id": "aa12gq/stack-file-sync-vscode",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict NEEDS_REVIEW for aa12gq/stack-file-sync-vscode."
+    },
+    {
+      "id": "ri-char-pwatch",
+      "title": "ri-char/pwatch — recorded CANDIDATE",
+      "repo_id": "ri-char/pwatch",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for ri-char/pwatch."
+    },
+    {
+      "id": "dayank-linkedinsynccontacts",
+      "title": "DayanK/LinkedinSyncContacts — recorded CANDIDATE",
+      "repo_id": "DayanK/LinkedinSyncContacts",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for DayanK/LinkedinSyncContacts."
+    },
+    {
+      "id": "shabi-x-go-file-sync",
+      "title": "Shabi-x/go-file-sync — recorded CANDIDATE",
+      "repo_id": "Shabi-x/go-file-sync",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for Shabi-x/go-file-sync."
+    },
+    {
+      "id": "samwho-spacer",
+      "title": "samwho/spacer — recorded CANDIDATE",
+      "repo_id": "samwho/spacer",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for samwho/spacer."
+    },
+    {
+      "id": "oleksiiluchnikov-obsidian-localtable",
+      "title": "oleksiiluchnikov/obsidian-localtable — recorded CANDIDATE",
+      "repo_id": "oleksiiluchnikov/obsidian-localtable",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for oleksiiluchnikov/obsidian-localtable."
+    },
+    {
+      "id": "sealdice-qq-group-files-sync",
+      "title": "sealdice/qq-group-files-sync — recorded CANDIDATE",
+      "repo_id": "sealdice/qq-group-files-sync",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for sealdice/qq-group-files-sync."
+    },
+    {
+      "id": "dhaiwat10-x402-sovereign",
+      "title": "Dhaiwat10/x402-sovereign — recorded ALREADY_EXISTS",
+      "repo_id": "Dhaiwat10/x402-sovereign",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict ALREADY_EXISTS for Dhaiwat10/x402-sovereign."
+    },
+    {
+      "id": "0xmh-fichero-printer",
+      "title": "0xMH/fichero-printer — recorded CANDIDATE",
+      "repo_id": "0xMH/fichero-printer",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for 0xMH/fichero-printer."
+    },
+    {
+      "id": "zetaris-gate1-tharani-2006-invoice-generator-application",
+      "title": "Zetaris-backed gate 1 run — tharani-2006/Invoice-generator-application recorded ALREADY_EXISTS",
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "data_class": "RECORDED",
+      "trace_class": "RECORDED",
+      "summary": "Copied unchanged from the Zetaris-backed gate 1 run (EVIDENCE_SOURCE=zetaris, run id zetaris-gate1, run hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad, 27 of 27 answers by Nemotron). Verdict ALREADY_EXISTS for tharani-2006/Invoice-generator-application. The same trace also covers SergioMendolia/ytkb (CANDIDATE, a false pass); only this repository's verdict is shown here."
     }
   ],
   "missing": [
     {
       "id": "needs-review-model-trace",
-      "title": "No recorded NEEDS_REVIEW model verdict",
-      "reason": "No committed JSON file contains a model verdict of NEEDS_REVIEW. data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score. No trace jsonl is committed on any branch (logs/ is gitignored)."
+      "title": "Only one recorded NEEDS_REVIEW model trace",
+      "reason": "Only one committed trace carries a model verdict of NEEDS_REVIEW: aa12gq-stack-file-sync-vscode (run judge-20261026213423). data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score. Trace jsonl files are committed under data/replays/ only for the recorded replays."
     },
     {
       "id": "historical-gate2-trace",
@@ -62,8 +182,8 @@
     },
     {
       "id": "mismatch-and-source-error-trace",
-      "title": "No committed MODEL_MISMATCH or SOURCE_ERROR trace",
-      "reason": "The timeline shows MODEL_MISMATCH and SOURCE_ERROR when a trace line contains them. No committed jsonl has those flags. The player does not invent a model name or a duration."
+      "title": "No committed SOURCE_ERROR trace; MODEL_MISMATCH only on failed calls",
+      "reason": "The timeline shows MODEL_MISMATCH and SOURCE_ERROR when a trace line contains them. No committed jsonl has SOURCE_ERROR. MODEL_MISMATCH appears only on failed calls with no served model (selfdb-io-selfdb, samwho-spacer, 0xmh-fichero-printer), never on a used answer. The player does not invent a model name or a duration."
     }
   ]
 }
