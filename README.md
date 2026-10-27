@@ -382,11 +382,34 @@ That skeleton includes the FastAPI process, the Docker image, the evidence graph
 
 ## In review
 
-These pull requests are open. They are not merged, and they are not the behaviour of this branch. Pull request #58 is on `main`.
+The unvalidated post-v3 switches below are separate from the scored v3 result.
+An optional implementation does not establish that it is ready for default use.
 
-**Pull requests #59, #62, #65, and #66 (not merged).** Each switch is default off. It runs only when set to `1`, `true`, `yes`, `on`, or `enabled`. Unset stays off. None of them are on this branch, and none are part of any number on this page. The names are `PHOENIX_UNKNOWN_BLOCKER_REVIEW` (#59), `PHOENIX_WEB_GITHUB_API_LOOKUP` (#62), `PHOENIX_QUOTE_FAIL_FLAG` (#65), and `PHOENIX_COMMODITY_CATEGORY_RULE` (#66). An offline reading of Rule B on the recorded `must_beat` lines is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). It is not a live run.
+**Rule B (`PHOENIX_UNKNOWN_BLOCKER_REVIEW`, default off).** This optional post-v3
+hold changes an uncertain would-be `CANDIDATE` into `NEEDS_REVIEW`; it does not
+prove a correct refusal. Only `1`, `true`, `yes`, `on`, or `enabled` turns it on.
+The offline frozen-fact reconstruction held all four false passes and added four
+reviews of agreeing candidates: eight added reviews in total, with agreement
+still 10/16. It was designed after seeing those cases and has no held-out
+validation. It is not part of the v3 score. A separate check using newly collected
+Alpine upstream metadata removes spacer's own-package hold; that new evidence
+must not be retroactively attributed to v3. See [Rule B scope, costs and offline
+commands](docs/RULE_B_REVIEW.md). No `.env` or runtime default is changed here.
+
+**Pull requests #62, #65, and #66 (not merged).** Their default-off switches are
+`PHOENIX_WEB_GITHUB_API_LOOKUP`, `PHOENIX_QUOTE_FAIL_FLAG`, and
+`PHOENIX_COMMODITY_CATEGORY_RULE`. These proposals are not included here or in
+any reported score. They also need unseen labelled validation before activation.
 
 ## Tests and licence
+
+Local post-v3 candidate: [Gate 1 evidence repair](docs/GATE1_EVIDENCE_REPAIR.md)
+fixes source-fact loss, placeholder hydration and quote/identity checks. It runs only
+when `PHOENIX_GATE1_EVIDENCE_REPAIR` is `1`, `true`, `yes`, `on`, or `enabled`; unset, it is off and
+default verdicts equal main. Its `PHOENIX_STRICT_SUBSTITUTION` contract is off by default and has only mocked
+offline validation. It is not a new 16-case score or proof that the six v3
+disagreements are resolved. New live verdicts can change when the evidence
+plumbing fixes are switched on; historical v3 bytes and figures remain frozen.
 
 CI on Python 3.12 runs `python -m ruff check .`, `python -m pytest -q`, and `python scripts/compliance_check.py` (`.github/workflows/ci.yml`).
 
