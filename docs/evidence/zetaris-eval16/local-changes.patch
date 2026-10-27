@@ -1,0 +1,124 @@
+diff --git a/app/adapters/zetaris_evidence.py b/app/adapters/zetaris_evidence.py
+index 83088c0..ba9c18b 100644
+--- a/app/adapters/zetaris_evidence.py
++++ b/app/adapters/zetaris_evidence.py
+@@ -14,7 +14,7 @@ from pathlib import Path
+ from typing import Any, Mapping
+ 
+ from app.errors import ZetarisError
+-from app.sql_catalog import demand_sql, discovery_sql, prior_art_sql
++from app.sql_catalog import demand_sql, discovery_sql, prior_art_sql, view_name
+ 
+ UNREACHABLE_REASON = (
+     "infra: zetaris: unreachable. Gate 1 did not fall back to CSV and did not return CANDIDATE."
+@@ -23,7 +23,7 @@ UNREACHABLE_REASON = (
+ 
+ def missing_candidate_reason(repo_id: str) -> str:
+     return (
+-        f"infra: zetaris: phoenix.discovery_candidates returned no row for {repo_id}. "
++        f"infra: zetaris: {view_name('discovery_candidates')} returned no row for {repo_id}. "
+         "Gate 1 did not fall back to CSV and did not return CANDIDATE."
+     )
+ 
+@@ -124,7 +124,7 @@ def preflight(client: Any, repo_ids: list[str]) -> QueryRecord:
+         query_id=str(result.query_id or ""),
+         content_hash=str(result.content_hash or ""),
+         status="ok",
+-        view="phoenix.discovery_candidates",
++        view=view_name("discovery_candidates"),
+     )
+ 
+ 
+@@ -137,9 +137,9 @@ class ZetarisEvidenceSource:
+     def fetch(self, repo_id: str) -> RepoBundle:
+         queries: list[QueryRecord] = []
+         statements = (
+-            ("phoenix.discovery_candidates", discovery_sql(repo_id)),
+-            ("phoenix.prior_art", prior_art_sql(repo_id)),
+-            ("phoenix.demand_signals", demand_sql(repo_id)),
++            (view_name("discovery_candidates"), discovery_sql(repo_id)),
++            (view_name("prior_art"), prior_art_sql(repo_id)),
++            (view_name("demand_signals"), demand_sql(repo_id)),
+         )
+         results = []
+         for view, sql in statements:
+@@ -273,7 +273,7 @@ def load_zetaris_cohort(
+                     content_hash="",
+                     status="error",
+                     error="unreachable",
+-                    view="phoenix.discovery_candidates",
++                    view=view_name("discovery_candidates"),
+                 )
+             )
+             blocked.append({"repo_id": repo_id, "reason": UNREACHABLE_REASON})
+@@ -308,7 +308,7 @@ def _blocked_without_client(repo_ids: list[str]) -> tuple[
+                 content_hash="",
+                 status="error",
+                 error="unreachable",
+-                view="phoenix.discovery_candidates",
++                view=view_name("discovery_candidates"),
+             )
+         )
+         blocked.append({"repo_id": repo_id, "reason": UNREACHABLE_REASON})
+diff --git a/app/sql_catalog.py b/app/sql_catalog.py
+index af1e6f7..ccd2611 100644
+--- a/app/sql_catalog.py
++++ b/app/sql_catalog.py
+@@ -1,5 +1,6 @@
+ """SQL the agents are allowed to send. One statement, one view, one predicate."""
+ 
++import os
+ import re
+ 
+ REPO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_./:-]{1,200}$")
+@@ -140,6 +141,24 @@ ALTERNATIVES_LOW_AT_MOST = 5
+ ALTERNATIVES_MODERATE_AT_MOST = 30
+ 
+ 
++# Zetaris schemastore container the gate-1 SELECTs read. Default "phoenix" is the
++# existing container. A run that must read a different container (for example a
++# separate evaluation load) sets PHOENIX_ZETARIS_SCHEMA. No other behaviour changes.
++DEFAULT_SCHEMA = "phoenix"
++_SCHEMA_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
++
++
++def evidence_schema() -> str:
++    value = os.environ.get("PHOENIX_ZETARIS_SCHEMA", "").strip() or DEFAULT_SCHEMA
++    if not _SCHEMA_PATTERN.fullmatch(value):
++        raise ValueError("PHOENIX_ZETARIS_SCHEMA must be a plain identifier (letters, digits, underscore).")
++    return value
++
++
++def view_name(view: str) -> str:
++    return f"{evidence_schema()}.{view}"
++
++
+ def require_repo_id(repository: str) -> str:
+     repo_id = repository.strip()
+     if not REPO_ID_PATTERN.fullmatch(repo_id):
+@@ -188,7 +207,7 @@ def sources_sql(repo_id: str) -> str:
+ def discovery_sql(repo_id: str) -> str:
+     columns = ", ".join(DISCOVERY_COLUMNS)
+     return (
+-        f"SELECT {columns} FROM phoenix.discovery_candidates "
++        f"SELECT {columns} FROM {view_name('discovery_candidates')} "
+         f"WHERE repo_id = '{_quote(require_repo_id(repo_id))}'"
+     )
+ 
+@@ -196,7 +215,7 @@ def discovery_sql(repo_id: str) -> str:
+ def prior_art_sql(repo_id: str) -> str:
+     columns = ", ".join(PRIOR_ART_COLUMNS)
+     return (
+-        f"SELECT {columns} FROM phoenix.prior_art "
++        f"SELECT {columns} FROM {view_name('prior_art')} "
+         f"WHERE repo_id = '{_quote(require_repo_id(repo_id))}'"
+     )
+ 
+@@ -204,6 +223,6 @@ def prior_art_sql(repo_id: str) -> str:
+ def demand_sql(repo_id: str) -> str:
+     columns = ", ".join(DEMAND_COLUMNS)
+     return (
+-        f"SELECT {columns} FROM phoenix.demand_signals "
++        f"SELECT {columns} FROM {view_name('demand_signals')} "
+         f"WHERE repo_id = '{_quote(require_repo_id(repo_id))}'"
+     )

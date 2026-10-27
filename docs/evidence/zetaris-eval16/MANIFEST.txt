@@ -1,4 +1,5 @@
-Code: f5416a92dfd8d839c6db1a30e24ed99a5eded4a0 (worktree phoenixrepo-zeval16 HEAD at run time per rev-parse; uncommitted changes: yes)
+Code: f5416a9 + local-changes.patch (app/sql_catalog.py, app/adapters/zetaris_evidence.py: Zetaris schema name from PHOENIX_ZETARIS_SCHEMA). Files dated 14:28:49 UTC, before the 14:47:12 UTC start.
+local-changes.patch SHA256: 8dfc0375aee6ef8cd4c88b0d92cb4f27f90be25733758b9bc1325e0ca6f88c2b
 Zetaris eval16 run evidence manifest
 Source worktree: C:\Users\nn201\phoenixrepo-zeval16\logs\zetaris-eval16 (originals untouched; files copied with Copy-Item semantics, SHA256 compared)
 Human label = top-level acceptable/forbidden of each case in data/eval/gate1_labels.json on main (not in the per-run scores JSON).
