@@ -1,0 +1,181 @@
+{
+  "date": "2026-10-27T17:25:38.830745+00:00",
+  "run_id": "zetaris-eval16-oleksiiluchnikov-obsidian-localtable",
+  "run_hash": "509cca626b04d5b2f1ab9685c36b63491916dfa2df7ec9a9eec5b0f5777afce6",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\oleksiiluchnikov-obsidian-localtable --llm --run-id zetaris-eval16-oleksiiluchnikov-obsidian-localtable --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-oleksiiluchnikov-obsidian-localtable.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-oleksiiluchnikov-obsidian-localtable.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 13
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": "oleksiiluchnikov/obsidian-localtable",
+    "total": 48.33,
+    "feasibility": 2,
+    "reason": "Selected protagonist oleksiiluchnikov/obsidian-localtable with highest weighted total 48.33 (feasibility 2)."
+  },
+  "candidates": [
+    {
+      "repo_id": "oleksiiluchnikov/obsidian-localtable",
+      "verdict": "CANDIDATE",
+      "eligibility": true,
+      "total": 48.33,
+      "feasibility": 2,
+      "flags": [],
+      "criteria": {
+        "problem_severity": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Obsidian users who rely on Airtable face a meaningful recurring pain: no native way to browse linked records from notes or sync note links back to Airtable. Obsidian's own Airtable import documentation confirms the integration need exists, but only as one-way migration, leaving a recurring bidirectional gap for an identifiable persona. Not mission-critical since one-way import workarounds exist.",
+          "evidence_ids": [
+            "candidate:oleksiiluchnikov/obsidian-localtable",
+            "prior:web:https://obsidian.md/help/import/airtable"
+          ]
+        },
+        "demand_evidence": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "External demand for the Airtable-Obsidian sync category is evidenced by the maintained Auto Note Importer plugin with releases and download badges, but no specific external demand signal (issues, discussions, PRs) exists for this particular candidate, making the signal weak/ambiguous rather than candidate-verified.",
+          "evidence_ids": [
+            "prior:uppinote20/obsidian-auto-note-importer",
+            "prior:web:https://community.obsidian.md/plugins/auto-note-importer"
+          ]
+        },
+        "differentiation": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 2: Missing capabilities: 'Open dedicated data view for linked Airtable notes', 'Read Airtable data on desktop and mobile', 'Sync note links back to Airtable', 'Create local notes from Airtable records', 'Use desktop daemon as read-through accelerator' (5 not covered by any maintained free OSS alternative). Alternatives checked: web:https://obsidian.md/help/import/airtable (licence=no licence, unmaintained Noned); web:https://community.obsidian.md/plugins/auto-note-importer (licence=no licence, unmaintained Noned); uppinote20/obsidian-auto-note-importer (unmaintained Noned). Candidate quotes: for 'Open dedicated data view for linked Airtable notes': \"Open a dedicated data view for notes linked to Airtable tables or records\"; for 'Read Airtable data on desktop and mobile': \"Read Airtable data on desktop and mobile through Obsidian `requestUrl()`\"; for 'Sync note links back to Airtable': \"Sync note links back to Airtable with secret storage for API keys\"; for 'Create local notes from Airtable records': \"Create local notes from Airtable records with configurable templates and note locations\"; for 'Use desktop daemon as read-through accelerator': \"Optionally use the `localtable` desktop daemon as a read-through accelerator\".",
+          "evidence_ids": [
+            "candidate:oleksiiluchnikov/obsidian-localtable",
+            "prior:web:https://obsidian.md/help/import/airtable",
+            "prior:web:https://community.obsidian.md/plugins/auto-note-importer",
+            "prior:uppinote20/obsidian-auto-note-importer"
+          ]
+        },
+        "feasibility": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The candidate is a published Obsidian community plugin with release artifacts (main.js, manifest.json, styles.css), documented BRAT/manual installation, secret storage for API keys, and ribbon/command-palette integration, indicating a solid working baseline. CI/test status is not verifiable from the supplied evidence excerpt.",
+          "evidence_ids": [
+            "candidate:oleksiiluchnikov/obsidian-localtable"
+          ]
+        },
+        "productization_path": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The audience is loosely definable (Obsidian users with Airtable bases) and distribution exists via Obsidian community plugins/BRAT, but no clear monetization model beyond free/donations is evident, and the beachhead is not strongly defensible.",
+          "evidence_ids": [
+            "candidate:oleksiiluchnikov/obsidian-localtable"
+          ]
+        },
+        "moat": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No structural power from the 7 Powers applies; an Airtable API wrapper for Obsidian is easily replicated over a weekend with no switching costs, network effects, branding, or cornered resources.",
+          "evidence_ids": []
+        }
+      },
+      "capabilities": [
+        {
+          "name": "Open dedicated data view for linked Airtable notes",
+          "quote": "Open a dedicated data view for notes linked to Airtable tables or records"
+        },
+        {
+          "name": "Read Airtable data on desktop and mobile",
+          "quote": "Read Airtable data on desktop and mobile through Obsidian `requestUrl()`"
+        },
+        {
+          "name": "Sync note links back to Airtable",
+          "quote": "Sync note links back to Airtable with secret storage for API keys"
+        },
+        {
+          "name": "Create local notes from Airtable records",
+          "quote": "Create local notes from Airtable records with configurable templates and note locations"
+        },
+        {
+          "name": "Use desktop daemon as read-through accelerator",
+          "quote": "Optionally use the `localtable` desktop daemon as a read-through accelerator"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:oleksiiluchnikov/obsidian-localtable",
+          "url": "https://github.com/oleksiiluchnikov/obsidian-localtable",
+          "text": "Browse linked records from notes and sync note links with Airtable integration.\n# localtable\n\nBrowse linked records from notes and sync note links back to connected data tools. Airtable is the first supported integration.\n\nThis repository is named `obsidian-localtable`, while the community plugin manifest stays `localtable`.\n\n<p align=\"center\">\n  <a href=\"#features\">Features</a>\n  ·\n  <a href=\"#requirements\">Requirements</a>\n  ·\n  <a href=\"#installation\">Installation</a>\n  ·\n  <a href=\"#setup\">Setup</a>\n  ·\n  <a href=\"#usage\">Usage</a>\n</p>\n\n## Features\n\n- Open a dedicated data view for notes linked to Airtable tables or records\n- Read Airtable data on desktop and mobile through Obsidian `requestUrl()`\n- Sync note links back to Airtable with secret storage for API keys\n- Create local notes from Airtable records with configurable templates and note locations\n- Optionally use the `localtable` desktop daemon as a read-through accelerator\n\n## Requirements\n\n- Obsidian `>= 1.11.5`\n- An Airtable Personal Access Token with access to the target base\n- An Airtable base ID\n\n## Installation\n\n### BRAT\n\n1. Install the BRAT plugin.\n2. Add the `oleksiiluchnikov/obsidian-localtable` repository.\n3. Enable `localtable` in Community Plugins.\n\n### Manual\n\n1. Download `main.js`, `manifest.json`, and `styles.css` from the latest release.\n2. Create `VaultFolder/.obsidian/plugins/localtable/`.\n3. Copy the release files into that folder.\n4. Enable `localtable` in Community Plugins.\n\n## Setup\n\n1. Open `Settings -> localtable`.\n2. Store your Airtable token in the secret field.\n3. Set your Airtable base ID.\n4. Add Airtable frontmatter to notes you want the plugin to recognize.\n\n### Table note\n\n```yaml\n---\nairtable_table_id: tblXXXXXXXXXXXXXX\n---\n```\n\n### Record note\n\n```yaml\n---\nuuid: recXXXXXXXXXXXXXX\nairtable_table_id: tblXXXXXXXXXXXXXX\n---\n```\n\n### View note\n\n```yaml\n---\nairtable_table_id: tblXXXXXXXXXXXXXX\nairtable_view_id: viwXXXXXXXXXXXXXX\n---\n```\n\n## Usage\n\n### Views\n\n- Open `localtable` from the ribbon or command palette\n- Open a note with `airtable_table_id` to lo\nBrowse linked records from notes and sync note links with Airtable integration.\nfor notes linked to\nOpen a dedicated data view for notes linked to Airtable tables or records",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://obsidian.md/help/import/airtable",
+          "url": "https://obsidian.md/help/import/airtable",
+          "text": "Import from Airtable - Obsidian Help - Import from Airtable - Obsidian Help Obsidian lets you migrate your data from Airtable using the [[Importer|Importer plugin]]. This converts your Airtable bases to durable Markdown files that you can use offline with Obsidian and many other apps. Each table becomes a folder of notes with one note per record, plus a [[Introduction to Bases|Base]] file that recreates the table and its views. Because it uses the Airtable API, importing requires a personal access token and an internet connection. ## Create an Airtable personal access token To access your Airtable data via the API you need a personal access token. This step takes about two minutes to complete. The token is a long string of numbers and letters typically starting with `pat...` that will allow you to download your data from Airtab\nImport from Airtable - Obsidian Help Obsidian lets you migrate your data from Airtable using the [[Importer|Importer plugin]]. This converts your Airtable bases",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://community.obsidian.md/plugins/auto-note-importer",
+          "url": "https://community.obsidian.md/plugins/auto-note-importer",
+          "text": "Auto Note Importer - Obsidian Plugin - # Auto Note Importer Two-way sync between Obsidian and your databases — Airtable, SeaTable, Supabase, Notion. Multi-config, conflict resolution, computed fields, Notion page-body pull. Two-way sync between your databases and your Obsidian vault. Point it at Airtable, SeaTable, Supabase, or Notion — it pulls rows in as notes, pushes your edits back, and keeps computed fields fresh. ▶ Watch the 15-second intro on YouTube | Provider | Pull → notes | Push edits back | Computed fields | Page body | | --- | --- | --- | --- | --- | | Airtable | ✅ | ✅ | ✅ formula / rollup / lookup | — | | SeaTable | ✅ | ✅ | ✅ formula / link-formula | — | | Supabase | ✅ | ✅ | ✅ generated columns | — | | Notion | ✅ | ✅ page properties | ✅ formula / rollup | ✅ blocks → Markdown (pull) | Built on a provider-agnostic c\n# Auto Note Importer Two-way sync between Obsidian and your databases — Airtable, SeaTable, Supabase, Notion. Multi-config, conflict resolution, computed fields",
+          "content_hash": null
+        },
+        {
+          "id": "prior:uppinote20/obsidian-auto-note-importer",
+          "url": "https://github.com/uppinote20/obsidian-auto-note-importer",
+          "text": "Two-way sync between Obsidian and your databases — Airtable, SeaTable, Supabase, Notion. Multi-config, conflict resolution, computed fields, Notion page-body pull.\n# Auto Note Importer\n\n![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/uppinote20/obsidian-auto-note-importer/release.yml?logo=github)\n![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/uppinote20/obsidian-auto-note-importer?sort=semver)\n![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/uppinote20/obsidian-auto-note-importer/total)\n\n**Two-way sync between your databases and your Obsidian vault.** Point it at Airtable, SeaTable, Supabase, or Notion — it pulls rows in as notes, pushes your edits back, and keeps computed fields fresh.\n\n[![Auto Note Importer intro video](assets/intro-video.jpg)](https://youtu.be/cX1_xOP-2mA)\n\n▶ [Watch the 15-second intro on YouTube](https://youtu.be/cX1_xOP-2mA)\n\n| Provider | Pull → notes | Push ed",
+          "content_hash": null
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://community.obsidian.md/plugins/auto-note-importer",
+          "overlap": "full",
+          "quote": "Two-way sync between Obsidian and your databases — Airtable, SeaTable, Supabase, Notion.",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "uppinote20/obsidian-auto-note-importer",
+          "overlap": "full",
+          "quote": "Two-way sync between Obsidian and your databases — Airtable, SeaTable, Supabase, Notion.",
+          "reason": "did not block: not mature or official: stars=18, candidate_stars=0, official=False"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 69.5,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 0,
+          "forks": 0,
+          "open_issues_count": 0,
+          "external_breakage": 0,
+          "staleness_days": 195,
+          "stars_vs_staleness": 0.0,
+          "ci_state": "ci_configured_zero_runs",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "ineligible": [],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "oleksiiluchnikov/obsidian-localtable",
+      "verdict": "CANDIDATE",
+      "memory_id": "mem-51453537cecd",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

@@ -1,0 +1,264 @@
+{
+  "date": "2026-10-27T15:33:44.377966+00:00",
+  "run_id": "zetaris-eval16-samuelarogbonlo-knetvis",
+  "run_hash": "04db535a22a94dd78648877a607ad6821fafe1109d5e2720809c0d1e7738493f",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\samuelarogbonlo-knetvis --llm --run-id zetaris-eval16-samuelarogbonlo-knetvis --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-samuelarogbonlo-knetvis.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-samuelarogbonlo-knetvis.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 13,
+    "(missing)": 1,
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 1
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 1,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": "samuelarogbonlo/knetvis",
+    "total": 41.67,
+    "feasibility": 2,
+    "reason": "Selected protagonist samuelarogbonlo/knetvis with highest weighted total 41.67 (feasibility 2)."
+  },
+  "candidates": [
+    {
+      "repo_id": "samuelarogbonlo/knetvis",
+      "verdict": "CANDIDATE",
+      "eligibility": true,
+      "total": 41.67,
+      "feasibility": 2,
+      "flags": [
+        "MODEL_MISMATCH",
+        "LLM_FALLBACK",
+        "BUDGET_EXHAUSTED",
+        "UNSUPPORTED"
+      ],
+      "criteria": {
+        "problem_severity": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Stated struggling job in description/README: 'A powerful CLI tool for visualizing and testing Kubernetes Network Policies.'. Meaningful recurring workflow friction.",
+          "evidence_ids": [
+            "candidate:samuelarogbonlo/knetvis"
+          ]
+        },
+        "demand_evidence": {
+          "score": 0,
+          "original_score": 1,
+          "status": "UNSUPPORTED",
+          "rationale": "No external demand signals accepted by relevance judge (0 qualifying signals).",
+          "evidence_ids": []
+        },
+        "differentiation": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 2: Missing capabilities: 'Visual Network Policy Analysis', 'Policy Testing', 'Policy Validation', 'Cross-Namespace Support' (4 not covered by any maintained free OSS alternative). Alternatives checked: web:https://github.com/artturik/network-policy-viewer (unmaintained Noned); web:https://kubernetes.io/blog/2017/10/enforcing-network-policies-in-kubernetes (licence=no licence, unmaintained Noned); web:https://github.com/sbulav/calico-policy-visualiser (unmaintained Noned); web:https://k8studio.io/blogs/best-kubernetes-cluster-visualization-tools-2026/ (licence=no licence, unmaintained Noned); web:https://cloud.ibm.com/docs/containers?topic=containers-debug_pods (licence=no licence, unmaintained Noned); artturik/network-policy-viewer (unmaintained Noned); amdadulbari/kubectl-reach (licence=NOASSERTION, unmaintained Noned); inovex/illuminatio (unmaintained Noned); gerald1248/k8s-network-policy-viewer (unmaintained Noned). Candidate quotes: for 'Visual Network Policy Analysis': \"Generate clear visualizations of your network policies\"; for 'Policy Testing': \"Test connectivity between pods and services\"; for 'Policy Validation': \"Validate network policies before applying them\"; for 'Cross-Namespace Support': \"Analyze policies across multiple namespaces\".",
+          "evidence_ids": [
+            "candidate:samuelarogbonlo/knetvis",
+            "prior:web:https://github.com/artturik/network-policy-viewer",
+            "prior:web:https://kubernetes.io/blog/2017/10/enforcing-network-policies-in-kubernetes",
+            "prior:web:https://github.com/sbulav/calico-policy-visualiser",
+            "prior:web:https://k8studio.io/blogs/best-kubernetes-cluster-visualization-tools-2026/",
+            "prior:web:https://cloud.ibm.com/docs/containers?topic=containers-debug_pods",
+            "prior:artturik/network-policy-viewer",
+            "prior:amdadulbari/kubectl-reach",
+            "prior:inovex/illuminatio",
+            "prior:gerald1248/k8s-network-policy-viewer"
+          ]
+        },
+        "feasibility": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Structured codebase with 6 non-boilerplate source paths (ci-check.sh, images/Real-demo.gif, setup.py). Solid working baseline.",
+          "evidence_ids": [
+            "candidate:samuelarogbonlo/knetvis"
+          ]
+        },
+        "productization_path": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Identifiable user persona ('A powerful CLI tool for visualizing and') for open-source utility; commercial SaaS/tier monetization is nascent.",
+          "evidence_ids": [
+            "candidate:samuelarogbonlo/knetvis"
+          ]
+        },
+        "moat": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 0: No structural power from Hamilton Helmer's 7 Powers (scale economies, network economies, counter-positioning, switching costs, branding, cornered resource, process power). Open-source utility with zero barriers to duplication.",
+          "evidence_ids": []
+        }
+      },
+      "capabilities": [
+        {
+          "name": "Visual Network Policy Analysis",
+          "quote": "Generate clear visualizations of your network policies"
+        },
+        {
+          "name": "Policy Testing",
+          "quote": "Test connectivity between pods and services"
+        },
+        {
+          "name": "Policy Validation",
+          "quote": "Validate network policies before applying them"
+        },
+        {
+          "name": "Cross-Namespace Support",
+          "quote": "Analyze policies across multiple namespaces"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:samuelarogbonlo/knetvis",
+          "url": "https://github.com/samuelarogbonlo/knetvis",
+          "text": "A powerful CLI tool for visualizing and testing Kubernetes Network Policies.\n# knetvis - Kubernetes Network Policy Visualizer\n\n[![PyPI version](https://badge.fury.io/py/knetvis.svg)](https://badge.fury.io/py/knetvis)\n[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)\n[![Publish to PyPI](https://github.com/samuelarogbonlo/knetvis/actions/workflows/publish.yml/badge.svg)](https://github.com/samuelarogbonlo/knetvis/actions/workflows/publish.yml)\n[![CI](https://github.com/samuelarogbonlo/knetvis/actions/workflows/ci.yml/badge.svg)](https://github.com/samuelarogbonlo/knetvis/actions/workflows/ci.yml)\n[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)\n\nA powerful CLI tool for visualizing and testing Kubernetes Network Policies.\n\n## Features\n\n- 🎯 **Visual Network Policy Analysis**: Generate clear visualizations of your network policies\n- 🔍 **Policy Testing**: Test connectivity between pods and services\n- ✅ **Policy Validation**: Validate network policies before applying them\n- 🌐 **Cross-Namespace Support**: Analyze policies across multiple namespaces\n\n## Demo\n![Knetvis Operation](images/Real-demo.gif)\n\n## Quick Start\n\n```bash\n# Install knetvis\npip install knetvis\n\n# Visualize network policies in a namespace\nknetvis visualize my-namespace\n\n# Test connectivity between pods\nknetvis test pod/frontend pod/backend\n\n# Validate a policy file\nknetvis validate policy.yaml\n```\n\n## Installation\n\n### Prerequisites\n- Python 3.8 or higher\n- Access to a Kubernetes cluster\n- kubectl configured with cluster access\n\n### Install Methods\n```bash\n# Via pip\npip install knetvis\n\n# From source\ngit clone https://github.com/yourusername/knetvis.git\ncd knetvis\npip install -e .\n```\n\n## Usage Examples\n\n### Visualizing Network Policies\n```bash\n# Basic visualization\nknetvis visualize production -o network.png\n\n# Show cross-namespace connections\nknetvis visualize production --show-external\n```\n\n### Testing Connectivity\n```bash\n# Test pod-to-pod connectivity\nknetvis test pod\nA powerful CLI tool for visualizing and testing Kubernetes Network Policies.\nA powerful CLI tool for visualizing and \n🎯 **Visual Network Policy Analysis**: Generate clear visualizations of your network policies",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://github.com/artturik/network-policy-viewer",
+          "url": "https://github.com/artturik/network-policy-viewer",
+          "text": "GitHub - artturik/network-policy-viewer: View your Kubernetes NetworkPolicy manifests as graph, online version available at https://artturik.github.io/network-policy-viewer · GitHub - [ONLINE DEMO](https://artturik.github.io/network-policy-viewer/) **BETA** : You also can **edit** NetworkPolicy in the editor and visualisation will update as yo u type [NetworkPolicy viewer screenshot](https://github.com/artturik/network-policy-viewer/blob/main/img/demo.png?raw=true) View your Kubernetes NetworkPolicy manifests as graph, just Copy and Paste YAML to the editor and receive instant visualisation This, hopefully, can help you find issues with NetworkPolicies or understand NetworkPolicy concept better - Description: View your Kubernetes NetworkPolicy manifests as graph, online version available at https://artturik.github.io/network-policy-viewer - artturik/network-policy-viewer - Stars: 31 import { NetworkPolicyViewer } from \"network-policy-viewer\"; import \"network-policy-view\n[ONLINE DEMO](h",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://kubernetes.io/blog/2017/10/enforcing-network-policies-in-kubernetes",
+          "url": "https://kubernetes.io/blog/2017/10/enforcing-network-policies-in-kubernetes",
+          "text": "Enforcing Network Policies in Kubernetes | Kubernetes - h CIDR blocks to allow/deny traffic in ingress or egress rules. * Cross-namespace policies: Using the ingress.namespaceSelector field, you can enforce Network Policies for particular or for all namespaces in the cluster. For example, you can create privileged/system namespaces that can communicate with pods even though the default policy is to block traffic. You can enable a policy like this by applying the following manifest in your Kubernetes cluster: ``` apiVersion: networking.k8s.io/v1 kind: NetworkPolicy metadata: name: default-deny spec: you can specify port numbers for the policy to enforce. If you omit this field, the policy matches all ports by default. Once you apply this configuration, only pods with label **app: foo** can talk to the pods with the label **app: nginx** . all pod\nh CIDR blocks to allow/deny traffic in ingress or egress rules. * Cross-namespace policies: Using the ingress.namespaceSelector field, you can ",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://github.com/sbulav/calico-policy-visualiser",
+          "url": "https://github.com/sbulav/calico-policy-visualiser",
+          "text": "GitHub - sbulav/calico-policy-visualiser: A browser-based tool for Calico NetworkPolicy and GlobalNetworkPolicy visualization. · GitHub - - vite.config.ts - vitest.config.ts ## README.md # Calico & Kubernetes Network Policy Visualiser A browser-based tool for visualizing Calico and Kubernetes network policies. Import YAML, see an interactive graph, highlighted source, and plain-English explanation. Everything runs client-side. [Calico Poli This project is a free alternative. Load your Calico or Kubernetes NetworkPolicy YAML. Get a graph of rules by traffic scope. See a text breakdown of what the policy allows or blocks. ## Features * **Three panels** : YAML editor, graph visualization, explanation text. + **Kubernetes** `networking.k8s.io/v1` : `NetworkPolicy` (pod/namespace selectors, `ipBlock` with `except` , named ports, `endPort` , policyTypes defaults) * **Samples** : B Cilium has the free [Network Policy Editor](https:\n- vite.config.ts - vitest.config.ts ## README.md # Calico & K",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://k8studio.io/blogs/best-kubernetes-cluster-visualization-tools-2026/",
+          "url": "https://k8studio.io/blogs/best-kubernetes-cluster-visualization-tools-2026/",
+          "text": "Best Kubernetes Cluster Visualization Tools (2026) - Use **CloudMaps** for a live, agent-free map that keeps namespaces, workloads, pods, services, routes, policies, and storage in spatial context. It treats the cluster as a map: namespaces remain distinct areas, workloads sit inside their namespace, pods appear as you zoom in, and Services, Ingresses, Gateway API routes, policies, and You can begin with the whole cluster, zoom into a namespace, and continue to a workload or pod without replacing the entire screen. That makes the map useful for operational questions such as: * Is a network policy restricting ingress or egress? CloudMaps connects with the same kubeconfig used by kubectl. It does not install a DaemonSet, sidecar, operator, CRD, or telemetry collector. A Kubernetes topology map shows resources and their relationships visually,\nUse **CloudMaps** for a live, agent-free map that keeps namespaces, workloads, pods, services, routes, policies, and storage in spatial context. It",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://cloud.ibm.com/docs/containers?topic=containers-debug_pods",
+          "url": "https://cloud.ibm.com/docs/containers?topic=containers-debug_pods",
+          "text": "Debugging network connections between pods - ### Running tests within the pods {: #debug_pods_test_run} Run `curl`, `ping`, and `nc` commands to test each pod's network connection and the `dig` command to test the cluster DNS. . List your test pods and note the name and IP of each pod. ```sh kubectl get pods --namespace pod-network-test -o wide ``` {: pre} Example output ```sh Specify the IP of a test pod that you did **not** log in to. This tests the network connection between pods on different nodes. ```sh curl <pod_ip>:8080 ``` --- name: containers-ts-pod-networking title: Debugging network connections between pods description: Troubleshoot pod networking issues and connectivity problems. last-updated: 2026-08-12 --- Apply the daemonset to deploy a test pod on each worker node. ```sh kubectl apply --namespace pod-network-test -f <\n### Running tests within the pods {: #debug_pods_test_run} Run `curl`, `ping`, and `nc` commands to test each pod's network connection and the `dig` comma",
+          "content_hash": null
+        },
+        {
+          "id": "prior:artturik/network-policy-viewer",
+          "url": "https://github.com/artturik/network-policy-viewer",
+          "text": "View your Kubernetes NetworkPolicy manifests as graph, online version available at https://artturik.github.io/network-policy-viewer\nKubernetes Network Policy Viewer\n===\n\n[ONLINE DEMO](https://artturik.github.io/network-policy-viewer/)\n**BETA**: You also can **edit** NetworkPolicy in the editor and visualisation will update as you type\n\n![NetworkPolicy viewer screenshot](img/demo.png?raw=true \"NetworkPolicy viewer screenshot\")\n\nView your Kubernetes NetworkPolicy manifests as graph, \njust Copy and Paste YAML to the editor and receive instant visualisation\n\nThis, hopefully, can help you find issues with NetworkPolicies\nor understand NetworkPolicy concept better \n\n## Related projects\n\n* [NetworkPolicy Viewer as Lens IDE extension](https://github.com/artturik/lens-extension-network-policy-viewer)\n\n## Installation\n\n```bash\nnpm install network-policy-viewer\n```\n\n## Usage\n\nNetworkPolicyViewer can be used as React component, see the sample below or [view demo source code](src/client/components/",
+          "content_hash": null
+        },
+        {
+          "id": "prior:amdadulbari/kubectl-reach",
+          "url": "https://github.com/amdadulbari/kubectl-reach",
+          "text": "kubectl plugin to test network connectivity from a pod by running an ephemeral debug container\n# kubectl-reach\n\nA `kubectl` plugin that tests network connectivity **from** an existing Pod **to** a target (IP, DNS, or Service) by injecting an ephemeral debug container into the source Pod. Useful for verifying if NetworkPolicies or Service Meshes are blocking traffic.\n\n**Requirements:** Kubernetes 1.25+ (EphemeralContainers). Pure Go; no shell dependencies. Linux, macOS, Windows.\n\n---\n## Install via Krew (Recommended)\n\nIf you use Krew (the kubectl plugin manager), you can install `kubectl-reach` easily.\n\n### Install Krew (if not installed)\n\nFollow the official guide:  \nhttps://krew.sigs.k8s.io/docs/user-guide/setup/install/\n\n## Install Kubectl-reach\n```bash\nkubectl krew install reach\n```\n\n## Usage\n\n```bash\nkubectl reach <source-pod-name> --to <target:port> [options]\n```\n\n- **&lt;source-pod-name&gt;** — Pod to run the check from (same network context as your workload).\n- **--to &lt;host:p",
+          "content_hash": null
+        },
+        {
+          "id": "prior:inovex/illuminatio",
+          "url": "https://github.com/inovex/illuminatio",
+          "text": "The kubernetes network policy validator.\n# illuminatio - The kubernetes network policy validator\n\n**Archived:** This project is no longer actively maintained, due to lack of community interest and resources.\nFor alternatives consider [cyclonus](https://github.com/mattfenwick/cyclonus).\n\n[![Build Status](https://travis-ci.org/inovex/illuminatio.svg?branch=master)](https://travis-ci.org/inovex/illuminatio)\n[![codecov](https://codecov.io/gh/inovex/illuminatio/branch/master/graph/badge.svg)](https://codecov.io/gh/inovex/illuminatio)\n\n![logo](/img/logo_small.png)\n\nilluminatio is a tool for automatically testing kubernetes network policies.\nSimply execute `illuminatio clean run`\nand illuminatio will scan your kubernetes cluster for network policies, build test cases accordingly and execute them\nto determine if the policies are in effect.\n\nAn overview of the concept is visualized in [the concept doc](docs/concept.md).\n\n## Demo\n\n![Demo with NetworkPolicy enabled](img/demo-netpol-enabled.gif)\n\n",
+          "content_hash": null
+        },
+        {
+          "id": "prior:gerald1248/k8s-network-policy-viewer",
+          "url": "https://github.com/gerald1248/k8s-network-policy-viewer",
+          "text": "Visualizes the pod network\nk8s-network-policy-viewer\n=========================\n\n<a href=\"https://hub.docker.com/r/gerald1248/k8s-network-policy-viewer/builds/\">\n  <img src=\"https://img.shields.io/docker/automated/gerald1248/k8s-network-policy-viewer.svg\" alt=\"Docker Automated\"/>\n  <!--<img src=\"https://img.shields.io/docker/build/gerald1248/k8s-network-policy-viewer.svg\" alt=\"Docker Build\"/>-->\n</a>\n\nThe network policy viewer visualizes the pod network. It is far from complete, but basic isolation rules can be represented in JSON, YAML or dot (Graphviz).\n\n<img src=\"images/network-policy-viewer.svg\" alt=\"Sample visualization\"/>\n\nIn this example, the names of the namespaces match their respective network policies, the exception being the `global` namespace (which has none) and `ingress-isolated-whitelist` (which has two).\n\nThe policies `isolated`, `egress-isolated`, `ingress-isolated` each apply to the namespace as a whole.\n\n`ingress-isolated-whitelist` whitelists `httpd-bob`, which is w",
+          "content_hash": null
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://github.com/artturik/network-policy-viewer",
+          "overlap": "full",
+          "quote": "View your Kubernetes NetworkPolicy manifests as graph",
+          "reason": "did not block: last update 2024-11-28 is 698 days before 2026-10-27; not mature or official: stars=0, candidate_stars=122, official=False"
+        },
+        {
+          "alternative": "artturik/network-policy-viewer",
+          "overlap": "full",
+          "quote": "View your Kubernetes NetworkPolicy manifests as graph",
+          "reason": "did not block: last update 2024-11-28 is 698 days before 2026-10-27; not mature or official: stars=34, candidate_stars=122, official=False"
+        },
+        {
+          "alternative": "inovex/illuminatio",
+          "overlap": "full",
+          "quote": "The kubernetes network policy validator",
+          "reason": "did not block: last update 2025-08-25 is 428 days before 2026-10-27"
+        },
+        {
+          "alternative": "gerald1248/k8s-network-policy-viewer",
+          "overlap": "full",
+          "quote": "The network policy viewer visualizes the pod network.",
+          "reason": "did not block: last update 2023-07-16 is 1199 days before 2026-10-27; not mature or official: stars=34, candidate_stars=122, official=False"
+        },
+        {
+          "alternative": "amdadulbari/kubectl-reach",
+          "overlap": "partial",
+          "quote": "tests network connectivity from an existing Pod to a target (IP, DNS, or Service) by injecting an ephemeral debug container",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; not mature or official: stars=9, candidate_stars=122, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://kubernetes.io/blog/2017/10/enforcing-network-policies-in-kubernetes",
+          "overlap": "partial",
+          "quote": "Cross-namespace policies: Using the ingress.namespaceSelector field, you can enforce Network Policies for particular or for all namespaces in the cluster.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=122, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://github.com/sbulav/calico-policy-visualiser",
+          "overlap": "partial",
+          "quote": "A browser-based tool for visualizing Calico and Kubernetes network policies.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; not mature or official: stars=0, candidate_stars=122, official=False"
+        },
+        {
+          "alternative": "web:https://k8studio.io/blogs/best-kubernetes-cluster-visualization-tools-2026/",
+          "overlap": "partial",
+          "quote": "Is a network policy restricting ingress or egress? CloudMaps connects with the same kubeconfig used by kubectl.",
+          "reason": "did not block: listicle is not an alternative; overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=122, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://cloud.ibm.com/docs/containers?topic=containers-debug_pods",
+          "overlap": "partial",
+          "quote": "Run `curl`, `ping`, and `nc` commands to test each pod's network connection and the `dig` command to test the cluster DNS.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=122, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence; domain cloud.ibm.com is not the vendor of the product the page describes"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 329.6,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 122,
+          "forks": 48,
+          "open_issues_count": 7,
+          "external_breakage": 0,
+          "staleness_days": 616,
+          "stars_vs_staleness": 6.03,
+          "ci_state": "ci_configured_zero_runs",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "ineligible": [],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "samuelarogbonlo/knetvis",
+      "verdict": "CANDIDATE",
+      "memory_id": "mem-578df6517069",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

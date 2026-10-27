@@ -1,0 +1,222 @@
+{
+  "date": "2026-10-27T16:49:41.106446+00:00",
+  "run_id": "zetaris-eval16-dayank-linkedinsynccontacts",
+  "run_hash": "70483fa84247ac5960f599aaf7243dbc221a3db92311605556a1361d01f83953",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\dayank-linkedinsynccontacts --llm --run-id zetaris-eval16-dayank-linkedinsynccontacts --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-dayank-linkedinsynccontacts.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-dayank-linkedinsynccontacts.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 13,
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 1
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": null,
+    "total": 0.0,
+    "feasibility": 0,
+    "reason": "No eligible candidates meet feasibility threshold >= 2."
+  },
+  "candidates": [
+    {
+      "repo_id": "DayanK/LinkedinSyncContacts",
+      "verdict": "CANDIDATE",
+      "eligibility": true,
+      "total": 50.0,
+      "feasibility": 1,
+      "flags": [],
+      "criteria": {
+        "problem_severity": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "LinkedIn discontinued its native contact-syncing feature, leaving only a slow multi-step archive export (request archive, wait for email, download). Sales/recruiting professionals repeatedly need current connections backed up and reachable across devices; the manual CSV/archive workaround is recurring friction, not a totally blocked mission-critical job, so it is a meaningful recurring pain rather than acute mission-critical blockage.",
+          "evidence_ids": [
+            "candidate:DayanK/LinkedinSyncContacts",
+            "prior:web:https://www.linkedin.com/help/linkedin/answer/a515855?linkId=100000003553641",
+            "prior:web:https://www.linkedin.com/help/linkedin/answer/a566336/export-connections-from-linkedin"
+          ]
+        },
+        "demand_evidence": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "External commercial validation exists: Surfe (formerly Leadjet) charges $29/mo (Essential) to $59/mo (Business) for LinkedIn-to-CRM contact sync, proving willingness to pay for this job. LinkedIn's removal of native syncing additionally displaces users toward alternatives, indicating verified external demand outside the candidate repo.",
+          "evidence_ids": [
+            "prior:web:https://connectsafely.ai/articles/top-linkedin-sales-navigator-extensions-2026",
+            "prior:web:https://www.linkedin.com/help/linkedin/answer/a515855?linkId=100000003553641"
+          ]
+        },
+        "differentiation": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 2: Missing capabilities: 'User registration and login', 'LinkedIn OAuth integration', 'Contact extraction from LinkedIn', 'Cloud sync and backup', 'Search and filter contacts' (5 not covered by any maintained free OSS alternative). Alternatives checked: web:https://www.linkedin.com/help/linkedin/answer/a515855?linkId=100000003553641 (licence=no licence, unmaintained Noned); web:https://connectsafely.ai/articles/top-linkedin-sales-navigator-extensions-2026 (licence=no licence, unmaintained Noned); web:https://www.linkedin.com/help/linkedin/answer/a566336/export-connections-from-linkedin (licence=no licence, unmaintained Noned); softwareloop/contacts-sync (unmaintained Noned); mwpenn94/stewardly-command-center (licence=no licence, unmaintained Noned); deadbeatnoble/Contact-Management-System (licence=no licence, unmaintained Noned). Candidate quotes: for 'User registration and login': \"User registration & login\"; for 'LinkedIn OAuth integration': \"LinkedIn OAuth integration\"; for 'Contact extraction from LinkedIn': \"Contact extraction from LinkedIn\"; for 'Cloud sync and backup': \"Cloud sync & backup\"; for 'Search and filter contacts': \"Search & filter contacts\".",
+          "evidence_ids": [
+            "candidate:DayanK/LinkedinSyncContacts",
+            "prior:web:https://www.linkedin.com/help/linkedin/answer/a515855?linkId=100000003553641",
+            "prior:web:https://connectsafely.ai/articles/top-linkedin-sales-navigator-extensions-2026",
+            "prior:web:https://www.linkedin.com/help/linkedin/answer/a566336/export-connections-from-linkedin",
+            "prior:softwareloop/contacts-sync",
+            "prior:mwpenn94/stewardly-command-center",
+            "prior:deadbeatnoble/Contact-Management-System"
+          ]
+        },
+        "feasibility": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The README describes a runnable modern stack (Node/Express/SQLite/Prisma backend, React/TS frontend, Manifest V3 extension) with a 3-step quick start, indicating a prototype baseline. However, no test suite, CI status, or build verification is present in the evidence, so it cannot be scored as a solid tested baseline with passing/fixable tests.",
+          "evidence_ids": [
+            "candidate:DayanK/LinkedinSyncContacts"
+          ]
+        },
+        "productization_path": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The persona (professionals managing LinkedIn connections) is identifiable but broad, and no pricing, hosted SaaS offering, or distribution channel (e.g., Chrome Web Store listing) is evident. Monetization beyond donations/self-hosted OSS is unspecified, so the path remains vague.",
+          "evidence_ids": [
+            "candidate:DayanK/LinkedinSyncContacts"
+          ]
+        },
+        "moat": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No structural 7-Powers advantage: a browser extension plus scraper/dashboard can be rebuilt by a competitor, and LinkedIn can break scraping or OAuth terms at any time, so there is no durable barrier to entry.",
+          "evidence_ids": []
+        }
+      },
+      "capabilities": [
+        {
+          "name": "User registration and login",
+          "quote": "User registration & login"
+        },
+        {
+          "name": "LinkedIn OAuth integration",
+          "quote": "LinkedIn OAuth integration"
+        },
+        {
+          "name": "Contact extraction from LinkedIn",
+          "quote": "Contact extraction from LinkedIn"
+        },
+        {
+          "name": "Cloud sync and backup",
+          "quote": "Cloud sync & backup"
+        },
+        {
+          "name": "Search and filter contacts",
+          "quote": "Search & filter contacts"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:DayanK/LinkedinSyncContacts",
+          "url": "https://github.com/DayanK/LinkedinSyncContacts",
+          "text": "LinkedIn Contact Sync - Extract and sync your LinkedIn contacts with OAuth authentication\n# LinkedIn Contact Sync 🔗\n\nProfessional LinkedIn contact management system - Extract, sync, and manage your LinkedIn connections with cloud backup and multi-device access.\n\n## ✨ What's Built\n\n🎉 **Complete professional-grade system ready to use!**\n\n- ✅ **Backend API** - Node.js + Express + SQLite + JWT Auth\n- ✅ **Web Dashboard** - React + TypeScript + Tailwind CSS\n- ✅ **Browser Extension** - Chrome/Firefox with auto-sync\n- ✅ **Authentication** - Email/Password + LinkedIn OAuth ready\n- ✅ **Cloud Sync** - All contacts backed up to database\n- ✅ **CSV Export** - Download all contacts\n- ✅ **Search & Filter** - Find contacts instantly\n- ✅ **Multi-device** - Access from anywhere\n\n## 🚀 Quick Start (3 steps)\n\n### 1. Start Backend\n```bash\ncd backend\nnpm install\nnpm run dev\n```\n✅ Running on http://localhost:3001\n\n### 2. Start Frontend\n```bash\ncd frontend\nnpm install\nnpm run dev\n```\n✅ Running on http://localhost:5173\n\n### 3. Load Extension\n1. Chrome: `chrome://extensions/`\n2. Enable \"Developer mode\"\n3. Click \"Load unpacked\"\n4. Select `extension/` folder\n\n**→ See [SETUP.md](SETUP.md) for detailed guide**\n\n## 📸 How It Works\n\n```\nLinkedIn → Extension (scrape) → Backend API → Database\n                                      ↓\n                              Web Dashboard (search/export)\n```\n\n1. Install extension & sign in\n2. Go to LinkedIn connections\n3. Click \"Extract contacts\"\n4. Contacts sync to cloud\n5. View/search/export from web dashboard\n\n## 🛠️ Tech Stack\n\n**Backend**\n- Node.js, Express, TypeScript\n- SQLite (dev) → PostgreSQL/MongoDB (prod)\n- Prisma ORM\n- JWT + Passport (LinkedIn OAuth)\n\n**Frontend**\n- React 18, TypeScript, Vite\n- Tailwind CSS\n- TanStack Query, Zustand\n- React Router v6\n\n**Extension**\n- Manifest V3 (Chrome/Firefox)\n- Auto-sync to backend\n- Beautiful UI\n\n## 🔐 Features\n\n### Current (v1.0)\n- [x] User registration & login\n- [x] LinkedIn OAuth integration\n- [x] Contact extraction from LinkedIn\n- [x] Cloud sync & backup\n- [x] Search & filter contacts\n- [x] CSV export\n-\nLinkedIn Contact Sync - Extract and sync your LinkedIn contacts with OAuth authentication\nLinkedIn Contact Sync - Extract and sync\n✅ **Backend API** - Node.js + Express + SQLite + JWT Auth",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://www.linkedin.com/help/linkedin/answer/a515855?linkId=100000003553641",
+          "url": "https://www.linkedin.com/help/linkedin/answer/a515855?linkId=100000003553641",
+          "text": "Help - Syncing contacts No longer available | LinkedIn Help ## Syncing contacts No longer available Last updated: 9 months ago At LinkedIn, we are constantly evaluating our features and thinking about how we can best add value for our members and customers. As part of this process we may decide to upgrade or eliminate certain offerings so we can invest in the features that bring the most value. As a result of this we no longer support syncing contacts. All sources synced previously will stop syncing. ---\nSyncing contacts No longer available | LinkedIn Help ## Syncing contacts No longer available Last updated: 9 months ago At LinkedIn, we are constantly evaluating our features and thinking about how we can best add value for our members and customers. As part of this process we may decide to upgrade or eliminate certain offerings so we can invest in the features that bring the most value. As a result of this we no longer support syncing contacts. All sources synced previously will stop ",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://connectsafely.ai/articles/top-linkedin-sales-navigator-extensions-2026",
+          "url": "https://connectsafely.ai/articles/top-linkedin-sales-navigator-extensions-2026",
+          "text": "7 Best LinkedIn Sales Navigator Extensions - ### 3. Surfe (formerly Leadjet) — Best for CRM Sync What it does: Syncs LinkedIn and Sales Navigator contacts directly to your CRM with one click. | Feature | Details | | --- | --- | | Pricing | Free plan available; Essential $29/mo; Business $59/mo | | CRM support | Salesforce, HubSpot, Copper, Pipedrive | | Key feature | Two-way sync — CRM updates reflect in LinkedIn and vice versa | | Risk level | Low-Medium — reads profile data but doesn't automate outreach | ---\n### 3. Surfe (formerly Leadjet) — Best for CRM Sync What it does: Syncs LinkedIn and Sales Navigator contacts directly to your CRM with one click. | Feature | Details | | --- | --- | | Pricing | Free plan available; Essential $29/mo; Business $59/mo | | CRM support | Salesforce, HubSpot, Copper, Pipedrive | | Key feature | Two-way sync — CRM updates reflect in LinkedIn and vice versa | | Risk level | Low-Medium — reads profile data but doesn't automate outreach | ---",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://www.linkedin.com/help/linkedin/answer/a566336/export-connections-from-linkedin",
+          "url": "https://www.linkedin.com/help/linkedin/answer/a566336/export-connections-from-linkedin",
+          "text": "Export connections from LinkedIn | LinkedIn Help - # Export connections from LinkedIn Last updated: 1 year ago You can export a list of the connections you have on LinkedIn at any time. To export LinkedIn connections: 1. Click the Me icon at the top of your LinkedIn homepage. 2. Select Settings & Privacy from the dropdown. 3. Click Data privacy on the left pane. 4. Under the How LinkedIn uses your data section, click Get a copy of your data. 5. Select Download larger data archive, including connections, verifications, contacts, account history, and information we infer about you based on your profile and activity. 6. Select Request archive. 7. You’ll receive an email to your Primary Email address which will include a link where you can download your data. Notes: - When you’re exporting your connection data, you may notice that some of the\n# Export connections from LinkedIn Last updated: 1 year ago You can export a list of the connections you have on LinkedIn at any time. To export Link",
+          "content_hash": null
+        },
+        {
+          "id": "prior:softwareloop/contacts-sync",
+          "url": "https://github.com/softwareloop/contacts-sync",
+          "text": "Sync LinkedIn to Google contacts\n# Contacts-sync\n\nThis is unfinished project intended to be a tool to synchronise LinkedIn contacts and Gmail addressbook.\nStill it has been useful for me to experiment with OAuth and MongoDB.\n\nThe original design is explained below:\n\n# Designing a new open-source tool to sync Gmail/LinkedIn contacts\n\n(by Paolo Predonzani, originally posted on March 24, 2018)\n\nHave you ever looked up an email or a phone number of one of your connections\non LinkedIn? I have, especially in these situation:\n\n* I have met somebody at a conference or meeting. We have connected on\n  LinkedIn and now I want to write an email to the person;\n* A friend has moved to a new job. I have the friend's old contacts in my\n  address book and now I want to update them with the new contacts \n  from LinkedIn.\n\nI use Gmail's address book all the time and LinkedIn occasionally. It would be\nnice if I could synchronise the contacts between the two. It would be nice\nif there was a simple, open so",
+          "content_hash": null
+        },
+        {
+          "id": "prior:mwpenn94/stewardly-command-center",
+          "url": "https://github.com/mwpenn94/stewardly-command-center",
+          "text": "A unified marketing command center for managing contacts, campaigns, and outreach across GoHighLevel, Dripify, LinkedIn, and SMS-iT. Features cross-platform CRUD, bidirectional sync, bulk import management, data backup, and campaign orchestration — all from a single delightful interface. Designed as a modular component for lat... · Built with Manus\n# Stewardly Command Center\n\nA comprehensive property management platform with unified dashboard, CRM, marketing automation, maintenance tracking, and data pipeline integration — all in one responsive, mobile-first application with dark mode, AI insights, and zero-dependency charts.\n\n## Features\n\n### Dashboard\n- 8 key metric cards with clickthrough navigation\n- Revenue bar chart, occupancy donut charts, 6-month trend sparkline (zero-dep SVG)\n- AI Insights panel with data-driven recommendations\n- Activity feed and property overview with clickable items\n\n### Properties\n- Card grid with type/search filtering\n- Full CRUD with modal forms (create,",
+          "content_hash": null
+        },
+        {
+          "id": "prior:deadbeatnoble/Contact-Management-System",
+          "url": "https://github.com/deadbeatnoble/Contact-Management-System",
+          "text": "contact managment system with linkedIn Oauth",
+          "content_hash": null
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "softwareloop/contacts-sync",
+          "overlap": "full",
+          "quote": "Sync LinkedIn to Google contacts",
+          "reason": "did not block: last update 2025-01-17 is 648 days before 2026-10-27; not mature or official: stars=2, candidate_stars=0, official=False"
+        },
+        {
+          "alternative": "mwpenn94/stewardly-command-center",
+          "overlap": "partial",
+          "quote": "A unified marketing command center for managing contacts, campaigns, and outreach across GoHighLevel, Dripify, LinkedIn, and SMS-iT",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "deadbeatnoble/Contact-Management-System",
+          "overlap": "partial",
+          "quote": "contact managment system with linkedIn Oauth",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; last update 2024-08-13 is 805 days before 2026-10-27; not mature or official: stars=2, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://connectsafely.ai/articles/top-linkedin-sales-navigator-extensions-2026",
+          "overlap": "partial",
+          "quote": "Syncs LinkedIn and Sales Navigator contacts directly to your CRM with one click.",
+          "reason": "did not block: listicle is not an alternative; overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://www.linkedin.com/help/linkedin/answer/a566336/export-connections-from-linkedin",
+          "overlap": "partial",
+          "quote": "You can export a list of the connections you have on LinkedIn at any time",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 31.6,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 0,
+          "forks": 0,
+          "open_issues_count": 0,
+          "external_breakage": 0,
+          "staleness_days": 316,
+          "stars_vs_staleness": 0.0,
+          "ci_state": "no_ci",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "ineligible": [],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "DayanK/LinkedinSyncContacts",
+      "verdict": "CANDIDATE",
+      "memory_id": "mem-d67d40b9e8b9",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

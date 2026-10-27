@@ -1,0 +1,298 @@
+{
+  "date": "2026-10-27T14:47:13.733067+00:00",
+  "run_id": "zetaris-eval16-tharani-2006-invoice-generator-application",
+  "run_hash": "ed75400c93470a5cdc15f959a4c10ceb39dd3df8c5d593b6507bd6159d6a99bc",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\tharani-2006-invoice-generator-application --llm --run-id zetaris-eval16-tharani-2006-invoice-generator-application --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-tharani-2006-invoice-generator-application.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-tharani-2006-invoice-generator-application.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 12,
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 6
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": null,
+    "total": 0.0,
+    "feasibility": 0,
+    "reason": "No eligible candidates meet feasibility threshold >= 2."
+  },
+  "candidates": [
+    {
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "verdict": "CANDIDATE",
+      "eligibility": true,
+      "total": 50.0,
+      "feasibility": 1,
+      "flags": [],
+      "criteria": {
+        "problem_severity": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Businesses and freelancers face a meaningful recurring pain point creating, managing, and sending professional invoices efficiently; the repo targets exactly this identifiable persona with real-time preview, PDF export, email delivery, and persistence.",
+          "evidence_ids": [
+            "candidate:tharani-2006/Invoice-generator-application"
+          ]
+        },
+        "demand_evidence": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "External demand is verified outside the repo: Invoice Ninja is trusted by 200,000+ businesses and invoice-generator.com serves free invoice PDF generation, showing real pull for this job category.",
+          "evidence_ids": [
+            "prior:web:https://invoiceninja.com/",
+            "prior:web:https://invoice-generator.com/"
+          ]
+        },
+        "differentiation": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 2: Missing capabilities: 'Create professional invoices', 'Manage invoices', 'Send invoices', 'Customizable invoice templates', 'PDF invoice preview' (5 not covered by any maintained free OSS alternative). Alternatives checked: web:https://excel.cloud.microsoft/create/en/invoice-generator/ (licence=no licence, unmaintained Noned); web:https://www.canva.com/invoice/ (licence=no licence, unmaintained Noned); web:https://www.canva.com/invoice/templates/ (licence=no licence, unmaintained Noned); web:https://kyvento.com/en/support/sending-invoices-by-email (licence=no licence, unmaintained Noned); web:https://chronum.app/live-invoice-preview/ (licence=no licence, unmaintained Noned); web:https://invoice-generator.com/ (licence=no licence, unmaintained Noned); web:https://invoiceninja.com/ (licence=no licence, unmaintained Noned); tuanpham-dev/react-invoice-generator (unmaintained Noned); jeroenvheel/MyClientBase (licence=NOASSERTION, unmaintained Noned); leonieziechmann/invoice-pro (unmaintained Noned); bruncun/invoicer (licence=no licence, unmaintained Noned); mraxays/co-invoice (licence=NOASSERTION, unmaintained Noned). Candidate quotes: for 'Create professional invoices': \"creating, managing, and sending professional invoices\"; for 'Manage invoices': \"creating, managing, and sending professional invoices\"; for 'Send invoices': \"creating, managing, and sending professional invoices\"; for 'Customizable invoice templates': \"with multiple customizable templates\"; for 'PDF invoice preview': \"PDF Invoice Preview\".",
+          "evidence_ids": [
+            "candidate:tharani-2006/Invoice-generator-application",
+            "prior:web:https://excel.cloud.microsoft/create/en/invoice-generator/",
+            "prior:web:https://www.canva.com/invoice/",
+            "prior:web:https://www.canva.com/invoice/templates/",
+            "prior:web:https://kyvento.com/en/support/sending-invoices-by-email",
+            "prior:web:https://chronum.app/live-invoice-preview/",
+            "prior:web:https://invoice-generator.com/",
+            "prior:web:https://invoiceninja.com/",
+            "prior:tuanpham-dev/react-invoice-generator",
+            "prior:jeroenvheel/MyClientBase",
+            "prior:leonieziechmann/invoice-pro",
+            "prior:bruncun/invoicer",
+            "prior:mraxays/co-invoice"
+          ]
+        },
+        "feasibility": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The README is comprehensive (installation, testing, deployment, database schema) but supplies no evidence of a passing test suite or green CI; the Spring Boot 4.0.0 badge is suspect/nonexistent, indicating prototype-level uncertainty rather than a turnkey foundation.",
+          "evidence_ids": [
+            "candidate:tharani-2006/Invoice-generator-application"
+          ]
+        },
+        "productization_path": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The audience (businesses and freelancers) is loosely defined and the MIT license implies free/open distribution, but no pricing, SaaS hosting, or monetization channel is evident beyond donations.",
+          "evidence_ids": [
+            "candidate:tharani-2006/Invoice-generator-application"
+          ]
+        },
+        "moat": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No durable power from the 7 Powers; a full-stack invoicing CRUD app is easily replicated given numerous maintained OSS and SaaS alternatives.",
+          "evidence_ids": []
+        }
+      },
+      "capabilities": [
+        {
+          "name": "Create professional invoices",
+          "quote": "creating, managing, and sending professional invoices"
+        },
+        {
+          "name": "Manage invoices",
+          "quote": "creating, managing, and sending professional invoices"
+        },
+        {
+          "name": "Send invoices",
+          "quote": "creating, managing, and sending professional invoices"
+        },
+        {
+          "name": "Customizable invoice templates",
+          "quote": "with multiple customizable templates"
+        },
+        {
+          "name": "PDF invoice preview",
+          "quote": "PDF Invoice Preview"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:tharani-2006/Invoice-generator-application",
+          "url": "https://github.com/tharani-2006/Invoice-generator-application",
+          "text": "Full-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.\n<h1 align=\"center\">Invoice Generator</h1>\n\n<div align=\"center\">\n\n![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)\n![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.0-brightgreen.svg)\n![React](https://img.shields.io/badge/React-19.2.0-blue.svg)\n![Java](https://img.shields.io/badge/Java-21-orange.svg)\n![MongoDB](https://img.shields.io/badge/MongoDB-Latest-green.svg)\n![License](https://img.shields.io/badge/license-MIT-green.svg)\n\n**A full-stack web application for creating, managing, and sending professional invoices with multiple customizable templates.**\n\n[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [API Reference](#-api-reference) • [Contributing](#-contributing)\n\n</div>\n\n---\n\n### 📄 PDF Invoice Preview\n\n<img width=\"1842\" height=\"958\" alt=\"image\" src=\"https://github.com/user-attachments/assets/4871ade9-3679-4a27-8227-acd061c1c2d4\" />\n<img width=\"1850\" height=\"972\" alt=\"Screenshot 2025-12-28 223215\" src=\"https://github.com/user-attachments/assets/efc9571b-ec38-4d13-b623-996d42b51b70\" />\n\n---\n\n## Table of Contents\n\n- [Overview](#-overview)\n- [Features](#-features)\n- [Tech Stack](#-tech-stack)\n- [System Architecture](#-system-architecture)\n- [Project Structure](#-project-structure)\n- [Prerequisites](#-prerequisites)\n- [Installation](#-installation)\n- [Configuration](#-configuration)\n- [Running the Application](#-running-the-application)\n- [API Reference](#-api-reference)\n- [Database Schema](#-database-schema)\n- [Invoice Workflow](#-invoice-workflow)\n- [Development](#-development)\n- [Testing](#-testing)\n- [Deployment](#-deployment)\n- [Security](#-security)\n- [Performance](#-performance)\n- [Troubleshooting](#-troubleshooting)\n- [Contributing](#-contributing)\n- [FAQ](#-faq)\n- [Roadmap](#-roadmap)\n- [Changelog](#-changelog)\n- [License](#-license)\n- [Credits](#-credits)\n\n---\n\n## Overview\n\nInvoice Generator is a comprehensive, production-ready application designed for businesses and freelancers to stream\nFull-stack invoice generator with real-time previews, PDF export, email delivery, and MongoDB persistence built using React and Spring Boot.\nfor creating, managing,\nA full-stack web application for creating, managing, and sending professional invoices with multiple customizable templates.**",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://excel.cloud.microsoft/create/en/invoice-generator/",
+          "url": "https://excel.cloud.microsoft/create/en/invoice-generator/",
+          "text": "Free online invoice generator with editable templates | Microsoft Excel - Free online invoice generator with editable templates | Microsoft Excel # Invoice generator Create and export free invoices online to customers with tailored, fully customized templates by Microsoft Excel. Invoicing tools for reliable billing ... Generate invoices fast with client-ready templates Start with a flexible template and save time creating a polished invoice. Excel invoices come in a range of colors, styles, layouts, and fonts that can be fully customized to match a style guide. Once customized, templates can be saved and reused over time. Collaborate and share with team members Share Excel invoices through OneDrive and grant access to collaborate online. Use comments and @mentions to manage invoice preparation across teams with full control over version history. Easily export pr\nFree online invoice generator with editable templates | Microsoft Excel # Invoice generator Create and export free invoices o",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://www.canva.com/invoice/",
+          "url": "https://www.canva.com/invoice/",
+          "text": "Free Online Invoice Generator - browser. To continue enjoying Canva, please update to a recent version of one of the following browsers: - Chrome - Firefox - Safari (macOS only) - ... Alternatively click here to get Canva for Android or iOS. Or click here to learn more about Canva. ---\nbrowser. To continue enjoying Canva, please update to a recent version of one of the following browsers: - Chrome - Firefox - Safari (macOS only) - ... Alternatively click here to get Canva for Android or iOS. Or click here to learn more about Canva. ---",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://www.canva.com/invoice/templates/",
+          "url": "https://www.canva.com/invoice/templates/",
+          "text": "Free, printable, professional invoice templates to customize - Free, printable, professional invoice templates to customize | Canva # Invoice templates Customize free invoice templates from Canva and impress clients with a beautiful, on-brand invoice. Our invoice templates are not only free but also editable to suit just... More Search Create a blank Invoice White Simple Invoice White Simple Minimalist Business Invoice Fashion Invoice Black and White Minimalist Professional Invoice White Gold Simple Business Invoice Gray Black White Minimalist Elegant Freelancer Invoice Blue and White Minimal Invoice White and Green Minimalist Beauty Business Invoice Simple Minimalist Aesthetic Business Invoice Minimalist Neutral Small Business Invoice Blue Modern Creative Professional Company Invoice White Minimalist Business Invoice Black White Minimalist Simple Cre\nFree, printable, professional invoice templates to customize | Canva # Invoice templates Customize free invoice templates from Canva and",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://kyvento.com/en/support/sending-invoices-by-email",
+          "url": "https://kyvento.com/en/support/sending-invoices-by-email",
+          "text": "Sending invoices by email | Kyvento Support - ## Overview Kyvento sends your invoices as an email with a PDF attachment. This article shows what exactly goes out, where you set the delivery route and how to check whether a message arrived. ## What is attached to the email An invoice email always carries the invoice PDF. If the PDF cannot be produced, no email leaves the house — nobody should receive an invoice email without the invoice. If an e-invoice has been generated for the document, Kyvento attaches it as well. With ZUGFeRD that is a single attachment — the hybrid PDF already carries the XML data inside it. With XRechnung there are two: the PDF to read and the XML file for your customer's accounting. Details in E-invoicing: XRechnung and ZUGFeRD. Subject and body come from the email templates — which one applies when is describe\n## Overview Kyvento sends your invoices as an email with a PDF attachment. This article shows what exactly goes out, where you set the delivery route and",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://chronum.app/live-invoice-preview/",
+          "url": "https://chronum.app/live-invoice-preview/",
+          "text": "Real-Time Live Invoice Preview | Chronum - # Live Invoice Preview — See Your PDF Before You Send It Stop guessing how your final PDF will look. Chronum provides a live, high-fidelity preview that updates as you tweak your hourly rates, taxes, and project details. What you see is exactly what your client gets. ## Edit Once, Export Perfect: The End of Guesswork Invoicing Most invoicing tools treat the PDF as a \"final step.\" You fill out a long form, hit save, and hope for the best. When the layout breaks or a rate is wrong, you have to restart the process. This \"edit-export-repeat\" cycle wastes hours of billable time every year. Chronum's Live Invoice Preview turns billing into a seamless experience. By rendering your PDF in real-time we eliminate the guesswork. You can spot formatting issues, verify smart rate splits, and check page\n# Live Invoice Preview — See Your PDF Before You Send It Stop guessing how your final PDF will look. Chronum provides a live, high-fidelity preview that upd",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://invoice-generator.com/",
+          "url": "https://invoice-generator.com/",
+          "text": "Free Invoice Generator - Free Invoice Generator ## How to make an invoice 1. Enter your business details and your customer’s billing information. 2. Add an invoice number, date, due date, and payment terms. 3. List line items with quantities, rates, tax, and discounts as needed. 4. Review the balance due and download your invoice as a free PDF. ## When to use an invoice Use invoices whenever you bill for products or services. For pricing before work starts, try a quote template or Estimate Generator. After payment, issue a receipt. Yes. Create and download invoice PDFs for free with no signup required. Can I customize the invoice template? Yes. Edit labels, add your logo, change currency, and adjust line items before downloading the PDF. What is the difference between an invoice and a receipt? An invoice requests\nFree Invoice Generator ## How to make an invoice 1. Enter your business details and your customer’s billing information. 2. Add an invoice number, date, due date, and payment ",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://invoiceninja.com/",
+          "url": "https://invoiceninja.com/",
+          "text": "Invoice Ninja: Free Invoicing Software for Small Business - Free Invoicing Software for Small Business - Invoice Ninja Trusted by 200,000+ businesses · Free forever · No credit card # Run your business with clarity. Invoice Ninja gives freelancers and small businesses one complete picture — invoicing & payments, expenses, time-tracking and projects — so you know exactly where you stand. Yes, it's really free 🙂 · Up and running in a few clicks! Freelancer Small Business Consultant Agency Contractor Designer Developer Accountant ... ## A complete suite of invoicing & payment tools With Invoice Ninja, the answer is always yes. Every feature is geared towards accurate, secure invoicing and getting you paid. ### Professional Invoicing Create, send and manage invoices with ease. 11 customizable templates, branded with your logo and colors. ### Online Pay\nFree Invoicing Software for Small Business - Invoice Ninja Trusted by 200,000+ businesses · Free forever · No credit card # Run your busine",
+          "content_hash": null
+        },
+        {
+          "id": "prior:tuanpham-dev/react-invoice-generator",
+          "url": "https://github.com/tuanpham-dev/react-invoice-generator",
+          "text": "React Invoice Generator allows you quickly make invoices and export them as PDF\n# React Invoice Generator\n\nReact Invoice Generator allows you quickly make invoices and save them as PDF. [https://tuanpham-dev.github.io/react-invoice-generator/](https://tuanpham-dev.github.io/react-invoice-generator/)\n\n![react-invoice-generator](https://raw.githubusercontent.com/tuanpham-dev/react-invoice-generator/master/screenshot.png)\n\n## Available Scripts\n\nIn the project directory, you can run:\n\n### `yarn start`\n\nRuns the app in the development mode.<br />\nOpen [http://localhost:3000](http://localhost:3000) to view it in the browser.\n\nThe page will reload if you make edits.<br />\nYou will also see any lint errors in the console.\n\n### `yarn lint` (`lint:write`)\n\nLaunches Prettier, an opinionated code formatter.\n\nhttps://prettier.io/\n\n### `yarn build`\n\nBuilds the app for production to the `build` folder.<br />\nIt correctly bundles React in production mode and optimizes the build for the best performanc",
+          "content_hash": null
+        },
+        {
+          "id": "prior:jeroenvheel/MyClientBase",
+          "url": "https://github.com/jeroenvheel/MyClientBase",
+          "text": "MyClientBase is a simple, intuitive, free and open source web based invoice management system developed with freelancers in mind.\n<h1>MyClientBase</h1>\n\nAbout\n--------\n\n[MyClientBase][1] is a simple, intuitive, free and open source web based invoice management system developed with freelancers in mind.\n\nMyClientBase is designed to manage your clients and invoices as simply as possible without sacrificing powerful features that make a great application. Every feature included is aimed to benefit every user - not just one or two (in other words, you won't find any feature creep or software bloat here). Many of the features you'll find in MyClientBase are suggested directly by the community. Those suggestions that benefit the community as a whole are what makes MyClientBase the successful project that it is. \n\nLicense: [GNU General Public License v3][4]\n\nInstallation\n------------\n\nSee the [official documentation][3] for installation instructions.\n\n[1]: http://www.myclientbase.com\n[2]: htt",
+          "content_hash": null
+        },
+        {
+          "id": "prior:leonieziechmann/invoice-pro",
+          "url": "https://github.com/leonieziechmann/invoice-pro",
+          "text": "A professional, DIN 5008 compliant invoice template for Typst with automatic calculations, EPC-QR-Code (GiroCode), and ZUGFeRD e-invoicing support.\n# invoice-pro\n\nModern Invoice Template for Typst\n\nA professional, compliant, and automated invoice template for [Typst](https://typst.app) with integrated ZUGFeRD e-invoicing support. This package follows the German **DIN 5008** standard (Form A & B) and automates calculations, VAT handling, and payment details.\n\n![Example Invoice](thumbnail.png)\n\n## Features\n\n- **Internationalization (i18n) (New in v0.3.0):** Built-in support for English and German out of the box, plus a highly flexible `locale` API to inject custom translations for any language.\n- **DIN 5008 Compliant:** Supports both Form A and Form B layouts natively via the flexible Theming API.\n- **ZUGFeRD e-invoicing (New in v0.4.0):** (Experimental) Embed EN 16931-compliant Factur-X/ZUGFeRD XML metadata into your generated PDF/A-3B invoices for automated digital processing. The invo",
+          "content_hash": null
+        },
+        {
+          "id": "prior:bruncun/invoicer",
+          "url": "https://github.com/bruncun/invoicer",
+          "text": "A responsive invoicing app with email delivery and status workflows.\n# Frontend Mentor - Invoicer\n\nThis is a solution to the [Invoice app challenge on Frontend Mentor](https://www.frontendmentor.io/challenges/invoice-app-i7KaLTQjl). Frontend Mentor challenges help you improve your coding skills by building realistic projects. \n\n## Table of contents\n\n- [Overview](#overview)\n  - [The challenge](#the-challenge)\n  - [Screenshot](#screenshot)\n  - [Links](#links)\n- [My process](#my-process)\n  - [Built with](#built-with)\n  - [What I learned](#what-i-learned)\n  - [Continued development](#continued-development)\n  - [AI Collaboration](#ai-collaboration)\n- [Available Scripts](#available-scripts)\n- [License](#license)\n\n## Overview\n\n### The challenge\n\nUsers should be able to:\n\n- View the optimal layout for the app depending on their device's screen size\n- See hover states for all interactive elements on the page\n- Create, read, update, and delete invoices\n- Receive form validations when trying to c",
+          "content_hash": null
+        },
+        {
+          "id": "prior:mraxays/co-invoice",
+          "url": "https://github.com/mraxays/co-invoice",
+          "text": "A modern, open-source invoice generator built with React and Tailwind CSS. Create, customize, and export professional invoices with multiple templates, typography options, accent colors, and real-time preview. Supports PDF export, dark mode, and responsive design.\n![Contributions Welcome](https://img.shields.io/badge/Contributions-Welcome-ff7a5e)\n![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-blue)\n![Stars](https://img.shields.io/github/stars/mraxays/co-invoice?style=social)\n\n# Co-Invoice\n\nCo-Invoice is a modern invoice generator built with React and Tailwind CSS. It lets you create, customize, preview, and export professional invoices with real-time updates and flexible design options.\n\n---\n<img width=\"1535\" height=\"863\" alt=\"image\" src=\"https://github.com/user-attachments/assets/17313ba9-54f6-4f22-93ac-c71498cb51f0\" />\n\n## Features\n\n* 4 invoice templates: Modern, Classic, Bold, Minimal\n* 30 Google Fonts (Serif, Sans Serif, Monospace)\n* Accent color pr",
+          "content_hash": null
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://excel.cloud.microsoft/create/en/invoice-generator/",
+          "overlap": "full",
+          "quote": "Create and export free invoices online to customers with tailored, fully customized templates",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://www.canva.com/invoice/",
+          "overlap": "full",
+          "quote": "Free Online Invoice Generator - browser",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://invoiceninja.com/",
+          "overlap": "full",
+          "quote": "Create, send and manage invoices with ease. 11 customizable templates, branded with your logo and colors.",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "jeroenvheel/MyClientBase",
+          "overlap": "full",
+          "quote": "MyClientBase is a simple, intuitive, free and open source web based invoice management system developed with freelancers in mind.",
+          "reason": "did not block: last update 2012-05-23 is 5270 days before 2026-10-27; not mature or official: stars=42, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "tuanpham-dev/react-invoice-generator",
+          "overlap": "partial",
+          "quote": "React Invoice Generator allows you quickly make invoices and save them as PDF.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; last update 2024-05-27 is 883 days before 2026-10-27"
+        },
+        {
+          "alternative": "leonieziechmann/invoice-pro",
+          "overlap": "partial",
+          "quote": "A professional, DIN 5008 compliant invoice template for Typst with automatic calculations, EPC-QR-Code (GiroCode), and ZUGFeRD e-invoicing support.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; not mature or official: stars=57, candidate_stars=0, official=False"
+        },
+        {
+          "alternative": "bruncun/invoicer",
+          "overlap": "partial",
+          "quote": "A responsive invoicing app with email delivery and status workflows.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; not mature or official: stars=2, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "mraxays/co-invoice",
+          "overlap": "partial",
+          "quote": "Create, customize, and export professional invoices with multiple templates, typography options, accent colors, and real-time preview. Supports PDF export, dark mode, and responsive design.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; not mature or official: stars=11, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://www.canva.com/invoice/templates/",
+          "overlap": "partial",
+          "quote": "Free, printable, professional invoice templates to customize",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://chronum.app/live-invoice-preview/",
+          "overlap": "partial",
+          "quote": "Chronum provides a live, high-fidelity preview that updates as you tweak your hourly rates, taxes, and project details.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://invoice-generator.com/",
+          "overlap": "partial",
+          "quote": "Create and download invoice PDFs for free with no signup required.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 24.1,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 0,
+          "forks": 0,
+          "open_issues_count": 0,
+          "external_breakage": 0,
+          "staleness_days": 241,
+          "stars_vs_staleness": 0.0,
+          "ci_state": "no_ci",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "ineligible": [],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "tharani-2006/Invoice-generator-application",
+      "verdict": "CANDIDATE",
+      "memory_id": "mem-9647f110ccd2",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "date": "2026-10-27T17:03:42.338273+00:00",
+  "run_id": "zetaris-eval16-shabi-x-go-file-sync",
+  "run_hash": "9b2ed1823e24c8b294d959c5e0232859f55b95162de7ca4774f0305c21d3b8b5",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\shabi-x-go-file-sync --llm --run-id zetaris-eval16-shabi-x-go-file-sync --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-shabi-x-go-file-sync.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-shabi-x-go-file-sync.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 8,
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 2
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": null,
+    "total": 0.0,
+    "feasibility": 0,
+    "reason": "No candidates provided."
+  },
+  "candidates": [],
+  "ineligible": [
+    {
+      "repo_id": "Shabi-x/go-file-sync",
+      "verdict": "ALREADY_EXISTS",
+      "reason": "verified full-overlap alternative https://wispfile.com/guides/share-files-on-same-wifi/ already solves the same problem (quote: 'On the same Wi-Fi, a direct browser transfer usually connects the two devices over your local network, so the file never leaves the building and is not limited by your internet upload speed.'). Method: llm+verified quote (requested=nvidia/nemotron-3-ultra-550b-a55b, served=nvidia/nemotron-3-ultra-550b-a55b).",
+      "eligibility": false,
+      "decision_evidence": [
+        {
+          "alternative": "web:https://wispfile.com/guides/share-files-on-same-wifi/",
+          "overlap": "full",
+          "quote": "On the same Wi-Fi, a direct browser transfer usually connects the two devices over your local network, so the file never leaves the building and is not limited by your internet upload speed.",
+          "reason": "verified full-overlap alternative https://wispfile.com/guides/share-files-on-same-wifi/ already solves the same problem (quote: 'On the same Wi-Fi, a direct browser transfer usually connects the two devices over your local network, so the file never leaves the building and is not limited by your internet upload speed.')"
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://localsend.org/",
+          "overlap": "full",
+          "quote": "Share files without the cloud. Fast, private, offline.",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=2, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://github.com/ZuhanLin/lanshare",
+          "overlap": "full",
+          "quote": "Share a folder over your LAN via HTTP, with a scannable QR code and phone-to-PC upload — zero config, zero browser plugin, zero cloud.",
+          "reason": "did not block: not mature or official: stars=0, candidate_stars=2, official=False"
+        },
+        {
+          "alternative": "web:https://localsend.dev/",
+          "overlap": "full",
+          "quote": "Transfer photos, videos, folders, and text between Windows, macOS, Linux, Android, and iOS over your local Wi-Fi with HTTPS encryption, no account, and no cloud upload.",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=2, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://github.com/rkriad585/qrtransfer",
+          "overlap": "full",
+          "quote": "`qrtransfer` serves one or more files, directories, or text snippets over HTTP on your LAN and prints a scannable QR code in the terminal.",
+          "reason": "did not block: not mature or official: stars=0, candidate_stars=2, official=False"
+        },
+        {
+          "alternative": "loxy0devlp/Local-Encrypted-Transfer",
+          "overlap": "full",
+          "quote": "It enables easy file sharing between devices (computer, server, phone, etc.) as long as they are connected to the same network, via a locally hosted web interface.",
+          "reason": "did not block: not mature or official: stars=13, candidate_stars=2, official=False"
+        },
+        {
+          "alternative": "Curzyori/hour-share",
+          "overlap": "full",
+          "quote": "Share Files & Text Across Devices via QR Code - No Internet, No Login",
+          "reason": "did not block: not mature or official: stars=9, candidate_stars=2, official=False"
+        },
+        {
+          "alternative": "Hello-LuckyHuang/lan-file-transfer-hub",
+          "overlap": "full",
+          "quote": "A LAN file transfer web app with multi-file upload, real-time progress tracking, and cross-device transfer status sync.",
+          "reason": "did not block: not mature or official: stars=0, candidate_stars=2, official=False"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 40.7,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 2,
+          "forks": 0,
+          "open_issues_count": 0,
+          "external_breakage": 0,
+          "staleness_days": 387,
+          "stars_vs_staleness": 0.16,
+          "ci_state": "no_ci",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "Shabi-x/go-file-sync",
+      "verdict": "ALREADY_EXISTS",
+      "memory_id": "mem-d851e950e438",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

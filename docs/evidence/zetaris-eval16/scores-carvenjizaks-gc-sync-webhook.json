@@ -1,0 +1,58 @@
+{
+  "date": "2026-10-27T16:11:47.018866+00:00",
+  "run_id": "zetaris-eval16-carvenjizaks-gc-sync-webhook",
+  "run_hash": "0bb92c750615416542f63eb563c7c17debe59108b86452bed1103dafbe87224f",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\carvenjizaks-gc-sync-webhook --llm --run-id zetaris-eval16-carvenjizaks-gc-sync-webhook --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-carvenjizaks-gc-sync-webhook.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-carvenjizaks-gc-sync-webhook.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 10
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": null,
+    "total": 0.0,
+    "feasibility": 0,
+    "reason": "No candidates provided."
+  },
+  "candidates": [],
+  "ineligible": [
+    {
+      "repo_id": "Carvenjizaks/gc-sync-webhook",
+      "verdict": "NEEDS_PRIOR_ART",
+      "reason": "Zero alternatives checked in prior-art search.",
+      "eligibility": false,
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 18.8,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 0,
+          "forks": 0,
+          "open_issues_count": 0,
+          "external_breakage": 0,
+          "staleness_days": 188,
+          "stars_vs_staleness": 0.0,
+          "ci_state": "no_ci",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "Carvenjizaks/gc-sync-webhook",
+      "verdict": "NEEDS_PRIOR_ART",
+      "memory_id": "mem-451e4df6a5a0",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

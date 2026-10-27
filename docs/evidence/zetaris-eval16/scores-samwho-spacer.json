@@ -1,0 +1,167 @@
+{
+  "date": "2026-10-27T17:13:39.514669+00:00",
+  "run_id": "zetaris-eval16-samwho-spacer",
+  "run_hash": "c098e3fe572b4712d3d2186ec050405104241d9a6741983928b21e9c57ba43b6",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\samwho-spacer --llm --run-id zetaris-eval16-samwho-spacer --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-samwho-spacer.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-samwho-spacer.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 12
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": "samwho/spacer",
+    "total": 35.0,
+    "feasibility": 2,
+    "reason": "Selected protagonist samwho/spacer with highest weighted total 35.0 (feasibility 2)."
+  },
+  "candidates": [
+    {
+      "repo_id": "samwho/spacer",
+      "verdict": "CANDIDATE",
+      "eligibility": true,
+      "total": 35.0,
+      "feasibility": 2,
+      "flags": [],
+      "criteria": {
+        "problem_severity": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Engineers and sysadmins tailing terminal logs struggle to visually distinguish consecutive command outputs, habitually pressing enter to create separation. The README explicitly states the problem for this persona.",
+          "evidence_ids": [
+            "candidate:samwho/spacer"
+          ]
+        },
+        "demand_evidence": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No external demand signal found outside the candidate repository.",
+          "evidence_ids": []
+        },
+        "differentiation": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 1: Missing capabilities: 'Insert spacers when command output stops' (1 not covered by any maintained free OSS alternative). Alternatives checked: web:https://pkgs.alpinelinux.org/package/v3.23/community/aarch64/spacer (licence=no licence, unmaintained Noned); alejandrovr/cleanlines (licence=no licence, unmaintained Noned); juniac/tail-divider (licence=no licence, unmaintained Noned). Candidate quote: for 'Insert spacers when command output stops': \"`spacer` is a simple CLI tool to insert spacers when command output stops.\".",
+          "evidence_ids": [
+            "candidate:samwho/spacer",
+            "prior:web:https://pkgs.alpinelinux.org/package/v3.23/community/aarch64/spacer",
+            "prior:alejandrovr/cleanlines",
+            "prior:juniac/tail-divider"
+          ]
+        },
+        "feasibility": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Working CI (Build badge visible), available via Homebrew and Cargo package managers, functions as a usable CLI tool with documented usage patterns.",
+          "evidence_ids": [
+            "candidate:samwho/spacer"
+          ]
+        },
+        "productization_path": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Audience of developers/sysadmins tailing logs is reasonably defined from the README, and distribution channels exist (Homebrew, Cargo), but no clear monetization model beyond the tool's utility as a free CLI is indicated.",
+          "evidence_ids": [
+            "candidate:samwho/spacer"
+          ]
+        },
+        "moat": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No structural barrier to entry per the 7 Powers. The tool is a simple CLI utility easily replicated over a weekend with no network effects, switching costs, or cornered resources among the prior art alternatives.",
+          "evidence_ids": []
+        }
+      },
+      "capabilities": [
+        {
+          "name": "Insert spacers when command output stops",
+          "quote": "`spacer` is a simple CLI tool to insert spacers when command output stops."
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:samwho/spacer",
+          "url": "https://github.com/samwho/spacer",
+          "text": "CLI tool to insert spacers when command output stops\n# spacer\n\n[![Build status](https://github.com/samwho/spacer/workflows/Build/badge.svg)](https://github.com/samwho/spacer/actions)\n[![Crates.io](https://img.shields.io/crates/v/spacer.svg)](https://crates.io/crates/spacer)\n\n`spacer` is a simple CLI tool to insert spacers when command output stops.\n\nIf you're the type of person that habitually presses enter a few times in your\nlog tail to know where the last request ended and the new one begins, this tool\nis for you!\n\n![](/images/spacer.gif)\n\n## Installation\n\nWith Homebrew:\n\n```bash\nbrew install spacer\n```\n\nDirect from Cargo:\n\n```bash\ncargo install spacer\n```\n\n## Usage\n\nBy default, `spacer` outputs a spacer after 1 second with no output. You can\nchange this with the `--after` flag.\n\n```bash\ntail -f some.log | spacer --after 5\n```\n\n`--after` accepts a number of seconds, and allows floating point numbers for\nextra precision.\n\n## STDOUT and STDERR\n\nSome commands output most of their information on STDERR, not STDOUT. `spacer`\nonly monitors STDOUT, so if you find a situation where `spacer` doesn't seem\nto be working it could be that the program you're piping from is using STDERR.\n\nTo \"fix\" that, pipe both STDERR to STDOUT to spacer by using `|&` instead of \n`|` as the pipe characters:\n\n```bash\nmy-command |& spacer\n```\nCLI tool to insert spacers when command output stops\nfor\nextra precision.\n[![Build status](https://github.com/samwho/spacer/workflows/Build/badge.svg)](https://github.com/samwho/spacer/actions)",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://pkgs.alpinelinux.org/package/v3.23/community/aarch64/spacer",
+          "url": "https://pkgs.alpinelinux.org/package/v3.23/community/aarch64/spacer",
+          "text": "spacer - Alpine Linux packages - Package details |Package |spacer | | --- | --- | |Version |**0\\.5.0-r0** | |Description |CLI tool to insert spacers when command output stops | |Project |<https://github.com/samwho/spacer> | |License |MIT | |Branch |v3.23 | |Repository |community | |Architecture |aarch64 | |Size |874\\.0KiB | |Installed size |2\\.6MiB | |Origin |[spacer](https://pkgs.alpinelinux.org/package/v3.23/community/aarch64/spacer) | |Maintainer |qaqland | |Build time |2025-11-02 18:59:51 | 64/spacer-doc) Provides (1) * cmd:spacer Install if (0) * None Alpine Linux | [Privacy Policy](https://alpinelinux.org/privacy-policy.html) | [Apkbrowser |Commit |[692ae010ae5cee2df77a6d67b0c7f3a89d80b15c](https://gitlab.alpinelinux.org/alpine/aports/-/commit/692ae010ae5cee2df77a6d67b0c7f3a89d80b15c) | ps://pkgs.alpinelinux.org/con\nPackage details |Package |spacer | | --- | --- | |Version |**0\\.5.0-r0** | |Description |CLI tool to insert spacers when command output stops | |Project |<https://git",
+          "content_hash": null
+        },
+        {
+          "id": "prior:alejandrovr/cleanlines",
+          "url": "https://github.com/alejandrovr/cleanlines",
+          "text": "Simple bash script to clean output of the terminal and write a customazible separator.\nI know, you are tired of repeting the same command which generates almost the same output being almost imposible to discern between rounds.\n\nThis is the solution! You only have to download the bash script into /usr/bin/ directory or somewhere else and adding its path to the PATH variable.\nThen you run it like: cleanline numberoflines string\nfor example: cleanline 10 @# will generate:\n\n@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#\n@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#@#",
+          "content_hash": null
+        },
+        {
+          "id": "prior:juniac/tail-divider",
+          "url": "https://github.com/juniac/tail-divider",
+          "text": "Insert visual separators into log streams when idle\n# taild\n\nPipe log output through `taild` to insert visual separators when the stream goes idle. Useful for distinguishing bursts of activity in long-running log streams.\n\n## Install\n\n```sh\ncargo install --path .\n```\n\n## Usage\n\n### Pipe from a command\n\n```sh\nsome-command | taild\n```\n\n### Follow a file\n\n```sh\ntaild -f app.log\n```\n\n## Options\n\n| Flag | Default | Description |\n|------|---------|-------------|\n| `-t, --idle <SECONDS>` | `3` | Seconds of silence before an idle marker is printed |\n| `-c, --color <COLOR>` | gray | Color of the idle marker (`#FF6600`, `red`, `brightblue`, …) |\n| `-f, --follow <FILE>` | — | Follow a file instead of reading stdin |\n| `-v, --verbose` | — | Print debug info to stderr |\n\n### Named colors\n\n`black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`,\nand their `bright*` variants (`brightred`, `brightblue`, …).\n\nHex colors: `#RRGGBB` (e.g. `#FF6600`).\n\n## How it works\n\n- **Active**: lines ar",
+          "content_hash": null
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://pkgs.alpinelinux.org/package/v3.23/community/aarch64/spacer",
+          "overlap": "full",
+          "quote": "CLI tool to insert spacers when command output stops",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=1818, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "alejandrovr/cleanlines",
+          "overlap": "full",
+          "quote": "Simple bash script to clean output of the terminal and write a customazible separator.",
+          "reason": "did not block: last update 2016-10-05 is 3674 days before 2026-10-27; not mature or official: stars=0, candidate_stars=1818, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "juniac/tail-divider",
+          "overlap": "full",
+          "quote": "Pipe log output through `taild` to insert visual separators when the stream goes idle. Useful for distinguishing bursts of activity in long-running log streams.",
+          "reason": "did not block: not mature or official: stars=0, candidate_stars=1818, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 1958.3,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 1818,
+          "forks": 24,
+          "open_issues_count": 1,
+          "external_breakage": 0,
+          "staleness_days": 423,
+          "stars_vs_staleness": 130.83,
+          "ci_state": "ci_configured_zero_runs",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "ineligible": [],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "samwho/spacer",
+      "verdict": "CANDIDATE",
+      "memory_id": "mem-191a3e18aa5f",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}
