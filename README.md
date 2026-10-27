@@ -1,6 +1,6 @@
 # PhoenixRepo
 Before anyone spends a weekend reviving an abandoned GitHub repository, PhoenixRepo checks whether that idea already exists in a maintained form and records the check in a hash-chained trace. Solo Open Agent Hackathon 2026 entry, Track 02, "The Agent That Can Explain Why", for the prize Best use of NVIDIA Nemotron.
-The evidence is the committed traces in `data/replays/`, the case audit in `docs/SCORED_RUN_AUDIT.md`, and `scripts/verify_nemotron_evidence.py` (open pull request #57; that script is not on this branch). Check a recorded trace with `scripts/verify_trace.py --require-nemotron`.
+The evidence is the committed traces in `data/replays/`, the case audit in `docs/SCORED_RUN_AUDIT.md`, and `scripts/verify_nemotron_evidence.py` (offline checker, added in pull request #57). Check a recorded trace with `scripts/verify_trace.py --require-nemotron`.
 The scored v3 set is a regression and audit set: 16 cases, 10 agree, 5 must-reject, 4 false passes. The traces are what make that audit possible. It is not an accuracy benchmark.
 Read each model line as Requested, Served, and Policy. Say Ultra only when Served is `nvidia/nemotron-3-ultra-550b-a55b`. Say nvidia-direct only when the line stores `provider` `nvidia-direct`.
 
@@ -99,7 +99,7 @@ RESULT: PASS
 
 Between `API contract` and `SAMPLE_MODE` the script prints a sample `POST /run` trace. That trace's `run_id` and hashes change on every execution, so they are not a fixed expected output. Exit code 0, last line `RESULT: PASS`.
 
-`scripts/verify_nemotron_evidence.py` is named in the opening as the evidence checker. Open pull request #57 adds it. It is not in this checkout, so this branch does not run it.
+`scripts/verify_nemotron_evidence.py` is named in the opening as the evidence checker. It was added in pull request #57 and is on `main`.
 
 Token-free replay page: `python main.py`, then open `http://127.0.0.1:8000/ui`. The page opens on `selfdb-io-selfdb`. A static copy is published by `.github/workflows/pages.yml` at <https://fu93.github.io/phoenixrepo/> (HTTP 200 on 27 Oct 2026; the HTML contains `selfdb-io-selfdb`, `zetaris-gate1`, and `e3-goodreasonai`). `docker build -t phoenixrepo . && docker run --rm -p 8000:8000 phoenixrepo` serves the same app. `main.py` binds `0.0.0.0` and `$PORT` (default 8000).
 
@@ -385,8 +385,6 @@ That skeleton includes the FastAPI process, the Docker image, the evidence graph
 These pull requests are open. They are not merged, and they are not the behaviour of this branch. Pull request #58 is on `main`.
 
 **Pull requests #59, #62, #65, and #66 (not merged).** Each switch is default off. It runs only when set to `1`, `true`, `yes`, `on`, or `enabled`. Unset stays off. None of them are on this branch, and none are part of any number on this page. The names are `PHOENIX_UNKNOWN_BLOCKER_REVIEW` (#59), `PHOENIX_WEB_GITHUB_API_LOOKUP` (#62), `PHOENIX_QUOTE_FAIL_FLAG` (#65), and `PHOENIX_COMMODITY_CATEGORY_RULE` (#66). An offline reading of Rule B on the recorded `must_beat` lines is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). It is not a live run.
-
-**Pull request #57 (not merged).** Adds `scripts/verify_nemotron_evidence.py`. It is not on this branch, so the quickstart does not run it.
 
 ## Tests and licence
 
