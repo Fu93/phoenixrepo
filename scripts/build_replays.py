@@ -215,7 +215,7 @@ def main() -> int:
                 "reason": (
                     "No committed JSON file contains a model verdict of NEEDS_REVIEW. "
                     "data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score. "
-                    "No trace jsonl is committed on any branch (logs/ is gitignored)."
+                    "Two RECORDED gate-1 traces may already be in data/replays/. Other case traces stay out of the checkout while logs/ is gitignored."
                 ),
             },
             {

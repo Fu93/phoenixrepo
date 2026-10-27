@@ -11,14 +11,14 @@
       "eligibility_path": "Nemotron is called through Meterless Nightshift. Every gate-1 call requests an nvidia/nemotron-* model through Nightshift, and each LLM_CALL trace line records requested_model and the served_model that actually answered, inside the hash chain.",
       "where_used": [
         "Problem extraction and search-query writing (fast tier, MODEL_NAME)",
-        "Every alternative-overlap judgement (fast tier, MODEL_NAME; requests sent with Nemotron's thinking off via PHOENIX_LLM_EXTRA_BODY on the scored run; whether each provider honoured it was not checked). Nightshift served Ultra for most requests of both tiers.",
-        "The final gate-1 verdict (deep tier, MODEL_NAME_DEEP, thinking not switched off; PHOENIX_LLM_DEEP_EXTRA_BODY was empty on the scored run). Reasoning the model returns is stored on the trace line and shown in /ui next to the verbatim quote; the README counts how many verdict answers carried it.",
-        "Gate 2 part 1, the rescue plan for every CANDIDATE (step rescue_plan, deep tier when configured; items checked against gate-1 evidence). Run with Nemotron on 26 Oct 2026 on three CANDIDATEs (ytkb, spacer, fichero-printer), all model-drafted; known defect: the check proves a quote exists, not that it supports the item. Gate 2 part 2, verified execution, requests the same route by design and has not run on a real CANDIDATE in this submission."
+        "Every alternative-overlap judgement (fast tier, MODEL_NAME). On the scored run PHOENIX_LLM_EXTRA_BODY was {\"chat_template_kwargs\": {\"enable_thinking\": false}} for that tier. That setting is not recorded in the traces. Nightshift served Ultra for most requests of both tiers.",
+        "The final gate-1 verdict (deep tier, MODEL_NAME_DEEP). PHOENIX_LLM_DEEP_EXTRA_BODY was empty on the scored run. Final-verdict answers with a reasoning field or a think block: 0 of 16. /ui shows a reasoning field only when the trace line contains one.",
+        "Gate 2 part 1, the rescue plan (step rescue_plan, deep tier when configured; items checked against gate-1 evidence). One committed plan, fichero-printer (docs/rescue/, run hash 51e828e538ed8f05dda15648fc673c3461ca310a87c0af77c53482e1f0a086c4), drafted by Nemotron via nvidia-direct after a Nightshift HTTP 502, 1 of 1 answers. ytkb's plan (hash beginning c1d2bb22) contradicts itself and is not committed. spacer's plan was a deterministic fallback and is not committed as a model draft. The check proves a quote occurs in the cited text, not that it supports the item. Gate 2 part 2, verified execution, runs the target repo's commands with shell=True on the host after an environment scrub and has not run on a real CANDIDATE in this submission."
       ],
       "policy": "PHOENIX_NEMOTRON_POLICY: label (flag a non-Nemotron answer), require (discard it and ask again), fallback-nvidia (Nightshift first; after a Nightshift timeout, HTTP 5xx or non-Nemotron answer the same request goes to NVIDIA's API and the line is traced provider nvidia-direct). The scored run used fallback-nvidia.",
       "proof": "python scripts/verify_trace.py logs/trace-<run_id>.jsonl --require-nemotron fails unless every answer the run used was served by nvidia/nemotron-*, and prints the count and the Nightshift / nvidia-direct split.",
       "measured": "README.md, sections Results and Why Nemotron: Nemotron share of answers used, final-verdict answers by Nemotron, provider split, served model per provider, latency per served model. Written by scripts/fill_results.py from the scored run's report and verified traces.",
-      "zetaris_run": "Gate 1 with Zetaris evidence on 2 repositories (26 Oct 2026, run hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad): 27 of 27 answers used were Nemotron's, 21 through Nightshift and 6 through nvidia-direct.",
+      "zetaris_run": "Gate 1 with Zetaris evidence on 2 repositories (26 Oct 2026, run hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad): 27 of 27 answers used were Nemotron's, 21 through Nightshift and 6 through nvidia-direct. The trace path is logs/trace-zetaris-gate1.jsonl. That path is gitignored, so the file is not in this checkout until it is imported. scripts/zetaris_check.py calls no model and writes no verdict.",
       "where": [
         "app/agents/relevance.py",
         "config/settings.py",
@@ -79,6 +79,7 @@
   "limits": [
     "No AI-written patch has yet fixed a real repository.",
     "The scored table is one live run on one machine, not a stored accuracy.",
-    "A full overlap below the maturity bar only warns; a GitHub repository found through web search is not looked up as a repository (README Limits)."
+    "A full overlap below the maturity bar only warns; a GitHub repository found through web search is not looked up as a repository (README Limits).",
+    "quote_in_text accepts any substring and has no minimum length. Gate 2 execution uses shell=True on the host with an environment scrub and no sandbox. H-MEM and Markovian are off the gate-1 path. Fast-tier enable_thinking false on the scored run is not recorded in traces."
   ]
 }

@@ -106,14 +106,46 @@ def test_judge_end_to_end_with_fake_scorer(tmp_path):
     assert Path(res["report"]).read_text(encoding="utf-8").count("ALREADY_EXISTS") >= 1
 
 
+def _settings_with_token(token):
+    from config.settings import Settings
+
+    return Settings(meterless_runtime_token=token, _env_file=None)
+
+
 def test_judge_endpoint_maps_errors(monkeypatch):
     from fastapi.testclient import TestClient
 
+    from api import run as api_run
     from api.run import app
 
     def boom(url, use_llm=True):
         raise jr.JudgeError("no description")
 
     monkeypatch.setattr(jr, "judge", boom)
+    monkeypatch.setattr(api_run, "get_settings", lambda: _settings_with_token("rt-real-token"))
     r = TestClient(app).post("/judge", json={"url": "a/b"})
     assert r.status_code == 422 and r.json()["error"]["type"] == "CannotJudge"
+
+
+@pytest.mark.parametrize("token", [None, "", "rt-local", "your-nightshift-runtime-token"])
+def test_judge_endpoint_returns_503_and_no_verdict_without_a_token(monkeypatch, token):
+    from fastapi.testclient import TestClient
+
+    from api import run as api_run
+    from api.run import app
+
+    called = {"n": 0}
+
+    def boom(url, use_llm=True):
+        called["n"] += 1
+        return {"verdict": "NO_GO", "answers_used": 0}
+
+    monkeypatch.setattr(jr, "judge", boom)
+    monkeypatch.setattr(api_run, "get_settings", lambda: _settings_with_token(token))
+    r = TestClient(app).post("/judge", json={"url": "Fu93/hygen", "use_llm": False})
+    body = r.json()
+    assert r.status_code == 503
+    assert body["error"]["type"] == "ModelJudgingNotConfigured"
+    assert "No verdict was produced" in body["error"]["message"]
+    assert "verdict" not in body
+    assert called["n"] == 0
