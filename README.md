@@ -1,6 +1,6 @@
 # PhoenixRepo
 Before anyone spends a weekend reviving an abandoned GitHub repository, PhoenixRepo checks whether that idea already exists in a maintained form and records the check in a hash-chained trace. Solo Open Agent Hackathon 2026 entry, Track 02, "The Agent That Can Explain Why", for the prize Best use of NVIDIA Nemotron.
-The evidence is the committed traces in `data/replays/`, the case audit in `docs/SCORED_RUN_AUDIT.md`, and `scripts/verify_nemotron_evidence.py` (open pull request #57; that script is not on this branch). Check a recorded trace with `scripts/verify_trace.py --require-nemotron`.
+The evidence is the committed traces in `data/replays/`, the case audit in `docs/SCORED_RUN_AUDIT.md`, and `scripts/verify_nemotron_evidence.py` (offline checker, added in pull request #57). Check a recorded trace with `scripts/verify_trace.py --require-nemotron`.
 The scored v3 set is a regression and audit set: 16 cases, 10 agree, 5 must-reject, 4 false passes. The traces are what make that audit possible. It is not an accuracy benchmark.
 Read each model line as Requested, Served, and Policy. Say Ultra only when Served is `nvidia/nemotron-3-ultra-550b-a55b`. Say nvidia-direct only when the line stores `provider` `nvidia-direct`.
 
@@ -99,7 +99,7 @@ RESULT: PASS
 
 Between `API contract` and `SAMPLE_MODE` the script prints a sample `POST /run` trace. That trace's `run_id` and hashes change on every execution, so they are not a fixed expected output. Exit code 0, last line `RESULT: PASS`.
 
-`scripts/verify_nemotron_evidence.py` is named in the opening as the evidence checker. Open pull request #57 adds it. It is not in this checkout, so this branch does not run it.
+`scripts/verify_nemotron_evidence.py` is named in the opening as the evidence checker. It was added in pull request #57 and is on `main`.
 
 Token-free replay page: `python main.py`, then open `http://127.0.0.1:8000/ui`. The page opens on `selfdb-io-selfdb`. A static copy is published by `.github/workflows/pages.yml` at <https://fu93.github.io/phoenixrepo/> (HTTP 200 on 27 Oct 2026; the HTML contains `selfdb-io-selfdb`, `zetaris-gate1`, and `e3-goodreasonai`). `docker build -t phoenixrepo . && docker run --rm -p 8000:8000 phoenixrepo` serves the same app. `main.py` binds `0.0.0.0` and `$PORT` (default 8000).
 
@@ -338,6 +338,34 @@ H-MEM is this repository's own implementation of the public Meterless spec (`app
 
 ## Limitations
 
+**What the frozen v3 audit establishes.** This is a 16-case regression/audit set,
+not an accuracy benchmark: 10 label agreements and 4 false passes among 5
+must-reject cases. Of its 12 `CANDIDATE`s, 8 have the `must beat ...: did not
+block` reason format, including all 4 false passes. The matching source branch
+changes a model `ALREADY_EXISTS` into `CANDIDATE` when the named alternative
+fails the gate. That explanation is **inferred from the reason format**, not a
+recorded raw model verdict: v3 has no `GATE_DECISION` event. The per-case audit
+finds web rows that could not block, missing named alternatives for Invoice and
+ScrapeServ, and the licence gate for go-file-sync. These are observed evidence
+gaps and inferred paths, not proven counterfactual fixes. See
+[the scored-run audit](docs/SCORED_RUN_AUDIT.md).
+
+- x402-sovereign is an over-refusal involving the docs-shaped
+  `docs.x402.org/dev-tools/facilitators` URL and the first-party-docs shortcut.
+  A docs-shaped URL is one condition of that shortcut, not proof that it solves
+  the candidate's job. The human label points to a different x402 page.
+- stack-file-sync-vscode's agreement is incidental: an alternative-id mismatch
+  (`espenalbert/path-sync` versus a `web:` page id) produced `NEEDS_REVIEW`, which
+  its label accepts. It is not evidence of correct substitute identification.
+- The 10/25 batch has human audit labels but no preserved model trace. It has
+  weaker evidence than v3 and cannot support a traced model comparison.
+- Old v3 observers could attach `MODEL_MISMATCH` after a failed call with an
+  empty served id. Read the failed/rejected calls separately from answers used;
+  this historical flag alone does not show that a non-Nemotron answer informed
+  the verdict. Temperature and thinking mode were not recorded and are not
+  inferred. H-MEM is our implementation of the public Meterless spec; the
+  official conformance suite was not run.
+
 **Known limits of the judge.** Per-item invalid JSON is dropped and the chunk still counts as judged (`app/agents/relevance.py` around 2540, 2842, and 3158). Only error text containing 502, 503, 504, 429, timeout, timed out, or `http 5` leaves the chunk unjudged. A failed verbatim quote is `UNVERIFIED_ALTERNATIVE_QUOTE` and is not unjudged. Unjudged chunks never return `CANDIDATE` (`judge_partial_alternatives`: `ALREADY_EXISTS` if a verified full overlap already blocks, else `NEEDS_REVIEW`). That hold does not cover those two drops. The four scored false passes (Invoice-generator-application, ScrapeServ, raindrop-wordpress-linkblog-sync, go-file-sync) have no invalid-JSON drop and 2, 1, 2, and 0 quote drops. Those events omit overlap, so a verdict change is not established. In each, several verified full-overlap rows did not block. Their `must_beat` lines cite no push or release date and/or `stars=0`; other lines cite a stale push date or only a missing free tier. A reasoning field is present on 0 of 16 scored traces; the recorded check is the verbatim quote. `trace_class` (`RECORDED` or `SAMPLE`) sits in `manifest.json` and `record.json`, outside the JSONL hash. A re-sealed trace verifies unless `--expected-run-hash` is set.
 
 - The v3 table is one labelled audit run. It is not a generalisable accuracy benchmark. There is no held-out set in this repository.
@@ -382,11 +410,54 @@ That skeleton includes the FastAPI process, the Docker image, the evidence graph
 
 ## In review
 
-These pull requests are open. They are not merged, and they are not the behaviour of this branch. Pull request #58 is on `main`.
+The status of proposed changes is listed below. Open proposals are not the
+behaviour of this branch. Pull request #58 is on `main`.
 
 **Pull requests #59, #62, #65, and #66 (not merged).** Each switch is default off. It runs only when set to `1`, `true`, `yes`, `on`, or `enabled`. Unset stays off. None of them are on this branch, and none are part of any number on this page. The names are `PHOENIX_UNKNOWN_BLOCKER_REVIEW` (#59), `PHOENIX_WEB_GITHUB_API_LOOKUP` (#62), `PHOENIX_QUOTE_FAIL_FLAG` (#65), and `PHOENIX_COMMODITY_CATEGORY_RULE` (#66). An offline reading of Rule B on the recorded `must_beat` lines is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). It is not a live run.
 
-**Pull request #57 (not merged).** Adds `scripts/verify_nemotron_evidence.py`. It is not on this branch, so the quickstart does not run it.
+**Pull request #57 (merged).** `scripts/verify_nemotron_evidence.py` is present on
+this branch and recomputes the committed evidence offline. It does not call a model.
+
+### Tonight's disclosure plan; verdicts unchanged
+
+Status snapshot: 27 October 2026, 17:18 UTC. [#67](https://github.com/Fu93/phoenixrepo/pull/67)
+is still open. After it is merged and deployed, new traces can record the raw
+verdict and gate path as `GATE_DECISION`; this does not backfill old v3 traces.
+The event can also be disabled, so its presence must be checked on each new run.
+
+[#59](https://github.com/Fu93/phoenixrepo/pull/59),
+[#62](https://github.com/Fu93/phoenixrepo/pull/62),
+[#65](https://github.com/Fu93/phoenixrepo/pull/65), and
+[#66](https://github.com/Fu93/phoenixrepo/pull/66) remain unmerged proposals with
+default-off switches. They need an unseen labelled set before activation; the
+same 16 cases used to design them cannot establish generalisation. They are
+excluded from tonight's changes and all v3 figures.
+[#63](https://github.com/Fu93/phoenixrepo/pull/63) is deferred tonight. Licence-gate
+widening remains inactive: this checkout has no implemented relaxation switch.
+No `.env`, default, or verdict policy is changed by this disclosure update.
+
+**Cache-only check of the four false passes.** Inspect only a copy in an isolated
+worktree. No model or network fallback is allowed. A unique cache response must
+match the scored call's identity; a similar answer, timestamp, or model id is
+insufficient. Without a verifiable match, the gate-override explanation remains
+**inferred**. The single-repo v3 runner used temporary snapshots and their caches
+were removed on normal completion; surviving caches must not be assumed to be v3.
+
+### Separate post-v3 Zetaris eval16 run
+
+This run uses the same repository names with freshly collected evidence. It is
+separate from frozen v3 and is not a held-out validation set. Its planned finish
+around 17:50 UTC is an estimate, not a completed result. Until all 16 reports have
+stable, sealed traces with matching pinned run hashes and verified Nemotron
+provenance, no final aggregate result is stated here. A completed result belongs
+in this separate section with its own artifacts and hashes; it must not replace
+the v3 10/16 table or its traces.
+
+`python scripts/audit_disclosures.py` recomputes the v3 reason-path disclosures
+offline. Optional `--cache-copy <copy>` inspects copied responses without a client
+call. Optional `--eval16-dir <directory>` checks a read-only snapshot of the new
+run, reporting incomplete artifacts separately and withholding its aggregate
+score until all cases verify.
 
 ## Tests and licence
 
