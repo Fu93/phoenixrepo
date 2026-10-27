@@ -16,6 +16,9 @@ credentials/
 
 .cache/
 data/discovery/_shards/
+data/discovery/20*/
+data/discovery/curated*/
+data/discovery/trial-*/
 
 work/
 reports/
