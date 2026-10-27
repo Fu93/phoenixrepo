@@ -316,6 +316,10 @@ That file has 7 `zetaris_query` events: 1 `preflight` and 6 `ok` (3 per reposito
 
 The 16 scored repositories were fetched live with `evidence_source=csv` on each `DISCOVERY_FILTER` line. They did not go through Zetaris.
 
+### Separate post-v3 Zetaris eval16 run
+
+This is an independent re-run of the 16 labelled cases, with Zetaris `evidence_source` and freshly collected evidence for the same repository names. It is separate from the scored v3 run, which used `evidence_source=csv`. It is not the official v3 record. It is not an accuracy benchmark, and it is not a held-out validation set. The run finished at 18:11 UTC on 27 Oct 2026. This checkout has no committed eval16 traces, pinned run hashes, or aggregate file, so no case results are stated here (see logs). A result recorded later belongs in this section with its own artifacts and hashes. It must not replace the scored v3 table (10 of 16 inside the human label) or its traces.
+
 The earlier Zetaris gate-1 trace judged Invoice `ALREADY_EXISTS` with evidence alternative `al1abb/invoify`. That run's `prior_art` query for Invoice returned 1 row and selected `licence_spdx`, `stars`, and `pushed_at`. The committed `data/real/prior_art.csv` row is MIT, 6376 stars, pushed `2026-08-24T02:55:34Z`. The scored v3 Invoice trace has `prior_rows=0` and does not name that row.
 
 <!-- BEGIN numbers: zetaris-gate1-run -->
