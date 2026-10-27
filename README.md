@@ -191,7 +191,7 @@ A blocker needs a verified verbatim quote plus a mature or official alternative.
 
 Target prize: Best use of NVIDIA Nemotron.
 
-**Eligibility at a glance (rule 15.2).**
+**Eligibility at a glance.** This repository has no rule text numbered 15.2, so the heading does not cite one.
 
 | Requirement | Where it is met |
 | --- | --- |
