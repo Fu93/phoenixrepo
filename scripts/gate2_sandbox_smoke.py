@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.revive_sandbox import DEFAULT_IMAGE, NODE_IMAGE, SANDBOX_LABEL, UNSUPPORTED_GO_MESSAGE, DockerSandboxRunner  # noqa: E402
+from app.revive_sandbox import DEFAULT_IMAGE, NODE_IMAGE, SANDBOX_LABEL, UNSUPPORTED_GO_MESSAGE, DockerSandboxRunner, docker_runtimes  # noqa: E402
 
 PYPI_URL = "https://pypi.org/simple/six/"
 TINY_PACKAGE = "six"  # one pure-python file
@@ -49,6 +49,26 @@ BLOCKED_CODE = (
     "        pass\n"
     "print('REACHABLE:'+','.join(bad) if bad else 'BLOCKED')\n"
 )
+
+
+FORK_PROBE = """import os, signal, time
+kids = []
+for _ in range(1500):
+    try:
+        pid = os.fork()
+    except OSError:
+        break
+    if pid == 0:
+        time.sleep(60)
+        os._exit(0)
+    kids.append(pid)
+print('forked', len(kids))
+for pid in kids:  # clean up here: once the pids limit is hit even `docker exec` cannot start another process
+    os.kill(pid, signal.SIGKILL)
+for pid in kids:
+    os.waitpid(pid, 0)
+"""
+RAW_SOCKET_PROBE = "import socket\ntry:\n    socket.socket(socket.AF_INET, socket.SOCK_RAW, 1)\n    print('RAW_OK')\nexcept OSError as e:\n    print('RAW_DENIED', e.errno)\n"
 
 
 @dataclass
@@ -85,6 +105,8 @@ def make_fixture(parent: Path) -> Path:
     repo = parent / "fixture_repo"
     repo.mkdir(parents=True)
     (repo / "requirements.txt").write_text("# no dependencies; pytest is installed by the smoke test\n", encoding="utf-8")
+    (repo / "forkprobe.py").write_text(FORK_PROBE, encoding="utf-8")
+    (repo / "rawsock.py").write_text(RAW_SOCKET_PROBE, encoding="utf-8")
     (repo / "calc.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
     (repo / "test_calc.py").write_text(
         "from calc import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n\n\ndef test_broken():\n    assert add(1, 1) == 3\n",
@@ -161,6 +183,50 @@ def run_smoke(image: str = DEFAULT_IMAGE, node_image: str = NODE_IMAGE) -> list[
 
             priv = sh("grep -E '^(CapEff|NoNewPrivs):' /proc/self/status; test ! -e /var/run/docker.sock && echo NO_DOCKER_SOCK")
             add("no_capabilities_no_new_privs_no_docker_sock", priv.ok and "CapEff:\t0000000000000000" in priv.output and "NoNewPrivs:\t1" in priv.output and "NO_DOCKER_SOCK" in priv.output, priv.output)
+
+            # --- measurable hardening -----------------------------------------------------------
+            hard = sh("grep -E '^Seccomp:' /proc/self/status; ulimit -n; ulimit -c; mount -t tmpfs none /mnt 2>&1; echo mount_exit=$?; unshare -Ur true 2>&1; echo unshare_exit=$?; python rawsock.py")
+            out = hard.output
+            add("seccomp_filter_active", "Seccomp:\t2" in out, out.splitlines()[0] if out else "")
+            lines = out.splitlines()
+            add("ulimits_nofile_4096_core_0", len(lines) > 2 and lines[1].strip() == "4096" and lines[2].strip() == "0", f"nofile={lines[1] if len(lines) > 1 else '?'} core={lines[2] if len(lines) > 2 else '?'}")
+            add("mount_and_user_namespace_denied", "mount_exit=0" not in out and "unshare_exit=0" not in out and "mount_exit=" in out and "unshare_exit=" in out, " | ".join(x for x in lines if "exit=" in x or "denied" in x.lower() or "permitted" in x.lower())[:300])
+            add("raw_socket_denied", "RAW_DENIED" in out and "RAW_OK" not in out, next((x for x in lines if x.startswith("RAW_")), "no result"))
+            cg = sh("cat /sys/fs/cgroup/memory.max /sys/fs/cgroup/pids.max /sys/fs/cgroup/cpu.max 2>&1")
+            add("cgroup_limits_memory_pids_cpu", cg.ok and cg.output.split("\n")[:3] == ["2147483648", "512", "200000 100000"], cg.output.strip()[:200])
+            fork = sh("python forkprobe.py", timeout=60)
+            forked = int(fork.output.split()[1]) if fork.output.strip().startswith("forked") else -1
+            add("pids_limit_stops_fork_bomb", 100 < forked < 512, f"forked {forked} children before the limit; {fork.output.strip()[:120]}")
+            insp = _docker("inspect", "-f", "{{json .HostConfig}}", runner.name)
+            try:
+                hc = json.loads(insp.stdout)
+            except ValueError:
+                hc = {}
+            mounts = _docker("inspect", "-f", "{{json .Mounts}}", runner.name)
+            try:
+                mlist = json.loads(mounts.stdout)
+            except ValueError:
+                mlist = []
+            sources = sorted((m.get("Destination"), m.get("RW"), m.get("Type")) for m in mlist)
+            tmpfs_dirs = sorted((hc.get("Tmpfs") or {}))
+            cfg_ok = (
+                hc.get("Privileged") is False
+                and hc.get("ReadonlyRootfs") is True
+                and hc.get("NetworkMode") != "host"
+                and hc.get("CapDrop") == ["ALL"]
+                and "no-new-privileges" in " ".join(hc.get("SecurityOpt") or [])
+                and not any("seccomp" in x and "unconfined" in x for x in hc.get("SecurityOpt") or [])
+                and hc.get("PidsLimit") == 512
+                and hc.get("Memory") == 2147483648
+                and (hc.get("IpcMode") in ("private", ""))
+                and not hc.get("PidMode")
+                and (hc.get("Runtime") in ("runc", "io.containerd.runc.v2"))
+                and sources == [("/workspace", True, "bind"), ("/workspace/.git", False, "bind")]
+                and tmpfs_dirs == ["/sandbox", "/tmp"]
+            )
+            add("docker_inspect_matches_hardening_config", cfg_ok, f"NetworkMode={hc.get('NetworkMode')} Runtime={hc.get('Runtime')} mounts={sources} tmpfs={tmpfs_dirs}")
+            rts = docker_runtimes()
+            add("gvisor_runsc_available", None if "runsc" not in rts else True, f"runtimes registered: {rts}; " + ("runsc present but not used by default" if "runsc" in rts else "runsc not available: containers use runc, no gVisor claim"))
 
             # --- install phase: network on, pip into the venv ---------------------------------
             net_on = sh(f'python -c "{PROBE_URL_CODE}"', phase="install", timeout=60)

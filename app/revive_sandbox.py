@@ -176,9 +176,15 @@ class DockerSandboxRunner(CommandRunner):
         run_id: str | None = None,
         sandbox_size: str = "1g",
         tmp_size: str = "256m",
+        nofile: int = 4096,
+        runtime: str | None = None,
     ) -> None:
         if not re.fullmatch(r"\d+:\d+", uid_gid) or uid_gid.split(":")[0] == "0":
             raise ValueError(f"uid_gid must be a non-root numeric uid:gid, got {uid_gid!r}")
+        if network_name == "host" or network_name.startswith("container:") or network_name == "none":
+            raise ValueError(f"network_name must be a docker network the container is attached to for install phases, not {network_name!r}")
+        self.nofile = int(nofile)
+        self.runtime = runtime  # e.g. "runsc" (gVisor) if the daemon has it registered. Untested: not available where this was built.
         self.image = image  # None: chosen from the project type on the first command
         self.kind = "unknown"
         self._resolved = False
@@ -239,12 +245,16 @@ class DockerSandboxRunner(CommandRunner):
             "--label", f"{SANDBOX_LABEL}=1",
             "--user", self.uid_gid,
             "--network", self.network_name,
+            *(["--runtime", self.runtime] if self.runtime else []),
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
             "--pids-limit", str(self.pids_limit),
             f"--memory={self.memory_limit}",
             f"--memory-swap={self.memory_limit}",
             f"--cpus={self.cpus}",
+            "--ulimit", f"nofile={self.nofile}:{self.nofile}",
+            "--ulimit", "core=0",
+            "--ipc", "private",
             "--read-only",
             "--tmpfs", f"/tmp:rw,noexec,nosuid,nodev,size={self.tmp_size}",
             "--tmpfs", f"{SANDBOX_DIR}:rw,exec,nosuid,nodev,size={self.sandbox_size},uid={uid},gid={gid},mode=0700",
@@ -467,6 +477,15 @@ class DockerSandboxRunner(CommandRunner):
                 self.close()
         except Exception:  # noqa: BLE001
             pass
+
+
+def docker_runtimes(docker_bin: str = "docker") -> list[str]:
+    """Runtimes the Docker daemon has registered (`docker info`), e.g. ["runc", "io.containerd.runc.v2"]."""
+    try:
+        done = subprocess.run([docker_bin, "info", "--format", "{{json .Runtimes}}"], capture_output=True, timeout=30, stdin=subprocess.DEVNULL)
+        return sorted(json.loads(done.stdout.decode("utf-8", "replace") or "{}"))
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return []
 
 
 def get_runner(mode: str = "host", image: str | None = None, **kwargs: Any) -> CommandRunner:

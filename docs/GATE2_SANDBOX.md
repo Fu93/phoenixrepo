@@ -38,7 +38,17 @@ python -m pytest -m docker                             # real-Docker tests (skip
   A directory outside the clone (the verifier re-runs checks in temporary copies) is copied into the container's
   tmpfs with `tar` as the non-root user, run there, and deleted.
 - **Hardening flags.** `--user 1000:1000` (root is refused), `--cap-drop ALL`, `--security-opt no-new-privileges`,
-  `--pids-limit 512`, `--memory 2g` (swap off), `--cpus 2`, a PID 1 that reaps orphans.
+  Docker's default seccomp profile (not overridden), `--pids-limit 512`, `--memory 2g` (swap off), `--cpus 2`,
+  `--ulimit nofile=4096:4096 --ulimit core=0`, `--ipc private`, read-only root, no `--privileged`, never the host
+  network (`network_name` of `host`, `none` or `container:*` is refused), a PID 1 that reaps orphans.
+  The smoke test measures these from inside and with `docker inspect`: seccomp mode 2, `ulimit -n/-c`,
+  `mount` and `unshare -Ur` denied, raw sockets denied, cgroup `memory.max`/`pids.max`/`cpu.max`, a fork loop
+  stopped at 508 processes, and the container's HostConfig and mount list. Once the pids limit is hit even
+  `docker exec` cannot start a process; the timeout path then removes and re-creates the container.
+- **gVisor (runsc): not available here, not used, not claimed.** `docker info` on this Docker Desktop lists the
+  runtimes `runc`, `io.containerd.runc.v2` and `nvidia`; there is no `runsc`. The smoke test reports
+  `gvisor_runsc_available` as SKIP. `DockerSandboxRunner(runtime=...)` passes `--runtime` through when asked; it has
+  never been exercised with a real alternative runtime.
 - **Explicit network phases.** The caller passes `phase=`. Only `install` (the loop's `_install`, and the `npm
   install --no-save` repair in `ensure_env`) gets a network. Before each command the runner attaches the container
   to `bridge` (install) or runs `docker network disconnect` (every other phase, and any unknown or missing phase).
@@ -59,7 +69,12 @@ python -m pytest -m docker                             # real-Docker tests (skip
 
 - **It is not a proven security boundary.** It is a set of standard Docker hardening flags. A kernel, runtime or
   Docker Desktop VM escape defeats it, and nobody has audited it.
-- **Docker Desktop and its VM are trusted.** So is the host's Docker daemon and whoever can talk to it.
+- **Docker Desktop and its VM are trusted.** What still depends on them:
+  the Linux kernel in the Docker Desktop VM, which every container shares (a kernel bug defeats seccomp, caps and
+  namespaces); runc and containerd; the Docker daemon and whoever can talk to it; the file-sharing layer that
+  implements the bind mount of the clone (it decides ownership, permissions and what the read-only `.git` mount
+  really enforces); the images, pulled by tag (`python:3.12-slim`, `node:22-slim`) and not pinned by digest, from
+  Docker Hub; and the host-side Python that builds the commands. Using `image=` with a digest pins an image.
 - **The clone is writable.** Candidate code can modify, delete or plant anything in the working tree (only `.git` is
   read-only). The loop snapshots and restores the tree, but that is a check, not a barrier.
   If the candidate repository itself contains a `.env`, it is visible inside the container, because it is part of

@@ -97,6 +97,9 @@ def test_container_is_persistent_locked_down_and_mounts_only_the_clone(tmp_path:
     assert args[args.index("--cap-drop") + 1] == "ALL"
     assert args[args.index("--security-opt") + 1] == "no-new-privileges"
     assert "--pids-limit" in args and "--read-only" in args
+    assert "nofile=4096:4096" in args and "core=0" in args and args[args.index("--ipc") + 1] == "private"
+    assert "--privileged" not in args and "--runtime" not in args and "seccomp=unconfined" not in " ".join(args)
+    assert args[args.index("--network") + 1] == "bridge" and "host" not in args
     assert "--memory=2g" in args and "--cpus=2" in args and "--memory-swap=2g" in args
     assert args[args.index("-w") + 1] == "/workspace"
     assert args[-4:] == ["python:3.12-slim", "sh", "-c", "while :; do wait; sleep 1; done"]
@@ -126,6 +129,17 @@ def test_container_is_persistent_locked_down_and_mounts_only_the_clone(tmp_path:
     assert env["PATH"].startswith("/sandbox/venv/bin:")
     assert "FAKE_API_KEY" not in env and "FAKE_HOST_VALUE" not in env and "FAKE_API_KEY" not in joined
     assert not (set(env) & {"USERNAME", "USERPROFILE", "SystemRoot", "GITHUB_TOKEN", "OPENAI_API_KEY"})
+
+
+@pytest.mark.parametrize("network", ["host", "none", "container:abc"])
+def test_host_none_and_shared_networks_are_refused(network: str) -> None:
+    with pytest.raises(ValueError, match="network_name"):
+        DockerSandboxRunner(network_name=network, dry_run=True)
+
+
+def test_optional_runtime_is_passed_through_only_when_asked(tmp_path: Path) -> None:
+    args = DockerSandboxRunner(runtime="runsc", dry_run=True).build_run_args(tmp_path)
+    assert args[args.index("--runtime") + 1] == "runsc"
 
 
 def test_git_mount_is_omitted_when_there_is_no_git_dir(tmp_path: Path) -> None:

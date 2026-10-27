@@ -14,6 +14,13 @@ pytestmark = pytest.mark.docker
 
 # Everything that does not need the internet must pass whenever Docker works.
 OFFLINE_CHECKS = {
+    "seccomp_filter_active",
+    "ulimits_nofile_4096_core_0",
+    "mount_and_user_namespace_denied",
+    "raw_socket_denied",
+    "cgroup_limits_memory_pids_cpu",
+    "pids_limit_stops_fork_bomb",
+    "docker_inspect_matches_hardening_config",
     "python_image_auto_selected",
     "node_image_auto_selected_non_root",
     "node_git_dir_read_only",
