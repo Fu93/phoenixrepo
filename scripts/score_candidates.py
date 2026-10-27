@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.adapters.zetaris_evidence import ZetarisPreflightError, load_zetaris_cohort, resolve_evidence_source  # noqa: E402
+from app.agents import gate1_flag  # noqa: E402
 from app.agents.equivalence import evidence_from_rows  # noqa: E402
 from app.agents.market_filter import (  # noqa: E402
     is_boilerplate,
@@ -1046,6 +1047,7 @@ def _do_score_candidates(
         rescue_by_repo[repo_id] = rescue
         must_beat = []
         judgement_evidence = []
+        unknown_blocker = None
         trace.event(
             agent_name="orchestrator",
             action="RESCUE_POTENTIAL",
@@ -1154,10 +1156,13 @@ def _do_score_candidates(
                             toolbox=toolbox,
                             language=candidate.get("primary_language"),
                         )
-                        search_results.extend(broader_results)
-                        search_results.own_filtered = list(getattr(search_results, "own_filtered", []) or []) + list(
-                            getattr(broader_results, "own_filtered", []) or []
-                        )
+                        if gate1_flag.enabled():
+                            search_results.merge_retry(broader_results)
+                        else:
+                            search_results.extend(broader_results)
+                            search_results.own_filtered = list(getattr(search_results, "own_filtered", []) or []) + list(
+                                getattr(broader_results, "own_filtered", []) or []
+                            )
                         trace.event(
                             agent_name="orchestrator",
                             action="PRIOR_ART_SEARCH",
@@ -1217,11 +1222,16 @@ def _do_score_candidates(
                         trace=trace,
                         candidate=candidate,
                     )
-                    trace.event(
-                        agent_name="orchestrator",
-                        action="ALTERNATIVES_VERIFIED",
-                        input_summary={"repo_id": repo_id, "searched": len(search_results)},
-                        output_summary={
+                    if gate1_flag.enabled():
+                        # Save facts AFTER hydration. The prior trace recorded only the
+                        # classifier's reduced row, so the actual A-E inputs were lost.
+                        if facts_client is not None and problem_alternatives:
+                            problem_alternatives = [facts_client.fetch_alternative(r) for r in problem_alternatives]
+                        from app.agents.alternative_evidence import trace_alternatives
+
+                        alternatives_payload, alternatives_limit = trace_alternatives(problem_alternatives or [])
+                    else:
+                        alternatives_payload = {
                             "alternatives": [
                                 {
                                     "alternative_id": r.get("alternative_id"),
@@ -1233,13 +1243,20 @@ def _do_score_candidates(
                                 }
                                 for r in (problem_alternatives or [])
                             ]
-                        },
+                        }
+                        alternatives_limit = EVIDENCE_SUMMARY_LIMIT
+
+                    trace.event(
+                        agent_name="orchestrator",
+                        action="ALTERNATIVES_VERIFIED",
+                        input_summary={"repo_id": repo_id, "searched": len(search_results)},
+                        output_summary=alternatives_payload,
                         status="ok",
-                        summary_limit=EVIDENCE_SUMMARY_LIMIT,
+                        summary_limit=alternatives_limit,
                     )
 
                     # Combined union of prior_art.csv rows and problem_alternatives
-                    if facts_client is not None and problem_alternatives:
+                    if not gate1_flag.enabled() and facts_client is not None and problem_alternatives:
                         problem_alternatives = [facts_client.fetch_alternative(r) for r in problem_alternatives]
                     combined_priors = []
                     seen_alts = set()
@@ -1258,10 +1275,12 @@ def _do_score_candidates(
                         source_status=getattr(search_results, "source_status", None),
                         source_counts=getattr(search_results, "source_counts", None),
                         insufficient_coverage=getattr(search_results, "insufficient_coverage", False),
+                        **({"trace": trace} if gate1_flag.trace_passthrough_enabled() else {}),
                     )
                     verdict, reason = judged
                     judgement_evidence = list(getattr(judged, "evidence", []) or [])
                     must_beat = list(getattr(judged, "must_beat", []) or [])
+                    unknown_blocker = getattr(judged, "unknown_blocker", None) or None
                 except InfraFallbackStop as exc:
                     judged = verdict_for_infra_stop(candidate, exc, facts_client)
                     verdict, reason = judged
@@ -1294,11 +1313,13 @@ def _do_score_candidates(
                 prior_for_repo = combined_priors
         else:
             judged = judge_discovery(
-                candidate, prior_for_repo, demand_for_repo, client=relevance_client
+                candidate, prior_for_repo, demand_for_repo, client=relevance_client,
+                **({"trace": trace} if gate1_flag.trace_passthrough_enabled() else {}),
             )
             verdict, reason = judged
             judgement_evidence = list(getattr(judged, "evidence", []) or [])
             must_beat = list(getattr(judged, "must_beat", []) or [])
+            unknown_blocker = getattr(judged, "unknown_blocker", None) or None
 
         if verdict == "CANDIDATE" and len(prior_for_repo) == 0:
             verdict = "NEEDS_PRIOR_ART"
@@ -1315,7 +1336,12 @@ def _do_score_candidates(
             action="DISCOVERY_FILTER",
             input_summary={"repo_id": repo_id},
             output_summary=_discovery_output(
-                verdict, reason, evidence_mode, evidence=judgement_evidence, must_beat=must_beat
+                verdict,
+                reason,
+                evidence_mode,
+                evidence=judgement_evidence,
+                must_beat=must_beat,
+                unknown_blocker=unknown_blocker,
             ),
             status="ok",
             summary_limit=EVIDENCE_SUMMARY_LIMIT,
@@ -1910,12 +1936,15 @@ def _discovery_output(
     evidence_mode: str,
     evidence: list[dict[str, Any]] | None = None,
     must_beat: list[dict[str, Any]] | None = None,
+    unknown_blocker: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"verdict": verdict, "reason": reason, "evidence_source": evidence_mode}
     if evidence is not None:
         payload["evidence"] = evidence
     if must_beat is not None:
         payload["must_beat"] = must_beat
+    if unknown_blocker:
+        payload["unknown_blocker"] = unknown_blocker
     return payload
 
 

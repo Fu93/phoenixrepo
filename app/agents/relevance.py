@@ -24,7 +24,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -32,6 +32,7 @@ import httpx
 
 from app.errors import InvestigationError
 from app.prompts import load_prompt
+from app.agents import gate1_flag
 from app.trace_log import inference_settings_sha256, kept_request_settings, request_settings_sha256
 from config.settings import DEFAULT_NIGHTSHIFT_MODEL, model_mismatch
 
@@ -1669,11 +1670,115 @@ def broaden_queries(queries: list[str], category: str = "", candidate_repo_id: s
     return dedup_broader
 
 
+# Rule B safety hold. Opt-in. Unset leaves every verdict as it was before this change.
+# Set PHOENIX_UNKNOWN_BLOCKER_REVIEW to 1, true, yes, on, or enabled to hold a CANDIDATE
+# when a full-overlap non-forge web alternative has only unknown blocker facts.
+# This is an unvalidated post-v3 change. It is not in any reported number.
+PHOENIX_UNKNOWN_BLOCKER_REVIEW = "PHOENIX_UNKNOWN_BLOCKER_REVIEW"
+_UNKNOWN_BLOCKER_REVIEW_ON = frozenset({"1", "true", "yes", "on", "enabled"})
+_UNKNOWN_FIELD_ORDER = ("push/release date", "host fetch", "stars", "licence/free tier")
+
+
+def unknown_blocker_review_enabled() -> bool:
+    """True only when ``PHOENIX_UNKNOWN_BLOCKER_REVIEW`` is an explicit truthy value.
+
+    Unset, blank, and every other string leave the pre-change verdicts in place.
+    """
+    raw = os.environ.get(PHOENIX_UNKNOWN_BLOCKER_REVIEW)
+    if raw is None or not str(raw).strip():
+        return False
+    return str(raw).strip().lower() in _UNKNOWN_BLOCKER_REVIEW_ON
+
+
+def _ordered_unknown_fields(fields: list[str]) -> list[str]:
+    ordered = [name for name in _UNKNOWN_FIELD_ORDER if name in fields]
+    ordered.extend(name for name in fields if name not in ordered)
+    return ordered
+
+
+def _alternative_quote_verified(row: dict[str, Any]) -> bool:
+    """A quote the row already marked verified, or one found in the row's own text."""
+    if row.get("quote_verified") is False:
+        return False
+    quotes = [str(quote).strip() for quote in (row.get("quotes") or []) if str(quote).strip()]
+    if not quotes and str(row.get("quote") or "").strip():
+        quotes = [str(row.get("quote")).strip()]
+    if not quotes:
+        return False
+    if row.get("quote_verified") is True:
+        return True
+    text = " ".join(
+        str(row.get(key) or "")
+        for key in ("excerpt", "description", "text", "readme", "title", "name", "product")
+    )
+    return bool(text.strip()) and all(quote_in_text(quote, text) for quote in quotes)
+
+
+def _unknown_blocker_review(
+    candidate: dict[str, Any],
+    rows: list[dict[str, Any]],
+    trace: Any | None,
+    *,
+    as_of: date | None = None,
+) -> dict[str, Any] | None:
+    """Rule B. The first full-overlap web row that has only unknown blocker facts.
+
+    A proven non-match on that row, a known maintenance date, a forge repository page,
+    or a missing quote leaves the verdict alone. Never returns NEEDS_PRIOR_ART.
+    """
+    if not unknown_blocker_review_enabled():
+        return None
+    from app.agents.blocker import evaluate_blocker, non_forge_web_page
+    from app.agents.package_identity import own_distribution_package
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("same_problem") is not True or str(row.get("overlap") or "").strip().lower() != "full":
+            continue
+        if not non_forge_web_page(row) or not _alternative_quote_verified(row):
+            continue
+        own_package = own_distribution_package(candidate, row)
+        if own_package is not None:
+            if trace is not None:
+                trace.event(agent_name="orchestrator", action="RULE_B_OWN_PACKAGE",
+                            input_summary={"repo_id": candidate.get("repo_id")}, output_summary=own_package, status="ok")
+            continue
+        decision = evaluate_blocker(candidate, row, as_of=as_of or date.today())
+        if decision.get("blocks") or decision.get("proven_reasons"):
+            continue
+        if not decision.get("maintenance_date_unknown"):
+            continue
+        fields = _ordered_unknown_fields(list(decision.get("unknown_reasons") or []))
+        if not fields:
+            continue
+        alt = str(row.get("alternative_id") or row.get("url") or "").strip()
+        reason = f"UNKNOWN_BLOCKER_FACTS: {alt} full overlap, {', '.join(fields)} not established"
+        record = {
+            "fired": True,
+            "rule": "UNKNOWN_BLOCKER_FACTS",
+            "switch": PHOENIX_UNKNOWN_BLOCKER_REVIEW,
+            "alternative": alt,
+            "fields": fields,
+        }
+        if trace is not None:
+            trace.event(
+                agent_name="orchestrator",
+                action="UNKNOWN_BLOCKER_FACTS",
+                input_summary={"rule": PHOENIX_UNKNOWN_BLOCKER_REVIEW, "alternative": alt},
+                output_summary=record,
+                status="ok",
+            )
+        return {"reason": reason, "row": row, "record": record}
+    return None
+
+
 class DiscoveryDecision(tuple):
     """`(verdict, reason)` plus the alternatives that decided an ALREADY_EXISTS or NEEDS_REVIEW.
 
     Callers unpack two strings. `evidence` is the list a report shows: alternative name,
-    overlap, the quote that was checked, and the reason.
+    overlap, the quote that was checked, and the reason. `unknown_blocker` is set when
+    Rule B held a CANDIDATE for a human because blocker facts were not established.
     """
 
     def __new__(
@@ -1682,10 +1787,12 @@ class DiscoveryDecision(tuple):
         reason: str,
         evidence: list[dict[str, str]] | None = None,
         must_beat: list[dict[str, str]] | None = None,
+        unknown_blocker: dict[str, Any] | None = None,
     ):
         self = super().__new__(cls, (verdict, reason))
         self.evidence = list(evidence or [])
         self.must_beat = list(must_beat or [])
+        self.unknown_blocker = dict(unknown_blocker) if unknown_blocker else None
         return self
 
 
@@ -1743,17 +1850,22 @@ def _alt_identity(row: dict[str, Any] | None) -> dict[str, str]:
 
 def _named_alternative(name: str | None, rows: list[dict[str, Any]]) -> dict[str, str]:
     named = " ".join(str(name or "").split())
-    match = None
-    if named:
-        folded = named.casefold()
-        for row in rows:
-            ident = str(row.get("alternative_id") or "").strip()
-            url = str(row.get("url") or "").strip()
-            title = str(row.get("title") or row.get("name") or "").strip()
-            short = ident.split("/")[-1] if "/" in ident and ":" not in ident else ident
-            if folded and folded in {ident.casefold(), url.casefold(), title.casefold(), short.casefold()}:
-                match = row
-                break
+    if gate1_flag.enabled():
+        from app.agents.alternative_evidence import match_alternative
+
+        match = match_alternative(named, rows)
+    else:
+        match = None
+        if named:
+            folded = named.casefold()
+            for row in rows:
+                ident = str(row.get("alternative_id") or "").strip()
+                url = str(row.get("url") or "").strip()
+                title = str(row.get("title") or row.get("name") or "").strip()
+                short = ident.split("/")[-1] if "/" in ident and ":" not in ident else ident
+                if folded and folded in {ident.casefold(), url.casefold(), title.casefold(), short.casefold()}:
+                    match = row
+                    break
     if match is not None:
         return _alt_identity(match)
     if named.startswith("http://") or named.startswith("https://"):
@@ -1773,11 +1885,13 @@ def _emit_gate_decision(
     path_label: str,
     final_verdict: str,
     coverage_override: bool,
+    trace: Any | None = None,
 ) -> None:
     """One hash-chained line. It does not choose the verdict."""
     if not gate_decision_tracing_enabled():
         return
-    trace = getattr(client, "trace", None)
+    if trace is None:
+        trace = getattr(client, "trace", None)
     if trace is None:
         return
     if shortcut == "own-identity":
@@ -1816,6 +1930,9 @@ def _emit_gate_decision(
         "path": path_label,
         "coverage_override": bool(coverage_override),
     }
+    for key in ("substitution_status", "facts_sha256"):
+        if (gate_row or {}).get(key) is not None:
+            payload[key] = gate_row[key]
     trace.event(
         agent_name="orchestrator",
         action="GATE_DECISION",
@@ -1835,6 +1952,7 @@ def judge_discovery(
     source_status: dict[str, str] | None = None,
     source_counts: dict[str, int] | None = None,
     insufficient_coverage: bool = False,
+    trace: Any | None = None,
 ) -> tuple[str, str]:
     """Judge whether candidate is CANDIDATE, ALREADY_EXISTS, or NO_GO using LLM with deterministic quote verification.
 
@@ -1845,8 +1963,17 @@ def judge_discovery(
     Verifies alternative_repo against the union of prior_rows and problem_alternatives.
     Falls back to phrase/keyword decide_discovery when no RelevanceClient is configured.
     Enforces that absence is not evidence: insufficient coverage blocks CANDIDATE verdict.
+    Rule B (``PHOENIX_UNKNOWN_BLOCKER_REVIEW``, default off) holds a CANDIDATE for review
+    when a full-overlap non-forge web alternative has only unknown blocker facts. It applies
+    only when that variable is ``1``, ``true``, ``yes``, ``on``, or ``enabled``. It does
+    not change ALREADY_EXISTS and it does not produce NEEDS_PRIOR_ART.
     """
     from app.agents.market_filter import decide_discovery
+
+    repair = gate1_flag.enabled()
+    if trace is None:
+        # No caller-supplied trace: log to the client's own trace exactly as on main.
+        trace = getattr(client, "trace", None)
 
     # Union of (a) prior_rows and (b) problem_alternatives
     combined_priors: list[dict[str, Any]] = []
@@ -1877,6 +2004,17 @@ def judge_discovery(
 
     identity = build_identity(candidate)
     combined_priors = [row for row in combined_priors if not own_reason(identity, row)]
+
+    from app.agents import substitution
+
+    strict_substitution = substitution.enabled()
+    if strict_substitution:
+        candidate_source = "\n".join(str(candidate.get(k) or "") for k in ("description", "readme_excerpt", "problem_excerpt"))
+        combined_priors = [dict(row) for row in combined_priors]
+        for row in combined_priors:
+            row["substitution_status"] = substitution.assess(row.get("substitution"), candidate_source, substitution.source_text(row), quote_in_text)
+            if row["substitution_status"] == "quoted_mismatch":
+                row["same_job"] = False
 
     # Check multi-source coverage guards
     has_source_error = source_status is not None and any(st == "SOURCE_ERROR" for st in source_status.values())
@@ -1913,6 +2051,9 @@ def judge_discovery(
         r for r in combined_priors
         if r.get("same_problem") is True and str(r.get("overlap") or "") == "full"
     ]
+    # Must-beat copies are appended when the model names a full-overlap row, so Rule B
+    # sees that path as well as the rows collected here.
+    rule_b_rows: list[dict[str, Any]] = list(full_overlap_rows)
     github_partial_rows = [
         r for r in combined_priors
         if not _is_web_row(r) and r.get("same_problem") is True and str(r.get("overlap") or "") == "partial"
@@ -1923,6 +2064,22 @@ def judge_discovery(
     if not is_client_configured(client):
         verdict, reason = decide_discovery(candidate, combined_priors, demand_rows)
         clean_reason = reason.replace("Method: phrase/keyword.", "").rstrip().rstrip(".")
+        if strict_substitution and verdict in {"CANDIDATE", "ALREADY_EXISTS"}:
+            # No semantic comparison was made by a model on this fallback path.
+            return DiscoveryDecision("NEEDS_REVIEW", "SUBSTITUTION_UNVERIFIED: phrase/keyword fallback cannot establish the strict contract")
+        if verdict == "CANDIDATE":
+            hit = _unknown_blocker_review(candidate, combined_priors, trace)
+            if hit is not None:
+                verdict = "NEEDS_REVIEW"
+                clean_reason = hit["reason"]
+                picked_fallback = [{**hit["row"], "overlap": "full", "reason": clean_reason}]
+                return DiscoveryDecision(
+                    verdict,
+                    f"{clean_reason}. Method: phrase/keyword (fallback).",
+                    _evidence_rows(picked_fallback),
+                    [],
+                    hit["record"],
+                )
         return verdict, f"{clean_reason}. Method: phrase/keyword (fallback)."
 
     if client is None:
@@ -2008,14 +2165,23 @@ def judge_discovery(
         }
 
     blocking_full: list[dict[str, Any]] = []
+    unverified_full: list[dict[str, Any]] = []
     full_gate: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for row in full_overlap_rows:
         decision = _blocker(row)
         full_gate.append((row, decision))
-        if decision["blocks"]:
+        # Recheck against the collected context. A caller-supplied quote_verified
+        # boolean alone must not let a fabricated quote overrule the model.
+        valid_quotes = True
+        if repair:
+            row_text = " ".join(str(row.get(key) or "") for key in ("excerpt", "description", "text", "readme"))
+            valid_quotes = bool(row.get("quotes")) and all(str(q).strip() and quote_in_text(str(q), row_text) for q in row.get("quotes") or [])
+        if decision["blocks"] and valid_quotes:
             blocking_full.append(row)
         else:
             must_beat.append(_must(row, decision))
+            if decision["blocks"] and not valid_quotes:
+                unverified_full.append(row)
 
     # Observational only. These names are written to GATE_DECISION. They are not read
     # by the verdict branches below.
@@ -2112,23 +2278,28 @@ def judge_discovery(
         gate_shortcut = "own-identity"
     elif raw_verdict == "ALREADY_EXISTS":
         # Check alternative repo matches one in combined_priors
-        matched_row = None
-        if alt_repo:
-            for r in combined_priors:
-                r_id = str(r.get("alternative_id") or "").strip()
-                r_name = r_id.split("/")[-1] if "/" in r_id else r_id
-                r_url = str(r.get("url") or "").strip()
-                r_desc = str(r.get("description") or "").strip()
-                if (
-                    alt_repo.casefold() == r_id.casefold()
-                    or alt_repo.casefold() == r_name.casefold()
-                    or alt_repo.casefold() in r_id.casefold()
-                    or r_id.casefold() in alt_repo.casefold()
-                    or (r_url and alt_repo.casefold() in r_url.casefold())
-                    or (r_desc and alt_repo.casefold() in r_desc.casefold())
-                ):
-                    matched_row = r
-                    break
+        if repair:
+            from app.agents.alternative_evidence import match_alternative
+
+            matched_row = match_alternative(alt_repo, combined_priors)
+        else:
+            matched_row = None
+            if alt_repo:
+                for r in combined_priors:
+                    r_id = str(r.get("alternative_id") or "").strip()
+                    r_name = r_id.split("/")[-1] if "/" in r_id else r_id
+                    r_url = str(r.get("url") or "").strip()
+                    r_desc = str(r.get("description") or "").strip()
+                    if (
+                        alt_repo.casefold() == r_id.casefold()
+                        or alt_repo.casefold() == r_name.casefold()
+                        or alt_repo.casefold() in r_id.casefold()
+                        or r_id.casefold() in alt_repo.casefold()
+                        or (r_url and alt_repo.casefold() in r_url.casefold())
+                        or (r_desc and alt_repo.casefold() in r_desc.casefold())
+                    ):
+                        matched_row = r
+                        break
         if matched_row is None:
             verdict = "NEEDS_REVIEW"
             reason = f"unverified LLM quote: alternative_repo '{alt_repo}' not found in candidate prior-art"
@@ -2183,6 +2354,7 @@ def judge_discovery(
                     gate_row = m
                     gate_decision = _stored(m)
                 else:
+                    rule_b_rows.append(named)
                     must_beat.append(_must(named, decision))
                     why = "did not block: " + "; ".join(decision.get("reasons") or [])
                     if problem_quote and quote_in_text(problem_quote, cand_text):
@@ -2244,13 +2416,42 @@ def judge_discovery(
         picked = []
         coverage_override = True
 
+    uncertain_substitution = [row for row in full_overlap_rows if row.get("substitution_status") == "unverified"] if strict_substitution else []
+    missing_facts = [row for row, outcome in full_gate if row.get("fetch_status") == "source_error" and not outcome.get("proven_reasons")] if repair else []
+    if verdict == "CANDIDATE" and (unverified_full or uncertain_substitution or missing_facts):
+        gate_row = (unverified_full or uncertain_substitution or missing_facts)[0]
+        verdict = "NEEDS_REVIEW"
+        path_label = "UNVERIFIED_BLOCKER_QUOTE" if unverified_full else "SUBSTITUTION_UNVERIFIED" if uncertain_substitution else "ALTERNATIVE_FACTS_UNAVAILABLE"
+        reason = f"{path_label}: a claimed full substitute lacks verified source evidence"
+        picked = [{**gate_row, "reason": reason}]
+        gate_decision = _blocker(gate_row)
+
+    # Rule B, on every remaining CANDIDATE path (own-identity and must-beat included).
+    # A proven non-match keeps CANDIDATE. ALREADY_EXISTS is not rewritten. The verdict
+    # is NEEDS_REVIEW, never NEEDS_PRIOR_ART.
+    unknown_blocker = None
+    if verdict == "CANDIDATE":
+        hit = _unknown_blocker_review(candidate, rule_b_rows, trace)
+        if hit is not None:
+            verdict = "NEEDS_REVIEW"
+            reason = hit["reason"]
+            picked = [{**hit["row"], "overlap": "full", "reason": reason}]
+            unknown_blocker = hit["record"]
+            gate_row = hit["row"]
+            gate_decision = _blocker(gate_row)
+            gate_shortcut = None
+            path_label = "UNKNOWN_BLOCKER_FACTS"
+
     clean_reason = reason.rstrip().rstrip(".")
     labeled_reason = f"{clean_reason}. Method: llm+verified quote (requested={req_m}, served={srv_m})."
     show = _evidence_rows(picked) if verdict in {"ALREADY_EXISTS", "NEEDS_REVIEW"} else []
-    blocked_names = {
-        str(p.get("alternative_id") or p.get("alternative") or p.get("url") or "").casefold()
-        for p in picked
-    }
+    # Rule B did not block the row. Keep it on must_beat as well as in the review evidence.
+    blocked_names: set[str] = set()
+    if not unknown_blocker:
+        blocked_names = {
+            str(p.get("alternative_id") or p.get("alternative") or p.get("url") or "").casefold()
+            for p in picked
+        }
     deduped: list[dict[str, str]] = []
     seen_beat: set[str] = set()
     for item in must_beat:
@@ -2271,8 +2472,9 @@ def judge_discovery(
         path_label,
         verdict,
         coverage_override,
+        trace=trace,
     )
-    return DiscoveryDecision(verdict, labeled_reason, show, deduped)
+    return DiscoveryDecision(verdict, labeled_reason, show, deduped, unknown_blocker)
 
 
 def extract_problem_statement(
@@ -2375,6 +2577,28 @@ class SearchResultsList(list):
         self.source_counts: dict[str, int] = source_counts or {}
         self.source_status: dict[str, str] = source_status or {}
         self.insufficient_coverage: bool = insufficient_coverage
+
+    def merge_retry(self, retry: SearchResultsList) -> None:
+        """Merge rows AND coverage; a failed or truncated search stays visible."""
+        seen = {str(row.get("alternative_id") or row.get("url") or "").casefold() for row in self}
+        for row in retry:
+            key = str(row.get("alternative_id") or row.get("url") or "").casefold()
+            if key and key not in seen:
+                self.append(row)
+                seen.add(key)
+        rank = {"ok": 0, "SOURCE_ERROR": 1, "BUDGET_EXHAUSTED": 2}
+        for src, status in retry.source_status.items():
+            old = self.source_status.get(src)
+            if old is None or rank.get(status, 3) > rank.get(old, 3):
+                self.source_status[src] = status
+        self.source_counts = {src: 0 for src in set(self.source_counts) | set(retry.source_counts)}
+        for row in self:
+            src = str(row.get("source") or "")
+            self.source_counts[src] = self.source_counts.get(src, 0) + 1
+        self.own_filtered = list(getattr(self, "own_filtered", []) or []) + list(getattr(retry, "own_filtered", []) or [])
+        self.searched_queries = getattr(self, "searched_queries", 0) + getattr(retry, "searched_queries", 0)
+        self.planned_queries = getattr(self, "planned_queries", 0) + getattr(retry, "planned_queries", 0)
+        self.insufficient_coverage = not self or any(st != "ok" for st in self.source_status.values()) or (len(self.source_status) >= 2 and sum(st == "ok" for st in self.source_status.values()) < 2)
 
 
 def search_prior_art(
@@ -2501,8 +2725,9 @@ def search_prior_art(
                         "description": str(it.get("description") or "").strip(),
                         "readme": str(it.get("readme") or ""),
                         "licence_spdx": spdx,
-                        "stars": it.get("stargazers_count", 0),
+                        "stars": it.get("stargazers_count") if gate1_flag.enabled() else it.get("stargazers_count", 0),
                         "pushed_at": str(it.get("pushed_at") or ""),
+                        **({"archived": it.get("archived") if type(it.get("archived")) is bool else None} if gate1_flag.enabled() else {}),
                         "source": "github",
                         "query": q,
                         "fork": is_fork,
@@ -2573,6 +2798,7 @@ def search_prior_art(
                     web_row = {
                         "alternative_id": f"web:{url}",
                         "url": url,
+                        **({"title": title} if gate1_flag.enabled() else {}),
                         "description": f"{title} - {snippet}" if title and snippet else (title or snippet),
                         "readme": snippet,
                     }
@@ -2584,6 +2810,7 @@ def search_prior_art(
                     bucket.append((url_lower, {
                         "alternative_id": f"web:{url}",
                         "url": url,
+                        **({"title": title} if gate1_flag.enabled() else {}),
                         "description": desc,
                         "readme": snippet,
                         "licence_spdx": "",
@@ -2639,15 +2866,64 @@ def search_prior_art(
         results.append(row)
         source_counts[row["source"]] = source_counts.get(row["source"], 0) + 1
 
-    # README excerpts for selected GitHub rows only
-    for row in results:
-        if row["source"] != "github" or row["readme"] or toolbox is None:
-            continue
-        if toolbox.budget.is_exhausted() or toolbox.budget.remaining_calls <= 1:
-            break
-        rm_res = toolbox.call("github", {"action": "readme", "repo": row["alternative_id"]})
-        if rm_res.ok and isinstance(rm_res.data, dict):
-            row["readme"] = str(rm_res.data.get("decoded_text") or "")[:2000]
+    if gate1_flag.enabled():
+        # A web search can find the exact repository even when GitHub keyword search
+        # misses it. Bridge only exact forge URLs; never infer a repo from a name or
+        # an arbitrary link in a snippet. Calls share the existing toolbox budget.
+        from app.agents.repo_facts import _api_url, with_host_facts
+
+        github_available = "github" in active_sources
+        enriched = 0
+        if github_available:
+            for row in results:
+                host, api = _api_url(str(row.get("url") or ""))
+                if row["source"] != "web" or host != "github" or not api:
+                    continue
+                if enriched >= 3 or toolbox.budget.is_exhausted() or toolbox.budget.remaining_calls <= 2:
+                    break
+                enriched += 1
+                repo = api.removeprefix("https://api.github.com/repos/")
+                facts = toolbox.call("github", {"action": "repo", "repo": repo})
+                if facts.ok and isinstance(facts.data, dict):
+                    row.update(with_host_facts(row, host, facts.data, api, replace_placeholders=True))
+                else:
+                    row["fetch_status"] = "source_error"
+
+        kept = []
+        for row in results:
+            why = own_reason(identity, row)
+            if why:
+                _own(row, why)
+            else:
+                kept.append(row)
+        results = kept
+        source_counts = {src: 0 for src in source_counts}
+        for row in results:
+            source_counts[row["source"]] += 1
+
+        # README excerpts for selected GitHub repositories, including exact web hits.
+        for row in results:
+            host, api = _api_url(str(row.get("url") or row.get("alternative_id") or ""))
+            web_repo = row["source"] == "web" and host == "github" and api is not None and github_available
+            if (row["source"] != "github" and not web_repo) or (row["readme"] and not web_repo) or toolbox is None:
+                continue
+            if toolbox.budget.is_exhausted() or toolbox.budget.remaining_calls <= 1:
+                break
+            repo = api.removeprefix("https://api.github.com/repos/") if web_repo else row["alternative_id"]
+            rm_res = toolbox.call("github", {"action": "readme", "repo": repo})
+            if rm_res.ok and isinstance(rm_res.data, dict):
+                excerpt = str(rm_res.data.get("decoded_text") or "")[:2000]
+                row["readme"] = "\n".join(p for p in (row["readme"] if web_repo else "", excerpt) if p)
+    else:
+        # README excerpts for selected GitHub rows only
+        for row in results:
+            if row["source"] != "github" or row["readme"] or toolbox is None:
+                continue
+            if toolbox.budget.is_exhausted() or toolbox.budget.remaining_calls <= 1:
+                break
+            rm_res = toolbox.call("github", {"action": "readme", "repo": row["alternative_id"]})
+            if rm_res.ok and isinstance(rm_res.data, dict):
+                row["readme"] = str(rm_res.data.get("decoded_text") or "")[:2000]
 
     # A source that skipped planned queries for lack of budget did not finish its search.
     for src in sorted(truncated):
@@ -2703,11 +2979,15 @@ def judge_alternative_relevance(
         client = RelevanceClient()
 
     prompt_record = load_prompt("relevance_alternative")
+    from app.agents import substitution
+
+    system = prompt_record.text + (substitution.INSTRUCTION if substitution.enabled() else "")
     user_prompt = (
         f"Candidate Problem: {problem_statement.get('problem', '')}\n"
         f"Target User: {problem_statement.get('target_user', '')}\n"
         f"Category: {problem_statement.get('category', '')}\n\n"
-        f"Alternative Repository: {alt_id}\n"
+        + (f"Candidate Source Text:\n{problem_statement.get('candidate_evidence', '')}\n\n" if substitution.enabled() else "")
+        + f"Alternative Repository: {alt_id}\n"
         f"URL: {search_result.get('url', '')}\n"
         f"Description and README Excerpt:\n```\n{result_text}\n```\n\n"
         "Judge whether this alternative solves the same core user problem, the overlap degree (full, partial, none), "
@@ -2716,7 +2996,7 @@ def judge_alternative_relevance(
 
     try:
         text, req_m, srv_m = client.complete(
-            user_prompt, prompt_record.text, repo_id=candidate_repo_id, step="alternative",
+            user_prompt, system, repo_id=candidate_repo_id, step="alternative",
             call_budget_s=call_budget_s,
         )
     except Exception as exc:
@@ -2780,6 +3060,8 @@ def judge_alternative_relevance(
             "served_model": srv_m,
         }
 
+    from app.agents.alternative_evidence import repair_fields
+
     alt_row = {
         "repo_id": candidate_repo_id,
         "alternative_id": alt_id,
@@ -2797,6 +3079,8 @@ def judge_alternative_relevance(
         "quote_verified": True,
         "source": str(search_result.get("source") or ""),
         "archived": search_result.get("archived", False),
+        **repair_fields(search_result, result_text),
+        **substitution.contract_fields(obj, problem_statement, result_text, quote_in_text),
     }
     return alt_row, {
         "same_problem": True,
@@ -2883,6 +3167,7 @@ def _trace_llm(
 
 
 def _batch_prompt(problem_statement: dict[str, Any], items: list[tuple[int, dict[str, Any], str]], max_chars: int) -> str:
+    from app.agents import substitution
     blocks = []
     for i, res, text in items:
         blocks.append(
@@ -2893,6 +3178,7 @@ def _batch_prompt(problem_statement: dict[str, Any], items: list[tuple[int, dict
         f"Candidate Problem: {problem_statement.get('problem', '')}\n"
         f"Target User: {problem_statement.get('target_user', '')}\n"
         f"Category: {problem_statement.get('category', '')}\n\n"
+        + (f"Candidate Source Text:\n{problem_statement.get('candidate_evidence', '')}\n\n" if substitution.enabled() else "")
         + "\n\n".join(blocks)
         + "\n\nFor every alternative index, judge whether it solves the same core user problem, the overlap "
         "degree (full, partial, none), and give verbatim supporting quotes. Output strict JSON."
@@ -2947,6 +3233,9 @@ def _row_from_entry(
                 status="error",
             )
         return None
+    from app.agents.alternative_evidence import repair_fields
+    from app.agents import substitution
+
     return {
         "repo_id": candidate_repo_id,
         "alternative_id": alt_id,
@@ -2964,6 +3253,8 @@ def _row_from_entry(
         "quote_verified": True,
         "source": str(res.get("source") or ""),
         "archived": res.get("archived", False),
+        **repair_fields(res, rtext),
+        **substitution.contract_fields(entry, problem_statement, rtext, quote_in_text),
     }
 
 
@@ -3067,6 +3358,10 @@ def judge_alternatives_batch(
 
     prompt_record = load_prompt("relevance_alternative")
     system = prompt_record.text + BATCH_INSTRUCTION
+    from app.agents import substitution
+
+    if substitution.enabled():
+        system += substitution.INSTRUCTION
     base_prompt = _batch_prompt(problem_statement, items, max_chars_per_item)
     indexes = [i for i, _, _ in items]
 
@@ -3304,6 +3599,10 @@ def filter_relevant_alternatives(
     and again from whatever the model returns.
     """
     from app.agents.own_identity import build_identity, split_own
+    from app.agents import substitution
+
+    if substitution.enabled():
+        problem_statement = {**problem_statement, "candidate_evidence": "\n".join(str((candidate or {}).get(k) or "") for k in ("description", "readme_excerpt", "problem_excerpt"))}
 
     rows = list(search_results)
     identity = build_identity(candidate or {"repo_id": candidate_repo_id})
