@@ -1666,11 +1666,108 @@ def broaden_queries(queries: list[str], category: str = "", candidate_repo_id: s
     return dedup_broader
 
 
+# Rule B safety hold. Opt-in. Unset leaves every verdict as it was before this change.
+# Set PHOENIX_UNKNOWN_BLOCKER_REVIEW to 1, true, yes, on, or enabled to hold a CANDIDATE
+# when a full-overlap non-forge web alternative has only unknown blocker facts.
+# This is an unvalidated post-v3 change. It is not in any reported number.
+PHOENIX_UNKNOWN_BLOCKER_REVIEW = "PHOENIX_UNKNOWN_BLOCKER_REVIEW"
+_UNKNOWN_BLOCKER_REVIEW_ON = frozenset({"1", "true", "yes", "on", "enabled"})
+_UNKNOWN_FIELD_ORDER = ("push/release date", "host fetch", "stars", "licence/free tier")
+
+
+def unknown_blocker_review_enabled() -> bool:
+    """True only when ``PHOENIX_UNKNOWN_BLOCKER_REVIEW`` is an explicit truthy value.
+
+    Unset, blank, and every other string leave the pre-change verdicts in place.
+    """
+    raw = os.environ.get(PHOENIX_UNKNOWN_BLOCKER_REVIEW)
+    if raw is None or not str(raw).strip():
+        return False
+    return str(raw).strip().lower() in _UNKNOWN_BLOCKER_REVIEW_ON
+
+
+def _ordered_unknown_fields(fields: list[str]) -> list[str]:
+    ordered = [name for name in _UNKNOWN_FIELD_ORDER if name in fields]
+    ordered.extend(name for name in fields if name not in ordered)
+    return ordered
+
+
+def _alternative_quote_verified(row: dict[str, Any]) -> bool:
+    """A quote the row already marked verified, or one found in the row's own text."""
+    if row.get("quote_verified") is False:
+        return False
+    quotes = [str(quote).strip() for quote in (row.get("quotes") or []) if str(quote).strip()]
+    if not quotes and str(row.get("quote") or "").strip():
+        quotes = [str(row.get("quote")).strip()]
+    if not quotes:
+        return False
+    if row.get("quote_verified") is True:
+        return True
+    text = " ".join(
+        str(row.get(key) or "")
+        for key in ("excerpt", "description", "text", "readme", "title", "name", "product")
+    )
+    return bool(text.strip()) and all(quote_in_text(quote, text) for quote in quotes)
+
+
+def _unknown_blocker_review(
+    candidate: dict[str, Any],
+    rows: list[dict[str, Any]],
+    trace: Any | None,
+) -> dict[str, Any] | None:
+    """Rule B. The first full-overlap web row that has only unknown blocker facts.
+
+    A proven non-match on that row, a known maintenance date, a forge repository page,
+    or a missing quote leaves the verdict alone. Never returns NEEDS_PRIOR_ART.
+    """
+    if not unknown_blocker_review_enabled():
+        return None
+    from datetime import date as _date
+
+    from app.agents.blocker import evaluate_blocker, non_forge_web_page
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("same_problem") is not True or str(row.get("overlap") or "").strip().lower() != "full":
+            continue
+        if not non_forge_web_page(row) or not _alternative_quote_verified(row):
+            continue
+        decision = evaluate_blocker(candidate, row, as_of=_date.today())
+        if decision.get("blocks") or decision.get("proven_reasons"):
+            continue
+        if not decision.get("maintenance_date_unknown"):
+            continue
+        fields = _ordered_unknown_fields(list(decision.get("unknown_reasons") or []))
+        if not fields:
+            continue
+        alt = str(row.get("alternative_id") or row.get("url") or "").strip()
+        reason = f"UNKNOWN_BLOCKER_FACTS: {alt} full overlap, {', '.join(fields)} not established"
+        record = {
+            "fired": True,
+            "rule": "UNKNOWN_BLOCKER_FACTS",
+            "switch": PHOENIX_UNKNOWN_BLOCKER_REVIEW,
+            "alternative": alt,
+            "fields": fields,
+        }
+        if trace is not None:
+            trace.event(
+                agent_name="orchestrator",
+                action="UNKNOWN_BLOCKER_FACTS",
+                input_summary={"rule": PHOENIX_UNKNOWN_BLOCKER_REVIEW, "alternative": alt},
+                output_summary=record,
+                status="ok",
+            )
+        return {"reason": reason, "row": row, "record": record}
+    return None
+
+
 class DiscoveryDecision(tuple):
     """`(verdict, reason)` plus the alternatives that decided an ALREADY_EXISTS or NEEDS_REVIEW.
 
     Callers unpack two strings. `evidence` is the list a report shows: alternative name,
-    overlap, the quote that was checked, and the reason.
+    overlap, the quote that was checked, and the reason. `unknown_blocker` is set when
+    Rule B held a CANDIDATE for a human because blocker facts were not established.
     """
 
     def __new__(
@@ -1679,10 +1776,12 @@ class DiscoveryDecision(tuple):
         reason: str,
         evidence: list[dict[str, str]] | None = None,
         must_beat: list[dict[str, str]] | None = None,
+        unknown_blocker: dict[str, Any] | None = None,
     ):
         self = super().__new__(cls, (verdict, reason))
         self.evidence = list(evidence or [])
         self.must_beat = list(must_beat or [])
+        self.unknown_blocker = dict(unknown_blocker) if unknown_blocker else None
         return self
 
 
@@ -1718,6 +1817,7 @@ def judge_discovery(
     source_status: dict[str, str] | None = None,
     source_counts: dict[str, int] | None = None,
     insufficient_coverage: bool = False,
+    trace: Any | None = None,
 ) -> tuple[str, str]:
     """Judge whether candidate is CANDIDATE, ALREADY_EXISTS, or NO_GO using LLM with deterministic quote verification.
 
@@ -1728,6 +1828,10 @@ def judge_discovery(
     Verifies alternative_repo against the union of prior_rows and problem_alternatives.
     Falls back to phrase/keyword decide_discovery when no RelevanceClient is configured.
     Enforces that absence is not evidence: insufficient coverage blocks CANDIDATE verdict.
+    Rule B (``PHOENIX_UNKNOWN_BLOCKER_REVIEW``, default off) holds a CANDIDATE for review
+    when a full-overlap non-forge web alternative has only unknown blocker facts. It applies
+    only when that variable is ``1``, ``true``, ``yes``, ``on``, or ``enabled``. It does
+    not change ALREADY_EXISTS and it does not produce NEEDS_PRIOR_ART.
     """
     from app.agents.market_filter import decide_discovery
 
@@ -1796,6 +1900,9 @@ def judge_discovery(
         r for r in combined_priors
         if r.get("same_problem") is True and str(r.get("overlap") or "") == "full"
     ]
+    # Must-beat copies are appended when the model names a full-overlap row, so Rule B
+    # sees that path as well as the rows collected here.
+    rule_b_rows: list[dict[str, Any]] = list(full_overlap_rows)
     github_partial_rows = [
         r for r in combined_priors
         if not _is_web_row(r) and r.get("same_problem") is True and str(r.get("overlap") or "") == "partial"
@@ -1806,6 +1913,19 @@ def judge_discovery(
     if not is_client_configured(client):
         verdict, reason = decide_discovery(candidate, combined_priors, demand_rows)
         clean_reason = reason.replace("Method: phrase/keyword.", "").rstrip().rstrip(".")
+        if verdict == "CANDIDATE":
+            hit = _unknown_blocker_review(candidate, combined_priors, trace)
+            if hit is not None:
+                verdict = "NEEDS_REVIEW"
+                clean_reason = hit["reason"]
+                picked_fallback = [{**hit["row"], "overlap": "full", "reason": clean_reason}]
+                return DiscoveryDecision(
+                    verdict,
+                    f"{clean_reason}. Method: phrase/keyword (fallback).",
+                    _evidence_rows(picked_fallback),
+                    [],
+                    hit["record"],
+                )
         return verdict, f"{clean_reason}. Method: phrase/keyword (fallback)."
 
     if client is None:
@@ -2013,6 +2133,7 @@ def judge_discovery(
                     )
                     picked = [{**m, "quotes": quotes, "overlap": "full", "reason": reason}]
                 else:
+                    rule_b_rows.append(named)
                     must_beat.append(_must(named, decision))
                     why = "did not block: " + "; ".join(decision.get("reasons") or [])
                     if problem_quote and quote_in_text(problem_quote, cand_text):
@@ -2064,13 +2185,28 @@ def judge_discovery(
         reason = coverage_reason
         picked = []
 
+    # Rule B, on every remaining CANDIDATE path (own-identity and must-beat included).
+    # A proven non-match keeps CANDIDATE. ALREADY_EXISTS is not rewritten. The verdict
+    # is NEEDS_REVIEW, never NEEDS_PRIOR_ART.
+    unknown_blocker = None
+    if verdict == "CANDIDATE":
+        hit = _unknown_blocker_review(candidate, rule_b_rows, trace)
+        if hit is not None:
+            verdict = "NEEDS_REVIEW"
+            reason = hit["reason"]
+            picked = [{**hit["row"], "overlap": "full", "reason": reason}]
+            unknown_blocker = hit["record"]
+
     clean_reason = reason.rstrip().rstrip(".")
     labeled_reason = f"{clean_reason}. Method: llm+verified quote (requested={req_m}, served={srv_m})."
     show = _evidence_rows(picked) if verdict in {"ALREADY_EXISTS", "NEEDS_REVIEW"} else []
-    blocked_names = {
-        str(p.get("alternative_id") or p.get("alternative") or p.get("url") or "").casefold()
-        for p in picked
-    }
+    # Rule B did not block the row. Keep it on must_beat as well as in the review evidence.
+    blocked_names: set[str] = set()
+    if not unknown_blocker:
+        blocked_names = {
+            str(p.get("alternative_id") or p.get("alternative") or p.get("url") or "").casefold()
+            for p in picked
+        }
     deduped: list[dict[str, str]] = []
     seen_beat: set[str] = set()
     for item in must_beat:
@@ -2079,7 +2215,7 @@ def judge_discovery(
             continue
         seen_beat.add(key)
         deduped.append(item)
-    return DiscoveryDecision(verdict, labeled_reason, show, deduped)
+    return DiscoveryDecision(verdict, labeled_reason, show, deduped, unknown_blocker)
 
 
 def extract_problem_statement(

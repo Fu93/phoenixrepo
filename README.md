@@ -388,6 +388,8 @@ Zetaris mode sends those statements through `ZetarisClient` (`POST {url}/sql-edi
 | `NEEDS_PRIOR_ART` | Zero alternatives were checked, so the judgement would be made without evidence. Excluded from protagonist selection. |
 | `UNJUDGED` | The model was unavailable (for example Nightshift returned HTTP 502) so no judgement was made. `python scripts/rerun_unjudged.py` re-judges `UNJUDGED` rows and `NEEDS_REVIEW` rows whose reason is an infrastructure error, one repository at a time, with a wait between them. `--deadline <seconds>` stops starting repositories after that time (the running one finishes; the rest keep their old rows), and `--repo owner/name` limits it to one repository. Finished calls are read from the snapshot relevance cache. Without a Nightshift token the script exits and does not invent a verdict. |
 
+`PHOENIX_UNKNOWN_BLOCKER_REVIEW` is an unvalidated post-v3 change, default off, and not in any reported number. A run applies it only when the variable is set to `1`, `true`, `yes`, `on`, or `enabled`. While it is on, a same-problem full-overlap page that is not a GitHub, GitLab, Codeberg, or Bitbucket repository, has a verified quote, and has only unknown blocker facts (no push or release date, a host fetch error, placeholder web stars, or an absent licence or free tier) holds that `CANDIDATE` as `NEEDS_REVIEW` with reason `UNKNOWN_BLOCKER_FACTS`. A proven non-match, a forge page, and `ALREADY_EXISTS` stay as they are. Unset, blank, and any other value keep the verdicts in the table above.
+
 ### Gate 2: the revive loop
 
 Code: `app/revive_loop.py`, command `python scripts/revive.py <github-url> [--iterations 4] [--gate-verdict ...]`.

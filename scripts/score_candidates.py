@@ -1035,6 +1035,7 @@ def _do_score_candidates(
         rescue_by_repo[repo_id] = rescue
         must_beat = []
         judgement_evidence = []
+        unknown_blocker = None
         trace.event(
             agent_name="orchestrator",
             action="RESCUE_POTENTIAL",
@@ -1247,10 +1248,12 @@ def _do_score_candidates(
                         source_status=getattr(search_results, "source_status", None),
                         source_counts=getattr(search_results, "source_counts", None),
                         insufficient_coverage=getattr(search_results, "insufficient_coverage", False),
+                        trace=trace,
                     )
                     verdict, reason = judged
                     judgement_evidence = list(getattr(judged, "evidence", []) or [])
                     must_beat = list(getattr(judged, "must_beat", []) or [])
+                    unknown_blocker = getattr(judged, "unknown_blocker", None) or None
                 except InfraFallbackStop as exc:
                     judged = verdict_for_infra_stop(candidate, exc, facts_client)
                     verdict, reason = judged
@@ -1283,11 +1286,12 @@ def _do_score_candidates(
                 prior_for_repo = combined_priors
         else:
             judged = judge_discovery(
-                candidate, prior_for_repo, demand_for_repo, client=relevance_client
+                candidate, prior_for_repo, demand_for_repo, client=relevance_client, trace=trace
             )
             verdict, reason = judged
             judgement_evidence = list(getattr(judged, "evidence", []) or [])
             must_beat = list(getattr(judged, "must_beat", []) or [])
+            unknown_blocker = getattr(judged, "unknown_blocker", None) or None
 
         if verdict == "CANDIDATE" and len(prior_for_repo) == 0:
             verdict = "NEEDS_PRIOR_ART"
@@ -1304,7 +1308,12 @@ def _do_score_candidates(
             action="DISCOVERY_FILTER",
             input_summary={"repo_id": repo_id},
             output_summary=_discovery_output(
-                verdict, reason, evidence_mode, evidence=judgement_evidence, must_beat=must_beat
+                verdict,
+                reason,
+                evidence_mode,
+                evidence=judgement_evidence,
+                must_beat=must_beat,
+                unknown_blocker=unknown_blocker,
             ),
             status="ok",
             summary_limit=EVIDENCE_SUMMARY_LIMIT,
@@ -1897,12 +1906,15 @@ def _discovery_output(
     evidence_mode: str,
     evidence: list[dict[str, Any]] | None = None,
     must_beat: list[dict[str, Any]] | None = None,
+    unknown_blocker: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"verdict": verdict, "reason": reason, "evidence_source": evidence_mode}
     if evidence is not None:
         payload["evidence"] = evidence
     if must_beat is not None:
         payload["must_beat"] = must_beat
+    if unknown_blocker:
+        payload["unknown_blocker"] = unknown_blocker
     return payload
 
 

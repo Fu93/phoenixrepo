@@ -284,6 +284,73 @@ def _licence_ok(alternative: dict[str, Any]) -> bool:
     return False
 
 
+def _is_web_row(alternative: dict[str, Any]) -> bool:
+    source = str(alternative.get("source") or "").strip().lower()
+    alt = str(alternative.get("alternative_id") or "").strip().lower()
+    return source == "web" or alt.startswith("web:")
+
+
+def _forge_repo_page(alternative: dict[str, Any]) -> bool:
+    """A GitHub, GitLab, Codeberg, or Bitbucket repository page, including a web hit of one."""
+    if _host(alternative) in {"github", "gitlab", "codeberg"}:
+        return True
+    source = str(alternative.get("source") or "").strip().lower()
+    if source in {"github", "gitlab", "codeberg", "bitbucket"}:
+        return True
+    pages = [_page_url(alternative)]
+    alt = str(alternative.get("alternative_id") or "")
+    if alt.startswith("web:"):
+        pages.append(alt[4:])
+    for raw in pages:
+        host_name, _path = _hostname(raw)
+        if host_name and any(_host_is(host_name, suffix) for suffix in _FORGE_SUFFIXES):
+            return True
+    return False
+
+
+def non_forge_web_page(alternative: dict[str, Any]) -> bool:
+    """A web page that is not a GitHub, GitLab, Codeberg, or Bitbucket repository page."""
+    if _forge_repo_page(alternative):
+        return False
+    source = str(alternative.get("source") or "").strip().lower()
+    if source in {"github", "gitlab", "codeberg", "bitbucket", "npm", "pypi"}:
+        return False
+    alt = str(alternative.get("alternative_id") or "").strip().lower()
+    if alt.startswith(("npm:", "pypi:", "crates:")):
+        return False
+    if _is_web_row(alternative):
+        return True
+    url = _page_url(alternative)
+    return url.startswith("http://") or url.startswith("https://")
+
+
+def _placeholder_web_stars(alternative: dict[str, Any], stars: int | None) -> bool:
+    """Web rows are stored with stars=0. That zero is a placeholder and is never overwritten."""
+    return stars == 0 and _is_web_row(alternative)
+
+
+def _access_fields_absent(alternative: dict[str, Any]) -> bool:
+    """True when licence, free tier, and self-hosted were never filled in."""
+    licence = str(alternative.get("licence_spdx") or alternative.get("license") or "").strip()
+    if licence:
+        return False
+    if "free_tier" in alternative and alternative.get("free_tier") is not None:
+        return False
+    if "self_hosted" in alternative and alternative.get("self_hosted") is not None:
+        return False
+    return True
+
+
+def _maintenance_date_unknown(alternative: dict[str, Any]) -> bool:
+    """No push or release date. An official page_checked_at counts as a known maintenance date."""
+    if _as_date(alternative.get("pushed_at")) is not None or _as_date(alternative.get("released_at")) is not None:
+        return False
+    official = alternative.get("official") or alternative.get("commercial")
+    if official and _as_date(alternative.get("page_checked_at")) is not None:
+        return False
+    return True
+
+
 def _maintained(alternative: dict[str, Any], as_of: date) -> tuple[bool, str]:
     if alternative.get("archived") is True:
         return False, "archived"
@@ -319,8 +386,32 @@ def evaluate_blocker(candidate: dict[str, Any], alternative: dict[str, Any], *, 
     """Decide whether this alternative may refuse the candidate.
 
     ``blocks`` is true only when A-E all hold. The verdict string is never RESURRECTED.
+    ``unknown_reasons`` and ``proven_reasons`` classify why it did not block. They do not
+    change ``blocks``, ``role``, or ``verdict_if_blocked``.
     """
     reasons: list[str] = []
+    unknown: list[str] = []
+    proven: list[str] = []
+    date_unknown = _maintenance_date_unknown(alternative)
+
+    def add(bucket: list[str], item: str) -> None:
+        if item not in bucket:
+            bucket.append(item)
+
+    def finish(blocks: bool, role: str, why: list[str], kind: str) -> dict[str, Any]:
+        # A verified paid-only quote is a proven non-match. It does not change blocks.
+        if not blocks and _paid_only(alternative) and _verified_quote(alternative):
+            add(proven, "paid-only")
+        return _result(
+            blocks,
+            role,
+            why,
+            kind,
+            unknown_reasons=unknown,
+            proven_reasons=proven,
+            maintenance_date_unknown=date_unknown,
+        )
+
     kind = classify_page(alternative)
     overlap = str(alternative.get("overlap") or "").strip().lower()
     if alternative.get("same_job") is None:
@@ -334,17 +425,24 @@ def evaluate_blocker(candidate: dict[str, Any], alternative: dict[str, Any], *, 
     if host in {"github", "codeberg", "gitlab"} and stars is None and not has_git_date:
         if fetch_status in {"", "source_error", "not_fetched"}:
             reasons.append(f"{host} maintenance fields were not fetched")
-            return _result(False, "source_error", reasons, kind)
+            add(unknown, "host fetch")
+            add(unknown, "push/release date")
+            add(unknown, "stars")
+            return finish(False, "source_error", reasons, kind)
 
     if kind in NOT_AN_ALTERNATIVE:
         reasons.append(f"{kind} is not an alternative")
+        add(proven, f"page kind {kind}")
     if not same_job or (overlap and overlap != "full"):
         if overlap == "partial":
             reasons.append("overlap is partial, not the same job on the same platform")
+            add(proven, "partial overlap")
         elif not same_job:
             reasons.append("not the same job, user, and platform")
+            add(proven, "different job")
         elif overlap and overlap != "full":
             reasons.append(f"overlap is {overlap}")
+            add(proven, f"overlap {overlap}")
 
     domain_ok, domain_why = first_party_vendor_docs(alternative)
     # A verified quote stays in front of the shortcut. Stars and push dates do not.
@@ -361,12 +459,22 @@ def evaluate_blocker(candidate: dict[str, Any], alternative: dict[str, Any], *, 
         maintained, maintain_why = _maintained(alternative, as_of)
     if not maintained:
         reasons.append(maintain_why)
+        if alternative.get("archived") is True or maintain_why == "archived":
+            add(proven, "archived")
+        elif maintain_why == "no push or release date":
+            add(unknown, "push/release date")
+        else:
+            add(proven, "stale")
     if first_party:
         mature, mature_why = True, "official: " + domain_why
     else:
         mature, mature_why = _mature(candidate, alternative)
     if not mature:
         reasons.append("not mature or official: " + mature_why)
+        if stars is None or _placeholder_web_stars(alternative, stars):
+            add(unknown, "stars")
+        else:
+            add(proven, "stars below bar")
     cand_free = candidate.get("free", True) is not False and candidate.get("self_hostable", True) is not False
     access_ok = True
     access_why = ""
@@ -389,14 +497,20 @@ def evaluate_blocker(candidate: dict[str, Any], alternative: dict[str, Any], *, 
     elif cand_free and not _licence_ok(alternative):
         access_ok = False
         access_why = "candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        if _access_fields_absent(alternative):
+            add(unknown, "licence/free tier")
+        else:
+            add(proven, "licence not permissive")
     if not access_ok and access_why:
         reasons.append(access_why)
 
     if fetch_status == "source_error" and stars is None:
         reasons.append("host API returned no facts, so this alternative cannot block")
+        add(unknown, "host fetch")
+        add(unknown, "stars")
         if domain_note:
             reasons.append(domain_note)
-        return _result(False, "source_error", reasons, kind)
+        return finish(False, "source_error", reasons, kind)
 
     hard_fail = [r for r in reasons if r]
     if (
@@ -411,7 +525,7 @@ def evaluate_blocker(candidate: dict[str, Any], alternative: dict[str, Any], *, 
         notes = [maintain_why, mature_why]
         if access_why:
             notes.append(access_why)
-        return _result(True, "block", notes, kind)
+        return _result(True, "block", notes, kind, maintenance_date_unknown=date_unknown)
 
     # A mature partial overlap still needs a person. An immature one does not refuse.
     if (
@@ -428,19 +542,31 @@ def evaluate_blocker(candidate: dict[str, Any], alternative: dict[str, Any], *, 
             partial_reasons.append(access_why)
         if domain_note:
             partial_reasons.append(domain_note)
-        return _result(False, "mature_partial", partial_reasons, kind)
+        return finish(False, "mature_partial", partial_reasons, kind)
 
     role = "not_alternative" if kind in NOT_AN_ALTERNATIVE else "must_beat"
     if domain_note:
         reasons.append(domain_note)
-    return _result(False, role, reasons or ["did not pass A-E"], kind)
+    return finish(False, role, reasons or ["did not pass A-E"], kind)
 
 
-def _result(blocks: bool, role: str, reasons: list[str], kind: str) -> dict[str, Any]:
+def _result(
+    blocks: bool,
+    role: str,
+    reasons: list[str],
+    kind: str,
+    *,
+    unknown_reasons: list[str] | None = None,
+    proven_reasons: list[str] | None = None,
+    maintenance_date_unknown: bool = False,
+) -> dict[str, Any]:
     return {
         "blocks": blocks,
         "role": role,
         "reasons": reasons,
+        "unknown_reasons": list(unknown_reasons or []),
+        "proven_reasons": list(proven_reasons or []),
+        "maintenance_date_unknown": maintenance_date_unknown,
         "page_kind": kind,
         "verdict_if_blocked": "ALREADY_EXISTS" if blocks else None,
     }
