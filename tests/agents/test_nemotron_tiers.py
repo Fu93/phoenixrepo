@@ -227,6 +227,12 @@ def test_reasoning_excerpt_accepts_a_lone_closing_think_tag():
     assert "CANDIDATE" not in excerpt
 
 
+def test_extract_json_object_accepts_a_lone_think_closing_marker():
+    from app.agents.relevance import extract_json_object
+
+    assert extract_json_object('</think>\n{"verdict":"CANDIDATE"}') == {"verdict": "CANDIDATE"}
+
+
 def test_invalid_policy_is_rejected(tmp_path: Path):
     with pytest.raises(ValueError):
         RelevanceClient(cache_dir=tmp_path, nemotron_policy="maybe")

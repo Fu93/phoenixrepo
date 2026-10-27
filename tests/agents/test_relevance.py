@@ -23,6 +23,7 @@ from app.agents.relevance import (
     RelevanceLLMError,
     build_search_queries,
     extract_capabilities,
+    extract_json_object,
     extract_problem_statement,
     filter_relevant_alternatives,
     is_valid_demand_signal_url,
@@ -566,6 +567,123 @@ def test_cache_key_changes_when_model_changes(tmp_path: Path):
 
     assert "gemini-3.1-pro-preview" in models_in_cache
     assert "meterless/auto" in models_in_cache
+
+
+def test_cache_key_changes_when_request_settings_change(tmp_path: Path):
+    """Fast and deep request bodies must never share a cached completion."""
+    cache_dir = tmp_path / "settings_cache"
+    client1 = RelevanceClient(
+        model="nvidia/nemotron-3.5-lightning-30b-a3b",
+        cache_dir=cache_dir,
+        extra_body={"temperature": 0, "chat_template_kwargs": {"enable_thinking": False}},
+        mock_handler=lambda p, s: '{"tier": "fast"}',
+    )
+    client2 = RelevanceClient(
+        model="nvidia/nemotron-3.5-lightning-30b-a3b",
+        cache_dir=cache_dir,
+        extra_body={"chat_template_kwargs": {"enable_thinking": True}, "temperature": 0.6},
+        mock_handler=lambda p, s: '{"tier": "deep"}',
+    )
+    # A different max_tokens is a different request too.
+    client3 = RelevanceClient(
+        model="nvidia/nemotron-3.5-lightning-30b-a3b",
+        cache_dir=cache_dir,
+        max_tokens=77,
+        extra_body={"temperature": 0, "chat_template_kwargs": {"enable_thinking": False}},
+        mock_handler=lambda p, s: '{"tier": "short"}',
+    )
+
+    assert client1.complete("same prompt", "same system")[0] == '{"tier": "fast"}'
+    assert client2.complete("same prompt", "same system")[0] == '{"tier": "deep"}'
+    assert client3.complete("same prompt", "same system")[0] == '{"tier": "short"}'
+    # The same settings replay the stored answer instead of calling the handler again.
+    again = RelevanceClient(
+        model="nvidia/nemotron-3.5-lightning-30b-a3b",
+        cache_dir=cache_dir,
+        extra_body={"temperature": 0, "chat_template_kwargs": {"enable_thinking": False}},
+        mock_handler=lambda p, s: '{"tier": "should not be called"}',
+    )
+    assert again.complete("same prompt", "same system")[0] == '{"tier": "fast"}'
+    assert again.last_cache_hit is True
+    cache_files = list(cache_dir.glob("*.json"))
+    assert len(cache_files) == 3
+    assert len({json.loads(path.read_text(encoding="utf-8"))["request_settings_sha256"] for path in cache_files}) == 3
+
+
+def test_cache_key_ignores_extra_body_key_order_and_unlisted_keys(tmp_path: Path):
+    """Same sanitized settings in another key order hit the same entry. A missing body must not crash."""
+    cache_dir = tmp_path / "order_cache"
+    first = RelevanceClient(
+        model="m", cache_dir=cache_dir,
+        extra_body={"chat_template_kwargs": {"enable_thinking": True}, "temperature": 0.6},
+        mock_handler=lambda p, s: '{"n": 1}',
+    )
+    second = RelevanceClient(
+        model="m", cache_dir=cache_dir,
+        extra_body={"temperature": 0.6, "chat_template_kwargs": {"enable_thinking": True}},
+        mock_handler=lambda p, s: '{"n": 2}',
+    )
+    assert first.complete("p", "s")[0] == '{"n": 1}'
+    assert second.complete("p", "s")[0] == '{"n": 1}'  # served from the first entry
+    assert len(list(cache_dir.glob("*.json"))) == 1
+
+    plain = RelevanceClient(model="m", cache_dir=tmp_path / "plain", mock_handler=lambda p, s: '{"n": 3}')
+    plain.extra_body = None  # a missing body must not crash the key
+    assert plain.complete("p", "s")[0] == '{"n": 3}'
+    record = json.loads(next((tmp_path / "plain").glob("*.json")).read_text(encoding="utf-8"))
+    assert len(record["request_settings_sha256"]) == 64
+
+
+def test_cache_entries_made_before_settings_were_hashed_are_a_miss(tmp_path: Path):
+    """Documented behaviour: a legacy entry is never reused, by key or by content."""
+    import hashlib
+
+    cache_dir = tmp_path / "legacy_cache"
+    cache_dir.mkdir()
+    prompt_hash = hashlib.sha256(b"the system").hexdigest()
+    input_hash = hashlib.sha256(b"the prompt").hexdigest()
+    legacy_key = hashlib.sha256(f"m\n---\n{prompt_hash}\n---\n{input_hash}".encode("utf-8")).hexdigest()
+    legacy_record = {
+        "cache_key": legacy_key,
+        "model": "m",
+        "prompt_sha256": prompt_hash,
+        "input_sha256": input_hash,
+        "requested_model": "m",
+        "served_model": "m",
+        "provider": "nightshift",
+        "routing": {},
+        "reasoning": "",
+        "response_text": '{"old": true}',
+    }
+    (cache_dir / f"{legacy_key}.json").write_text(json.dumps(legacy_record), encoding="utf-8")
+
+    client = RelevanceClient(model="m", cache_dir=cache_dir, mock_handler=lambda p, s: '{"fresh": true}')
+    assert client.complete("the prompt", "the system")[0] == '{"fresh": true}'
+    assert client.last_cache_hit is False
+    new_file = client.last_cache_file
+    assert new_file is not None and new_file.name != f"{legacy_key}.json"
+    assert json.loads(new_file.read_text(encoding="utf-8"))["request_settings_sha256"]
+
+    # Even a legacy-format file (no settings hash) sitting at the new key is not trusted.
+    new_file.write_text(json.dumps({**legacy_record, "cache_key": new_file.stem}), encoding="utf-8")
+    again = RelevanceClient(model="m", cache_dir=cache_dir, mock_handler=lambda p, s: '{"second": true}')
+    assert again.complete("the prompt", "the system")[0] == '{"second": true}'
+    assert again.last_cache_hit is False
+
+
+def test_extract_json_object_reads_the_answer_after_a_lone_think_close_even_with_braces_before_it():
+    assert extract_json_object('</think>\n{"verdict":"CANDIDATE"}') == {"verdict": "CANDIDATE"}
+    braces = 'I will answer in the form {"verdict": ...} and check {x} first.</think>\n{"verdict": "CANDIDATE"}'
+    assert extract_json_object(braces) == {"verdict": "CANDIDATE"}
+    # The reasoning mentions the tag; the last boundary with an object after it wins.
+    twice = 'saw </think> {a} in a quote</think>{"verdict": "ALREADY_EXISTS"}'
+    assert extract_json_object(twice) == {"verdict": "ALREADY_EXISTS"}
+    # A tag inside a JSON string is not a boundary: the whole object still parses.
+    inside = '{"verdict": "CANDIDATE", "reason": "the readme shows </think> here"}'
+    assert extract_json_object(inside) == {"verdict": "CANDIDATE", "reason": "the readme shows </think> here"}
+    # No tag: unchanged behaviour (prose, then an object; fences).
+    assert extract_json_object('prose first {"a": 1}') == {"a": 1}
+    assert extract_json_object("no json </think> at all") is None
 
 
 def test_judge_discovery_verifies_against_union_of_prior_art_csv_and_problem_search(tmp_path: Path):

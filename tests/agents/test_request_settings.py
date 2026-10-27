@@ -79,7 +79,7 @@ def test_kept_request_settings_drops_unknown_and_secret_like_keys():
     assert poisoned == {}
 
 
-def test_sent_settings_are_traced_and_are_not_part_of_the_cache_key(tmp_path: Path, monkeypatch):
+def test_sent_settings_are_traced_and_a_different_body_gets_its_own_cache_entry(tmp_path: Path, monkeypatch):
     for name in ("PHOENIX_LLM_EXTRA_BODY", "PHOENIX_LLM_MAX_TOKENS", "MODEL_NAME", "METERLESS_MODEL", "PHOENIX_DEEP_MODEL", "MODEL_NAME_DEEP"):
         monkeypatch.delenv(name, raising=False)
     calls = {"n": 0}
@@ -106,8 +106,8 @@ def test_sent_settings_are_traced_and_are_not_part_of_the_cache_key(tmp_path: Pa
         extra_body={"chat_template_kwargs": {"enable_thinking": False}, "top_p": 0.95},
     )
     first.complete("same prompt", "same system", repo_id="o/r", step="problem")
-    # A different extra body must not change the cache key. The replay is not a new HTTP call,
-    # so it must not claim those settings were sent.
+    # The same extra body (another key order) replays from the cache. The replay is not a
+    # new HTTP call, so it must not claim those settings were sent.
     second = RelevanceClient(
         token="rt-test",
         model=NEMO,
@@ -115,16 +115,45 @@ def test_sent_settings_are_traced_and_are_not_part_of_the_cache_key(tmp_path: Pa
         transport=httpx.MockTransport(handler),
         trace=trace,
         max_tokens=128,
-        extra_body={"chat_template_kwargs": {"enable_thinking": True}, "temperature": 0.6},
+        extra_body={"top_p": 0.95, "chat_template_kwargs": {"enable_thinking": False}},
     )
     second.complete("same prompt", "same system", repo_id="o/r", step="problem")
     assert calls["n"] == 1
     assert len(list(cache.glob("*.json"))) == 1
     cached = next(cache.glob("*.json")).read_text(encoding="utf-8")
-    assert "request_settings" not in cached
+    assert '"request_settings"' not in cached  # only a hash of the settings is stored, not the values
     assert "enable_thinking" not in cached
+    stored = json.loads(cached)
+    assert stored["request_settings_sha256"] == request_settings_sha256({
+        "chat_template_kwargs": {"enable_thinking": False},
+        "max_tokens": 128,
+        "temperature": 0,
+        "top_p": 0.95,
+    })
+    # A different extra body is part of the cache key: a new call with its own entry.
+    other_calls = {"n": 0}
+
+    def other_handler(request: httpx.Request) -> httpx.Response:
+        other_calls["n"] += 1
+        body = json.loads(request.content)
+        assert body["temperature"] == 0.6
+        assert body["chat_template_kwargs"] == {"enable_thinking": True}
+        return httpx.Response(200, json={"model": NEMO, "choices": [{"message": {"content": '{"ok": false}'}}]})
+
+    third = RelevanceClient(
+        token="rt-test",
+        model=NEMO,
+        cache_dir=cache,
+        transport=httpx.MockTransport(other_handler),
+        trace=trace,
+        max_tokens=128,
+        extra_body={"chat_template_kwargs": {"enable_thinking": True}, "temperature": 0.6},
+    )
+    assert third.complete("same prompt", "same system", repo_id="o/r", step="problem")[0] == '{"ok": false}'
+    assert other_calls["n"] == 1
+    assert len(list(cache.glob("*.json"))) == 2
     lines = [json.loads(line) for line in trace.path.read_text(encoding="utf-8").splitlines()]
-    fresh, replay = [line for line in lines if line.get("action") == "LLM_CALL"]
+    fresh, replay, other = [line for line in lines if line.get("action") == "LLM_CALL"]
     expected = {
         "chat_template_kwargs": {"enable_thinking": False},
         "max_tokens": 128,
@@ -140,6 +169,10 @@ def test_sent_settings_are_traced_and_are_not_part_of_the_cache_key(tmp_path: Pa
     assert fresh_summary["request_settings_sha256"] == digest
     assert "request_settings" not in replay
     assert "request_settings" not in json.loads(replay["output_summary"])
+    assert other["request_settings"]["temperature"] == 0.6
+    assert other["request_settings"]["chat_template_kwargs"] == {"enable_thinking": True}
+    # The hash stored in the cache is the hash of the settings the trace recorded for the real call.
+    assert stored["request_settings_sha256"] == fresh["request_settings_sha256"]
     assert "messages" not in json.dumps(fresh["request_settings"])
     assert "same prompt" not in trace.path.read_text(encoding="utf-8")
     trace.seal()
@@ -253,7 +286,7 @@ def test_fast_deep_and_fallback_calls_record_settings_and_the_chain_verifies(tmp
     assert cached_files
     for cached_file in cached_files:
         cached_text = cached_file.read_text(encoding="utf-8")
-        assert "request_settings" not in cached_text
+        assert '"request_settings"' not in cached_text
         assert "enable_thinking" not in cached_text
     ok, detail = verify(trace.path)
     assert ok, detail
