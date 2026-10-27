@@ -1,6 +1,8 @@
 """fill_results writes numbers only from the report and the verified traces."""
 from __future__ import annotations
 
+import json
+import shutil
 from pathlib import Path
 
 from app.trace_log import HackathonTrace
@@ -42,7 +44,11 @@ def test_fill_writes_only_verified_numbers(tmp_path: Path):
     data = fr.collect(report, LABELS, logs)
     values = fr.slots(data, "logs/eval.json", readme=True)
     assert "**4** of **4** answers used (2 of 3 case traces verified" in values["nemotron-answer-share"]
-    assert "nightshift **2**" in values["provider-split"] and "nvidia-direct **2**" in values["provider-split"]
+    assert (
+        "2 explicit nvidia-direct; 2 `LLM_CALL` lines with no provider field "
+        "= Nightshift route inferred from absence of the marker; "
+        "0 `LLM_SCORE` lines with no provider record."
+    ) in values["provider-split"]
     assert f"nightshift: `{NEMO}` 2; nvidia-direct: `{NEMO}` 2" in values["provider-split"]
     assert "Nemotron in **2** of the **2** cases" in values["nemotron-answer-share"]
     assert f"`{NEMO}` (nvidia-direct)" in values["per-case-table"]
@@ -60,6 +66,53 @@ def test_fill_writes_only_verified_numbers(tmp_path: Path):
     assert done == ["provider-split"] and "keep" in out and "**TBD**" not in out
     again, _ = fr.apply(out, values)
     assert again == out
+
+
+def _readme_slot(name: str) -> str:
+    text = (fr.ROOT / "README.md").read_text(encoding="utf-8")
+    begin = f"<!-- BEGIN numbers: {name} -->\n"
+    end = f"\n<!-- END numbers: {name} -->"
+    start = text.index(begin) + len(begin)
+    return text[start:text.index(end, start)]
+
+
+def test_provider_split_dry_run_matches_readme_on_committed_v3(tmp_path: Path, capsys):
+    """Dry-run only. Do not pass --write; the README slot is the expected text."""
+
+    labels = json.loads((fr.ROOT / "data" / "eval" / "gate1_labels.json").read_text(encoding="utf-8"))
+    audit = {case["repo_id"] for case in labels["cases"] if "audit" in case}
+    manifest = json.loads((fr.ROOT / "data" / "replays" / "manifest.json").read_text(encoding="utf-8"))
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    results = []
+    for row in manifest["replays"]:
+        if row.get("trace_class") != "RECORDED":
+            continue
+        record_path = fr.ROOT / "data" / "replays" / row["id"] / "record.json"
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        run_id = str((record.get("recorded_run") or {}).get("run_id") or "")
+        repo = record.get("repo_id") or row.get("repo_id")
+        if repo not in audit or not run_id.startswith("judge-20261026"):
+            continue
+        shutil.copyfile(fr.ROOT / "data" / "replays" / row["id"] / "trace.jsonl", logs / f"trace-{run_id}.jsonl")
+        verdict = record.get("verdict") or {}
+        results.append({
+            "repo_id": repo,
+            "verdict": verdict.get("verdict") or "",
+            "reason": verdict.get("reason") or "",
+            "run_id": run_id,
+        })
+    assert len(results) == 16
+    report = tmp_path / "eval-v3.json"
+    report.write_text(json.dumps({"results": results}), encoding="utf-8")
+    readme_before = (fr.ROOT / "README.md").read_text(encoding="utf-8")
+    draft_before = (fr.ROOT / "docs" / "SUBMISSION_DRAFT.md").read_text(encoding="utf-8")
+    assert fr.main([str(report), "--logs", str(logs)]) == 0
+    assert (fr.ROOT / "README.md").read_text(encoding="utf-8") == readme_before
+    assert (fr.ROOT / "docs" / "SUBMISSION_DRAFT.md").read_text(encoding="utf-8") == draft_before
+    printed = capsys.readouterr().out.split("===== docs/SUBMISSION_DRAFT.md", 1)[0]
+    body = printed.split("--- provider-split\n", 1)[1].split("\n--- ", 1)[0].strip("\n")
+    assert body == _readme_slot("provider-split")
 
 
 def test_no_traces_means_tbd(tmp_path: Path):

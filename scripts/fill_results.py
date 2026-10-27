@@ -40,6 +40,59 @@ def _cell(text: Any, limit: int = 110) -> str:
     return one if len(one) <= limit else one[: limit - 1].rstrip() + "…"
 
 
+def _summary_dict(summary: object) -> dict[str, Any] | None:
+    if isinstance(summary, dict):
+        return summary
+    if isinstance(summary, str):
+        try:
+            parsed = json.loads(summary)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _route_split(path: Path) -> dict[str, int]:
+    """Used answers split by the provider marker actually stored on the line.
+
+    Explicit nvidia-direct is a line whose summary has provider nvidia-direct.
+    The other two counts are LLM_CALL and LLM_SCORE lines with no provider field.
+    A missing field is not rewritten as Nightshift here.
+    """
+
+    direct = llm_call = llm_score = 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if "served_model" not in record or str(record.get("status") or "") in {"error", "rejected"}:
+            continue
+        summary = record.get("output_summary")
+        parsed = _summary_dict(summary)
+        explicit = '"provider": "nvidia-direct"' in str(summary or "") or bool(parsed and parsed.get("provider") == "nvidia-direct")
+        if explicit:
+            direct += 1
+            continue
+        absent = "provider" not in parsed if parsed is not None else '"provider":' not in str(summary or "")
+        if not absent:
+            continue
+        kind = str(record.get("event") or record.get("action") or "")
+        if kind == "LLM_CALL":
+            llm_call += 1
+        elif kind == "LLM_SCORE":
+            llm_score += 1
+    return {"nvidia_direct": direct, "llm_call_no_provider": llm_call, "llm_score_no_provider": llm_score}
+
+
+def _provider_split_clause(route: dict[str, int]) -> str:
+    return (
+        f"{route['nvidia_direct']} explicit nvidia-direct; "
+        f"{route['llm_call_no_provider']} `LLM_CALL` lines with no provider field "
+        "= Nightshift route inferred from absence of the marker; "
+        f"{route['llm_score_no_provider']} `LLM_SCORE` lines with no provider record"
+    )
+
+
 def _served_by_provider(path: Path) -> dict[str, dict[str, int]]:
     """provider -> served model -> used answers, from the trace lines themselves."""
     out: dict[str, dict[str, int]] = {}
@@ -103,6 +156,7 @@ def trace_facts(run_id: str | None, logs: Path) -> dict[str, Any]:
         facts["cache_hits"] = _cache_hits(path)
         facts["verdict_answer"] = _verdict_answer(path)
         facts["served_by_provider"] = _served_by_provider(path)
+        facts["route_split"] = _route_split(path)
     else:
         facts["chain_error"] = detail
     return facts
@@ -113,7 +167,8 @@ def collect(report: dict[str, Any], labels: dict[str, Any], logs: Path) -> dict[
     rows = [r for r in report.get("results") or [] if isinstance(r, dict) and r.get("repo_id") in cases]
     per_case = []
     totals = {"traces": 0, "chain_ok": 0, "answers_used": 0, "answers_by_nemotron": 0, "cache_hits": 0,
-              "providers": {}, "not_nemotron": [], "verdicts": 0, "verdicts_by_nemotron": 0, "served_by_provider": {}}
+              "providers": {}, "not_nemotron": [], "verdicts": 0, "verdicts_by_nemotron": 0, "served_by_provider": {},
+              "route_split": {"nvidia_direct": 0, "llm_call_no_provider": 0, "llm_score_no_provider": 0}}
     for row in rows:
         facts = trace_facts(row.get("run_id"), logs)
         if facts.get("found"):
@@ -130,6 +185,8 @@ def collect(report: dict[str, Any], labels: dict[str, Any], logs: Path) -> dict[
                 bucket = totals["served_by_provider"].setdefault(prov, {})
                 for model, count in models.items():
                     bucket[model] = bucket.get(model, 0) + count
+            for key, count in facts["route_split"].items():
+                totals["route_split"][key] += count
             answer = facts.get("verdict_answer")
             if answer:
                 totals["verdicts"] += 1
@@ -366,7 +423,7 @@ def slots(data: dict[str, Any], source: str, readme: bool) -> dict[str, str]:
                       f"of the **{t['verdicts']}** cases whose trace has one.")
         if t["not_nemotron"]:
             share += " Not Nemotron: " + "; ".join(t["not_nemotron"]) + "."
-        split = ", ".join(f"{name} **{count}**" for name, count in sorted(t["providers"].items()))
+        split = _provider_split_clause(t["route_split"])
         cached = _cache_clause(t["cache_hits"])
         out["provider-split"] = (
             f"Provider split on that run, from `verify_trace.py --require-nemotron` over each case trace: {split}.{cached} "
