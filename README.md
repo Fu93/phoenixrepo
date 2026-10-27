@@ -245,6 +245,29 @@ Final-verdict (deep tier) answers that carried a separate reasoning field or `<t
 
 **Sampling.** Requests are sent with `temperature: 0` (`app/agents/relevance.py`). An answer can be cached on that machine and replayed from the cache. Replaying a recorded trace and re-checking its hash chain, with `--expected-run-hash`, is what a second person can repeat from this repository. Re-running the model is not that: CalendarSyncProject returned `CANDIDATE`, `NEEDS_REVIEW`, and the scored `NEEDS_PRIOR_ART` on three runs. NVIDIA publishes sampling guidance of `temperature` 0.6 and `top_p` 0.95 for a reasoning mode; `PHOENIX_LLM_DEEP_EXTRA_BODY='{"temperature": 0.6, "top_p": 0.95}'` would apply those numbers to the verdict tier only. The scored run left `PHOENIX_LLM_DEEP_EXTRA_BODY` empty. The setting a run used is in that run's `.env`, and `extra_body` is not stored on the trace line. The cache key is the requested model plus the prompt hashes, so it does not include `extra_body`, `temperature`, or `max_tokens`.
 
+### Requested versus served, from files in this checkout
+
+The HTTP body in `app/agents/relevance.py` sets `temperature` to 0, then merges the tier's extra body, which can replace that key. The two committed gate-1 traces do not record `temperature`, `top_p`, `max_tokens`, or `enable_thinking`. Their final-verdict (`discovery`) lines carry no reasoning text.
+
+Those two files are the model lines a checkout of `main` can count. `data/replays/dsregoitia-calendarsyncproject/trace.jsonl` (run hash `2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0`, verdict `NEEDS_PRIOR_ART`) has 10 answers used. `data/replays/tharani-2006-invoice-generator-application/trace.jsonl` (run hash `cfbe3cc16adb981ee3d7e5ec240424505eb9fe32fe10f1f54b3110f3c56f340f`, verdict `CANDIDATE`) has 20. All 30 are `nvidia/nemotron-*`. Six lines set `provider` to `nvidia-direct`; the other 24 leave `provider` unset, which `scripts/verify_trace.py` counts as nightshift. Each of those 6 lines has `fallback_reason` `nightshift HTTP 502`.
+
+| Replay | Line | Tier on the line | Requested | Served | Provider | Count |
+| --- | --- | --- | --- | --- | --- | --- |
+| CalendarSyncProject | `LLM_CALL` | fast | `nvidia/nemotron-3-super-120b-a12b` | `nvidia/nemotron-3-ultra-550b-a55b` | nightshift | 6 |
+| CalendarSyncProject | `LLM_CALL` | fast | `nvidia/nemotron-3-super-120b-a12b` | `nvidia/nemotron-3-ultra-550b-a55b` | nvidia-direct | 3 |
+| CalendarSyncProject | `LLM_CALL` | deep | `nvidia/nemotron-3-ultra-550b-a55b` | `nvidia/nemotron-3-ultra-550b-a55b` | nightshift | 1 |
+| Invoice-generator-application | `LLM_CALL` | fast | `nvidia/nemotron-3-super-120b-a12b` | `nvidia/nemotron-3-ultra-550b-a55b` | nightshift | 11 |
+| Invoice-generator-application | `LLM_CALL` | fast | `nvidia/nemotron-3-super-120b-a12b` | `nvidia/nemotron-3.5-super-vl-120b-a12b` | nightshift | 4 |
+| Invoice-generator-application | `LLM_CALL` | fast | `nvidia/nemotron-3-super-120b-a12b` | `nvidia/nemotron-3-ultra-550b-a55b` | nvidia-direct | 3 |
+| Invoice-generator-application | `LLM_CALL` | deep | `nvidia/nemotron-3-ultra-550b-a55b` | `nvidia/nemotron-3-ultra-550b-a55b` | nightshift | 1 |
+| Invoice-generator-application | `LLM_SCORE` | (no tier field) | `nvidia/nemotron-3-super-120b-a12b` | `nvidia/nemotron-3.5-lightning-30b-a3b` | nightshift | 1 |
+
+In that table, nightshift means the line has no `provider` field. On these files every fast-tier `LLM_CALL` requested Super (`nvidia/nemotron-3-super-120b-a12b`). Of the 21 fast-tier lines with no `provider` field, 17 were served Ultra (`nvidia/nemotron-3-ultra-550b-a55b`) and 4 were served `nvidia/nemotron-3.5-super-vl-120b-a12b`. Those 4 are text steps (`alternative_batch`, `demand`), served by the Super-VL id. The two `discovery` lines requested Ultra and were served Ultra, with no reasoning field.
+
+The scored-run total is not that table. **218 of 218 answers used were Nemotron, of which 168 via Nightshift and 50 via nvidia-direct.** Those two figures are the slots `nemotron-answer-share` and `provider-split`, written by `scripts/fill_results.py` from `logs/eval-nemotron-v3.json`. That JSON is gitignored, so this checkout cannot recompute 218, 168, or 50. The same script's `nemotron-evidence` slot says the 50 answered `nvidia-direct` calls were after HTTP 502, that fast-tier answers used were Ultra 174 and Super-VL 18, and that final-verdict answers carried a reasoning field or a `<think>` block in 0 of 16. The 0 of 16 is that slot, not a count of sixteen files in git. The two committed `discovery` lines agree with it: neither has reasoning text.
+
+The rescue-plan trace `docs/rescue/trace-rescue-0xmh__fichero-printer-20261027T001117Z.jsonl` is not part of the 218. It is 1 of 1, provider `nvidia-direct`, Ultra requested and served, `fallback_reason` `nightshift HTTP 502`. That line does carry a reasoning excerpt. It is a rescue plan, not a gate-1 final verdict.
+
 **Running the judge on your own Nemotron.** Both model routes are OpenAI-compatible base URLs. Pointing `METERLESS_BASE_URL` (or, for the fallback, `NVIDIA_BASE_URL`) at a local server that serves Nemotron, for example an NVIDIA NIM container on a DGX Spark, runs the same judge with the same trace and the same `--require-nemotron` check; `served_model` records whatever the local server reports. Nemotron 3 is an open model family, so a verdict can then be rerun with no external service. This path is configuration only and was not tested in this submission.
 
 The same page, with no install, is the static demo at <https://fu93.github.io/phoenixrepo/>. Two replays in this repository are labelled RECORDED: CalendarSyncProject (`data/replays/dsregoitia-calendarsyncproject/`) and Invoice-generator-application (`data/replays/tharani-2006-invoice-generator-application/`). The others stay labelled SAMPLE. `scripts/import_replay.py` copies a further trace byte for byte and labels that id RECORDED.
