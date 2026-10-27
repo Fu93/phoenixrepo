@@ -67,7 +67,7 @@ def line_hash(record: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_body(record).encode("utf-8")).hexdigest()
 
 
-# Closed allowlist for a new LLM line. Not part of the cache key. Old traces omit the field.
+# Closed allowlist for a new LLM line. Its sha256 is also part of the LLM cache key. Old traces omit the field.
 # reasoning_budget is kept only when an extra body sent a safe scalar; it is not a default.
 _REQUEST_SETTING_SCALARS = ("temperature", "top_p", "max_tokens", "reasoning_effort", "reasoning_budget")
 
@@ -132,6 +132,58 @@ def request_settings_sha256(settings: dict[str, Any]) -> str:
 
     body = json.dumps(settings, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+# Internal LLM cache identity. Unlike request_settings (a closed allowlist for the public trace),
+# this covers every key of the request body that shapes inference: the model id, temperature,
+# max_tokens, seed, min_p, chat_template_kwargs, and any other extra-body key. The conversation
+# (messages / prompt text) is hashed separately by the cache. Credentials, headers, and endpoints
+# are never part of it. Only the sha256 is kept, in the cache record; the canonical text is not.
+_NON_SETTINGS_BODY_KEYS = frozenset({
+    "messages", "prompt", "input", "inputs", "system", "system_prompt", "instructions",
+})
+_CREDENTIAL_KEY = re.compile(
+    r"api[_-]?key|secret|passw|authoriz|credential|cookie|bearer|headers?$|endpoint|base[_-]?url"
+    r"|(^|[_-])url$|^token$|(api|access|auth|bearer|refresh|session)[_-]?token$",
+    re.I,
+)
+
+
+def _inference_value(value: Any) -> Any:
+    """The value with credential-like keys and token-shaped strings removed, recursively."""
+
+    if isinstance(value, dict):
+        return {
+            str(key): _inference_value(item)
+            for key, item in value.items()
+            if not _CREDENTIAL_KEY.search(str(key)) and not _credential_value(item)
+        }
+    if isinstance(value, (list, tuple)):
+        return [_inference_value(item) for item in value if not _credential_value(item)]
+    return value
+
+
+def _credential_value(value: Any) -> bool:
+    return isinstance(value, str) and (value.lower().startswith("bearer ") or bool(_TOKEN_PATTERNS.search(value)))
+
+
+def inference_settings_canonical(body: dict[str, Any] | None) -> str:
+    """Canonical JSON (sorted keys, fixed separators) of the inference settings of a request body."""
+
+    settings = {
+        str(key): _inference_value(item)
+        for key, item in (body or {}).items()
+        if str(key).lower() not in _NON_SETTINGS_BODY_KEYS
+        and not _CREDENTIAL_KEY.search(str(key))
+        and not _credential_value(item)
+    }
+    return json.dumps(settings, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def inference_settings_sha256(body: dict[str, Any] | None) -> str:
+    """sha256 of inference_settings_canonical(body). The only form that is stored or hashed into a key."""
+
+    return hashlib.sha256(inference_settings_canonical(body).encode("utf-8")).hexdigest()
 
 
 def _summary(value: Any, secrets: list[str], limit: int = 500) -> str:

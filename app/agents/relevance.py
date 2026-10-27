@@ -32,7 +32,7 @@ import httpx
 
 from app.errors import InvestigationError
 from app.prompts import load_prompt
-from app.trace_log import kept_request_settings, request_settings_sha256
+from app.trace_log import inference_settings_sha256, kept_request_settings, request_settings_sha256
 from config.settings import DEFAULT_NIGHTSHIFT_MODEL, model_mismatch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -454,7 +454,25 @@ class FallbackBudget:
 
 
 def extract_json_object(text: str) -> dict[str, Any] | None:
-    """Robustly extract a JSON object from text or markdown code fences."""
+    """Robustly extract a JSON object from text or markdown code fences.
+
+    Reasoning endpoints can put the reasoning in the reply and close it with a
+    ``</think>`` that has no opening tag (see ``_reasoning_before_lone_close``).
+    That reasoning may itself contain braces, so slicing from the first ``{`` to
+    the last ``}`` would span the tag and fail. The text after a ``</think>`` is
+    therefore tried first, the last tag first. A tag that sits inside a JSON
+    string leaves a tail that is not an object, so it is skipped and the whole
+    reply is parsed as before.
+    """
+    raw = str(text or "")
+    for match in reversed(list(_THINK_LONE_CLOSE.finditer(raw))):
+        tail = _extract_json_object_plain(raw[match.end() :])
+        if tail is not None:
+            return tail
+    return _extract_json_object_plain(raw)
+
+
+def _extract_json_object_plain(text: str) -> dict[str, Any] | None:
     raw = text.strip()
     if "```" in raw:
         match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw)
@@ -692,7 +710,8 @@ class RelevanceClient:
         if self.trace is None:
             return
         # Settings of a call that was actually posted. A cache hit does not pass them:
-        # the cache key does not include them, so the stored answer may be from another body.
+        # nothing was sent for it. The cache key does include their hash, so a hit was made
+        # under the same settings, but the trace only claims settings for a real request.
         sanitized = kept_request_settings(request_settings) if request_settings else {}
         summary: dict[str, Any] = {"requested_model": requested, "served_model": served}
         if tier:
@@ -811,13 +830,29 @@ class RelevanceClient:
         total_cap = self.total_timeout if call_budget_s is None else min(self.total_timeout, max(0.0, call_budget_s))
         prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
         input_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-        cache_key = hashlib.sha256(f"{model}\n---\n{prompt_hash}\n---\n{input_hash}".encode("utf-8")).hexdigest()
+        # The cache identity covers the whole inference side of the request body this call would
+        # post: model id, temperature, max_tokens and every extra-body key (seed, min_p, ...),
+        # but not the messages (hashed above), credentials, headers, or endpoint. Only the sha256
+        # is hashed into the key and stored in the record; a hit must match it. The public
+        # trace keeps its own allowlisted request_settings / request_settings_sha256. Entries
+        # written before this change have a different key and no inference_settings_sha256,
+        # so they are never reused (see the check on a hit below).
+        sampling: dict[str, Any] = {"model": model, "temperature": 0, "stream": False, "max_tokens": int(self.max_tokens)}
+        sampling.update(body_extra)
+        inference_sha = inference_settings_sha256(sampling)
+        settings_sha = request_settings_sha256(sent_request_settings(sampling))
+        cache_key = hashlib.sha256(
+            f"{model}\n---\n{prompt_hash}\n---\n{input_hash}\n---\n{inference_sha}".encode("utf-8")
+        ).hexdigest()
         cache_file = self.cache_dir / f"{cache_key}.json"
         self.last_reasoning = ""
 
         if cache_file.exists():
             try:
                 cached = json.loads(cache_file.read_text(encoding="utf-8"))
+                if cached.get("inference_settings_sha256") != inference_sha:
+                    # No settings hash (written before it existed) or another body: ask again.
+                    raise ValueError("cache entry was not made under these inference settings")
                 raw_served = cached.get("served_model")
                 served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
@@ -861,6 +896,8 @@ class RelevanceClient:
                 "model": model,
                 "prompt_sha256": prompt_hash,
                 "input_sha256": input_hash,
+                "request_settings_sha256": settings_sha,
+                "inference_settings_sha256": inference_sha,
                 "requested_model": model,
                 "served_model": served,
                 "provider": provider,
