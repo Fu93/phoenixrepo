@@ -118,3 +118,7 @@ See `docs/RUNBOOK_WINDOWS.md` for the Windows commands. Pull requests #17, #18, 
 - [ ] Final commit: `python -m ruff check .`, `python -m pytest -q`, `python scripts/compliance_check.py`. Paste the build-window commit count.
 - [ ] **21:00 UTC: final submission**, with the video.
 - [ ] Hard deadline **23:45 UTC**.
+
+## Limits and honest numbers
+
+The README Results table is 10 of 16 verdicts inside the human label and 6 of 16 outside it. The six are `goodreasonai/ScrapeServ`, `rianvdm/raindrop-wordpress-linkblog-sync`, and `Shabi-x/go-file-sync` (judged `CANDIDATE`, label `ALREADY_EXISTS`), `Dhaiwat10/x402-sovereign` (judged `ALREADY_EXISTS`, label `CANDIDATE` or `NEEDS_REVIEW`), plus the two already recorded on main: `tharani-2006/Invoice-generator-application` (`CANDIDATE` vs label `ALREADY_EXISTS`) and `DSRegoitia/CalendarSyncProject` (`NEEDS_PRIOR_ART` vs label `CANDIDATE` or `NEEDS_REVIEW`). Gate 2 has one committed rescue plan (`0xMH/fichero-printer`). Verified execution has not run on a real `CANDIDATE`. Those commands use `shell=True` and are not sandboxed (`app/revive_loop.py`).
