@@ -3,6 +3,7 @@ Before anyone spends a weekend reviving an abandoned GitHub repository, PhoenixR
 The evidence is the committed traces in `data/replays/`, the case audit in `docs/SCORED_RUN_AUDIT.md`, and `scripts/verify_nemotron_evidence.py` (offline checker, added in pull request #57). Check a recorded trace with `scripts/verify_trace.py --require-nemotron`.
 The scored v3 set is a regression and audit set: 16 cases, 10 agree, 5 must-reject, 4 false passes. The traces are what make that audit possible. It is not an accuracy benchmark.
 Read each model line as Requested, Served, and Policy. Say Ultra only when Served is `nvidia/nemotron-3-ultra-550b-a55b`. Say nvidia-direct only when the line stores `provider` `nvidia-direct`.
+Judge card: [`docs/JUDGES.md`](docs/JUDGES.md). Live single-repo trace: [`docs/evidence/single-repo-demo/`](docs/evidence/single-repo-demo/).
 
 ## Why Nemotron
 
