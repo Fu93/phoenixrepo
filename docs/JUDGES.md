@@ -4,6 +4,8 @@ Six questions. Each answer cites a file on `main`. Read a model line as Requeste
 
 The scored v3 traces are the 16 RECORDED replays under `data/replays/` other than `zetaris-gate1-tharani-2006-invoice-generator-application`, `e3-goodreasonai-scrapeserv`, and `e3-dsregoitia-calendarsyncproject`. They are separate from the Zetaris gate-1 trace.
 
+One live single-repository gate-1 trace, run on `Selfdb-io/SelfDB`, is in [`docs/evidence/single-repo-demo/`](evidence/single-repo-demo/). It is not a scored v3 trace and not an accuracy result; its README says what it is not and gives the verify command.
+
 ## 1. How do I reproduce the 27-of-27 Nemotron answers?
 
 The 27-of-27 count is the Zetaris gate-1 trace, not a scored v3 trace.
@@ -101,10 +103,10 @@ The 4 false passes are `tharani-2006/Invoice-generator-application`, `goodreason
 
 The 10/25 batch is human audit labels only, no traces. `README.md` gives 5 of 16, 11 of 11, and 0 of 5. Those counts are recomputed from `data/eval/gate1_labels.json`: 16 `audit` objects dated 2026-10-25, classes LEGIT 5, WEAK 8, WRONG 3. The file stores no model id. A case in that row agrees when `acceptable` contains `ALREADY_EXISTS` (5 of 16). Should-pass cases that do not list `ALREADY_EXISTS` are 11, all class WEAK or WRONG, so over-refusals are 11 of 11. Must-reject cases are 5, all class LEGIT, so false passes are 0 of 5.
 
-Open pull-request status below is as of 27 Oct 2026 20:20 UTC.
+Open pull-request status below is as of 27 Oct 2026 20:26 UTC.
 
 Pull requests #59, #62, #65, and #66 are open and not merged. `README.md` and `docs/SCORED_RUN_AUDIT.md` say each switch is default off (`1`, `true`, `yes`, `on`, or `enabled`; unset stays off) and is not part of any reported number. The names `PHOENIX_UNKNOWN_BLOCKER_REVIEW`, `PHOENIX_WEB_GITHUB_API_LOOKUP`, `PHOENIX_QUOTE_FAIL_FLAG`, and `PHOENIX_COMMODITY_CATEGORY_RULE` are not in the Python on this checkout. No mechanism-level change from those pull requests is merged here.
 
 Pull request #63 is open and not merged. It is not on this checkout.
 
-Pull request #67 (`GATE_DECISION`) was merged at 18:00 UTC (`37ab838`). It records a `GATE_DECISION` line when the blocker gate keeps or overturns the model.
+The change from pull request #67 (`GATE_DECISION`) is merged on `main` as `37ab838` (committed 18:00 UTC); GitHub lists the pull request itself as closed. It records a `GATE_DECISION` line when the blocker gate keeps or overturns the model.
