@@ -245,6 +245,18 @@ def test_probe_recommends_a_deep_model_when_a_larger_nemotron_answered():
     assert int(env["PHOENIX_LLM_ATTEMPT_TIMEOUT_S"]) >= 120  # sized for the slower deep model
 
 
+def test_probe_never_recommends_a_nemotron_embedding_model_for_chat():
+    attempts = [
+        probe.Attempt("nvidia/nemotron-3-embed-1b", "thinking_off_template", 200, 1.0, "nvidia/nemotron-3-ultra-550b-a55b", True, True),
+        probe.Attempt("nvidia/nemotron-3.5-lightning-30b-a3b", "thinking_off_template", 200, 4.0, "nvidia/nemotron-3.5-lightning-30b-a3b", True, True),
+        probe.Attempt("nvidia/nemotron-3-ultra-550b-a55b", "default", 200, 9.0, "nvidia/nemotron-3-ultra-550b-a55b", True, True),
+    ]
+    env = probe.recommend(attempts)
+    assert env is not None
+    assert env["MODEL_NAME"] == "nvidia/nemotron-3.5-lightning-30b-a3b"
+    assert env["MODEL_NAME_DEEP"] == "nvidia/nemotron-3-ultra-550b-a55b"
+
+
 def test_prepare_cli_loads_dotenv_without_overriding(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from app.console import load_env_file
 
