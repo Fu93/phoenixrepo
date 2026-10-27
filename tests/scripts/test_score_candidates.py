@@ -1604,3 +1604,39 @@ def test_venture_analyst_retries_non_json_response(tmp_path, monkeypatch):
 
 
 
+
+
+def test_gate1_writes_hmem_verdict_memory_without_changing_verdicts(tmp_path):
+    """Meterless H-MEM is on the gate-1 path as verdict memory: same verdicts, lines in the sealed chain."""
+    log_dir = tmp_path / "logs"
+    runs = []
+    for run_id in ("hmem-run-1", "hmem-run-2"):
+        results = score_all(
+            data_dir=REAL_DATA,
+            output_json=tmp_path / f"{run_id}.json",
+            output_md=tmp_path / f"{run_id}.md",
+            max_calls=40,
+            max_seconds=300.0,
+            use_llm=False,
+            run_id=run_id,
+            log_dir=log_dir,
+            custom_toolbox=_create_mock_toolbox(),
+            relevance_client=_create_mock_relevance_client(tmp_path),
+        )
+        runs.append(results)
+        trace_path = log_dir / f"trace-{run_id}.jsonl"
+        ok, why = verify(trace_path, results["run_hash"])
+        assert ok, why
+        lines = [json.loads(x) for x in trace_path.read_text(encoding="utf-8").splitlines() if x.strip()]
+        assert lines[-1]["action"] == "RUN_SEAL"
+        hmem = [x for x in lines if x["action"] == "HMEM_VERDICT_MEMORY"]
+        rows = [*results["ineligible"], *results["candidates"]]
+        assert len(hmem) == len(rows) > 0
+
+    def verdicts(r):
+        return {x["repo_id"]: x["verdict"] for x in [*r["ineligible"], *r["candidates"]]}
+
+    assert verdicts(runs[0]) == verdicts(runs[1])
+    first, second = runs[0]["hmem_verdict_memory"], runs[1]["hmem_verdict_memory"]
+    assert all(not s["remembered_before"] for s in first)
+    assert all(s["remembered_before"][0]["run_id"] == "hmem-run-1" and not s["verdict_changed"] for s in second)
