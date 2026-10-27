@@ -13,20 +13,21 @@ Eight of the twelve v3 `CANDIDATE` verdicts use a reason that starts with `must 
 | `tharani-2006/Invoice-generator-application` | Web-row gap, plus a recall gap. Excel, Canva, and Invoice Ninja are full-overlap web rows under `must_beat` with `did not block` (no push or release date, `stars=0`, `official=False`). A web search row is stored with `stars` 0 and an empty `pushed_at` (`app/agents/relevance.py` around 2391). Nothing in `app/` or `scripts/` sets `official`, `commercial`, `page_checked_at`, `pricing_page`, or `free_tier` on that row. Tests set those fields. The strings `invoify` and `InvoicePlane` do not appear in this trace. |
 | `goodreasonai/ScrapeServ` | Recall gap. The string `Gotenberg` does not appear. |
 | `rianvdm/raindrop-wordpress-linkblog-sync` | Web-row gap. The IFTTT page is a full-overlap web row under `must_beat` with `did not block`. |
-| `Shabi-x/go-file-sync` | Licence gate. `abhi16180/photon` is full overlap with a verified quote, and its only recorded `must_beat` reason is the free-tier / permissive-licence line. The committed trace does not contain `GPL-3.0` or any SPDX id for Photon, so this page does not state that licence. |
+| `Shabi-x/go-file-sync` | Licence gate (licence not on the permissive list; the licence name is not in the trace). |
 | `Dhaiwat10/x402-sovereign` | Over-refusal. The trace refused the repository because `https://docs.x402.org/dev-tools/facilitators` blocked. That host starts with `docs`, so `_docs_shaped` in `app/agents/blocker.py` matches. The human label cites `https://docs.x402.org/getting-started/quickstart-sellers`. |
 | `aa12gq/stack-file-sync-vscode` | 10/16 agree, one of them not by evidence. This agreement is `NEEDS_REVIEW` because `alternative_repo` `espenalbert/path-sync` was not found (`app/agents/relevance.py` around 1975). The same trace lists `web:https://espenalbert.github.io/path-sync/` with overlap `partial`. That is an id-format mismatch. |
 | All 16 scored v3 runs | Each `evidence_source` line is `evidence_source=csv` with `prior_rows=0`. No scored verdict used a Zetaris query or a `prior_art` row. |
 
 ## Limits and next
 
-These are post-v3 and unvalidated. None of them are on this branch. None of them are part of any reported number. None of them are enabled here, and none are described as fixed.
+These are post-v3 and unvalidated. Pull requests #59, #62, #65, and #66 are not merged and are not on this branch. Each switch is default off: it runs only when set to `1`, `true`, `yes`, `on`, or `enabled`. Unset stays off. None of them are part of any reported number. None are described as fixed.
 
-| Change | Where | Switch on that branch |
+| Change | Where | Switch |
 | --- | --- | --- |
-| Rule B | Pull request #59, not merged | `PHOENIX_UNKNOWN_BLOCKER_REVIEW` is on when the variable is unset (`unknown_blocker_review_enabled` on `cursor/unknown-blocker-review-cd8e`). It is not on this branch. |
-| Web GitHub lookup | Pull request #62, not merged | `PHOENIX_WEB_GITHUB_API_LOOKUP` stays off unless set to `1`, `true`, `yes`, `on`, or `enabled`. |
-| Commodity-category rule | Pull request #66, not merged | `PHOENIX_COMMODITY_CATEGORY_RULE` stays off unless set to `1`, `true`, `yes`, `on`, or `enabled`. It was designed on these same 16 cases. It needs a separate unseen labelled set before anyone treats it as checked. Using the same 16 cases is an overfitting risk. |
+| Rule B | Pull request #59, not merged | `PHOENIX_UNKNOWN_BLOCKER_REVIEW` is default off. `unknown_blocker_review_enabled` on `cursor/unknown-blocker-review-cd8e` returns true only for `1`, `true`, `yes`, `on`, or `enabled`. |
+| Web GitHub lookup | Pull request #62, not merged | `PHOENIX_WEB_GITHUB_API_LOOKUP` is default off. Same on values. |
+| Quote-fail retry | Pull request #65, not merged | `PHOENIX_QUOTE_FAIL_FLAG` is default off. Same on values. One verbatim retry when a full-overlap quote fails, then `NEEDS_REVIEW`. |
+| Commodity-category rule | Pull request #66, not merged | `PHOENIX_COMMODITY_CATEGORY_RULE` is default off. Same on values. It was designed on these same 16 cases. It needs a separate unseen labelled set before anyone treats it as checked. Using the same 16 cases is an overfitting risk. |
 | Copyleft licence-gate widening | No flag and no open pull request in this checkout | Not a switch here. Gate 1's `PERMISSIVE` set in `app/agents/blocker.py` does not include `GPL-3.0`. |
 
 **Offline reading of Rule B, not a live run.** This is recomputed from the recorded `must_beat` reasons. The traces do not store the raw model answers. It is not a new live run, and it is not a reported number. Reading those lines against the Rule B conditions on pull request #59 (full-overlap, non-forge web page, verified quote, no push or release date, no proven non-match such as a listicle or a category page) would turn the 4 false passes from `CANDIDATE` into `NEEDS_REVIEW`. The same reading would also hold 4 `CANDIDATE` verdicts that are already inside the label: `DayanK/LinkedinSyncContacts`, `oleksiiluchnikov/obsidian-localtable`, `samwho/spacer`, and `sealdice/qq-group-files-sync`. Agreement stays 10/16, because `NEEDS_REVIEW` is already acceptable for those four and is not acceptable for the four false passes.

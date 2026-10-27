@@ -325,11 +325,7 @@ That skeleton includes the FastAPI process, the Docker image, the evidence graph
 
 These pull requests are open. They are not merged, and they are not the behaviour of this branch except where #58's README wording is already the base of this file.
 
-**Pull request #59 (not merged).** Rule B (`PHOENIX_UNKNOWN_BLOCKER_REVIEW`) is on when that variable is unset, on that branch only. It is not on this branch. An offline reading of the recorded `must_beat` lines is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). It is not a live run and it is not a reported number.
-
-**Pull request #62 (not merged).** `PHOENIX_WEB_GITHUB_API_LOOKUP` stays off unless set to `1`, `true`, `yes`, `on`, or `enabled`. Not on this branch. Not part of any number on this page.
-
-**Pull request #66 (not merged).** `PHOENIX_COMMODITY_CATEGORY_RULE` stays off unless set to `1`, `true`, `yes`, `on`, or `enabled`. It was designed on these 16 cases. Not on this branch. Not part of any number on this page.
+**Pull requests #59, #62, #65, and #66 (not merged).** Each switch is default off. It runs only when set to `1`, `true`, `yes`, `on`, or `enabled`. Unset stays off. None of them are on this branch, and none are part of any number on this page. The names are `PHOENIX_UNKNOWN_BLOCKER_REVIEW` (#59), `PHOENIX_WEB_GITHUB_API_LOOKUP` (#62), `PHOENIX_QUOTE_FAIL_FLAG` (#65), and `PHOENIX_COMMODITY_CATEGORY_RULE` (#66). An offline reading of Rule B on the recorded `must_beat` lines is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). It is not a live run.
 
 **Pull request #57 (not merged).** Adds `scripts/verify_nemotron_evidence.py`. It is not on this branch, so the quickstart does not run it.
 
