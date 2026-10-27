@@ -28,7 +28,7 @@
         ]
       },
       "measured": "README.md, sections Results and Why Nemotron: Nemotron share of answers used, final-verdict answers by Nemotron, provider split, served model per provider, latency per served model. Written by scripts/fill_results.py from the scored run's report and verified traces.",
-      "zetaris_run": "Gate 1 with Zetaris evidence on 2 repositories (26 Oct 2026, run hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad): 27 of 27 answers used were Nemotron's, 21 through Nightshift and 6 through nvidia-direct. The original path logs/trace-zetaris-gate1.jsonl is gitignored. The committed copy is data/replays/zetaris-gate1-tharani-2006-invoice-generator-application/trace.jsonl. scripts/zetaris_check.py calls no model and writes no verdict; its sealed trace is not in this checkout.",
+      "zetaris_run": "Older run (26 Oct 2026): Gate 1 with Zetaris evidence on 2 repositories (run hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad): 27 of 27 answers used were Nemotron's, 21 through Nightshift and 6 through nvidia-direct. The original path logs/trace-zetaris-gate1.jsonl is gitignored. The committed copy is data/replays/zetaris-gate1-tharani-2006-invoice-generator-application/trace.jsonl. scripts/zetaris_check.py calls no model and writes no verdict; its sealed trace is not in this checkout. In a separate run (27 Oct 2026, not the scored v3 record, which stays evidence_source=csv) all 16 labelled repositories read their record from Zetaris; the prior_art and demand_signals views were empty in that run; see docs/evidence/zetaris-eval16/.",
       "where": [
         "app/agents/relevance.py",
         "config/settings.py",
@@ -64,7 +64,7 @@
     },
     "zetaris": {
       "role": "Gate 1 can read its evidence (phoenix.discovery_candidates, phoenix.prior_art, phoenix.demand_signals) over the REST SQL contract with EVIDENCE_SOURCE=zetaris. Each statement is a trace line with its SQL, query_id and content_hash; a read-only preflight stops the run if Zetaris does not answer.",
-      "scope": "Exercised live and read-only on the 2 repositories in data/real (tharani-2006/Invoice-generator-application, SergioMendolia/ytkb): scripts/zetaris_check.py loads and seals the evidence rows, and a gate-1 run read its evidence from Zetaris. The 16 scored evaluation repositories were fetched live from GitHub with evidence_source=csv.",
+      "scope": "In a separate run (27 Oct 2026, not the scored v3 record, which stays evidence_source=csv) all 16 labelled repositories read their record from Zetaris; the prior_art and demand_signals views were empty in that run; see docs/evidence/zetaris-eval16/. Older run (26 Oct 2026): exercised live and read-only on the 2 repositories in data/real (tharani-2006/Invoice-generator-application, SergioMendolia/ytkb): scripts/zetaris_check.py loads and seals the evidence rows, and a gate-1 run read its evidence from Zetaris. The 16 scored evaluation repositories were fetched live from GitHub with evidence_source=csv.",
       "where": [
         "app/adapters/zetaris_evidence.py",
         "app/sql_catalog.py",
