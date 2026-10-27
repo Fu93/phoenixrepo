@@ -227,7 +227,7 @@ def test_run_summary_counts_mismatch_flags(tmp_path):
 
 
 def test_capped_fallback_flags_mismatch_and_drops_a_late_serve(tmp_path):
-    """A call the 120s cap abandons records an empty serve and MODEL_MISMATCH.
+    """A call the wall-clock cap abandons records an empty serve and MODEL_MISMATCH.
 
     The worker may still return HTTP 200 after the join times out. That late model id
     must not land on the client, the cache, or the trace.

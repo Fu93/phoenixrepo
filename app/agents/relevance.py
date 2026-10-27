@@ -76,15 +76,15 @@ STOPWORDS = frozenset(
 RETRY_DELAYS = (0, 3, 8, 20, 45)
 
 # Defaults of the Nightshift client. Each can be changed per machine without code edits:
-#   PHOENIX_LLM_ATTEMPT_TIMEOUT_S  one HTTP attempt (read timeout and wall clock), default 120
-#   PHOENIX_LLM_TOTAL_TIMEOUT_S    one call across retries, default 420
+#   PHOENIX_LLM_ATTEMPT_TIMEOUT_S  one HTTP attempt (read timeout and wall clock), default 180
+#   PHOENIX_LLM_TOTAL_TIMEOUT_S    one call across retries, default 360
 #   PHOENIX_LLM_MAX_TOKENS         completion budget, default 4096
 #   PHOENIX_LLM_EXTRA_BODY         JSON object merged into the request body, for example
 #                                  {"chat_template_kwargs": {"enable_thinking": false}}
 # scripts/nightshift_probe.py measures which values work on this machine's Nightshift.
-DEFAULT_ATTEMPT_TIMEOUT_S = 120.0
-DEFAULT_READ_TIMEOUT_S = 90.0
-DEFAULT_TOTAL_TIMEOUT_S = 420.0
+DEFAULT_ATTEMPT_TIMEOUT_S = 180.0
+DEFAULT_READ_TIMEOUT_S = 180.0
+DEFAULT_TOTAL_TIMEOUT_S = 360.0
 DEFAULT_MAX_TOKENS = 4096
 _PROTECTED_BODY_KEYS = frozenset({"model", "messages", "stream"})
 
@@ -913,7 +913,7 @@ class RelevanceClient:
             if delay > 0:
                 time.sleep(delay)
 
-            # Discovery calls keep the 120s wall. An alternatives call passes call_budget_s,
+            # Discovery calls keep the 180s wall. An alternatives call passes call_budget_s,
             # and a healthy Nightshift judgement can take several minutes, so that attempt
             # may use the remaining budget up to total_timeout. A short budget stays short.
             elapsed = time.monotonic() - call_start

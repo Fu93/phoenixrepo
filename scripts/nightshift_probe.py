@@ -42,9 +42,8 @@ PREFERENCE = (
     "nvidia/nemotron-3-ultra-550b-a55b",
 )
 
-# Request variants. Nemotron's reasoning can use the whole completion budget and Nightshift then
-# answers 502 `_empty_response`; turning thinking off is the usual fix. Field names differ by
-# provider, so each spelling is tried and only what this Nightshift accepts is recommended.
+# Request variants. One variant sends chat_template_kwargs.enable_thinking false.
+# Field names differ by provider, so each spelling is tried and only what this Nightshift accepts is recommended.
 VARIANTS: dict[str, dict[str, Any]] = {
     "default": {},
     "thinking_off_template": {"chat_template_kwargs": {"enable_thinking": False}},

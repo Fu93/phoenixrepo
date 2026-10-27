@@ -2,8 +2,11 @@
 
 Facts shown for a replay are copied from files already in the repository.
 ``trace_class: SAMPLE`` means the JSONL was sealed in-repo (over those copies,
-or by a local ``revive()`` call). It is not a Nightshift log. ``logs/`` is
-gitignored, and no historical ``trace-*.jsonl`` is committed.
+or by a local ``revive()`` call). It is not a Nightshift log.
+``trace_class: RECORDED`` means the JSONL was copied byte for byte from a real
+trace. 17 RECORDED traces are committed under ``data/replays/``: the 16 v3 case
+traces and the Zetaris-backed gate 1 trace. ``logs/`` is gitignored, so a trace
+that was not imported is not in a checkout.
 """
 
 from __future__ import annotations
@@ -56,8 +59,8 @@ def live_status(settings: Any) -> dict[str, Any]:
     return {
         "enabled": False,
         "reason": (
-            "No Nightshift token is configured. Set METERLESS_RUNTIME_TOKEN to a real token "
-            "before POST /judge. A placeholder such as rt-local does not count. "
+            "No Nightshift token is configured. POST /judge returns HTTP 503 and writes no verdict. "
+            "Set METERLESS_RUNTIME_TOKEN to a real token. A placeholder such as rt-local does not count. "
             "Replay mode does not use a token, the network, or Docker."
         ),
     }
@@ -104,7 +107,7 @@ def replay_payload(replay_id: str) -> dict[str, Any]:
 
 
 def verdict_reasoning(events: list[dict[str, Any]], repo_id: str) -> dict[str, Any] | None:
-    """The model reasoning recorded on the final-verdict call for this repository, if any.
+    """The reasoning field on the used discovery line, when that field is present.
 
     Only a used answer counts (not one a Nemotron-only policy discarded). The latest one wins,
     because a rerun can follow an infrastructure failure.

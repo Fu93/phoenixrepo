@@ -270,6 +270,35 @@ def nemotron_evidence(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _committed_trace_for_hash(run_hash: str) -> str | None:
+    """Replay path whose record.json stores this run hash, when that trace is committed."""
+
+    root = ROOT / "data" / "replays"
+    manifest = root / "manifest.json"
+    if not manifest.is_file():
+        return None
+    try:
+        catalog = json.loads(manifest.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    for row in catalog.get("replays") or []:
+        if row.get("trace_class") != "RECORDED":
+            continue
+        replay_id = str(row.get("id") or "")
+        record_path = root / replay_id / "record.json"
+        trace_path = root / replay_id / "trace.jsonl"
+        if not replay_id or not record_path.is_file() or not trace_path.is_file():
+            continue
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        recorded = record.get("recorded_run") or {}
+        if recorded.get("run_hash") == run_hash:
+            return f"data/replays/{replay_id}/trace.jsonl"
+    return None
+
+
 def per_case_table(data: dict[str, Any]) -> str:
     lines = [
         "| Repository | Human label | Verdict | Outcome | Verdict answer by | Nemotron answers used | Providers | Chain | Reason (shortened) |",
@@ -300,8 +329,12 @@ def per_case_table(data: dict[str, Any]) -> str:
         lines.append("")
         lines.append(f"Of the {len(refuse)} judged cases the label says to refuse: {parts}. A `CANDIDATE` among them is a false pass that gate 2 would act on.")
     lines.append("")
-    lines.append("Each row's trace is `logs/trace-<run_id>.jsonl` on the author's machine; the chain column is `scripts/verify_trace.py` on that file. "
-                 "`(missing)` in a served-model count is a call that failed or was discarded before any answer, not an answer used.")
+    lines.append(
+        "Each row was written as `logs/trace-<run_id>.jsonl` (`logs/` is gitignored). "
+        "A committed copy, when one is in `data/replays/`, is the file to check. "
+        "The chain column is `scripts/verify_trace.py` on that file. "
+        "`(missing)` in a served-model count is a call that failed or was discarded before any answer, not an answer used."
+    )
     return "\n".join(lines)
 
 
@@ -345,10 +378,18 @@ def slots(data: dict[str, Any], source: str, readme: bool) -> dict[str, str]:
         )
         if hero["trace"].get("chain_ok"):
             h = hero["trace"]["run_hash"]
-            out["calendarsync-final-run-hash"] = (
-                f"Final run hash: `{h}`. Check it with "
-                f"`python scripts/verify_trace.py logs/trace-{hero['run_id']}.jsonl --expected-run-hash {h} --require-nemotron`."
-            )
+            committed = _committed_trace_for_hash(h)
+            if committed:
+                out["calendarsync-final-run-hash"] = (
+                    f"Final run hash: `{h}`. The committed copy is `{committed}`. Check it with "
+                    f"`python scripts/verify_trace.py {committed} --expected-run-hash {h} --require-nemotron`. "
+                    f"`logs/trace-{hero['run_id']}.jsonl` is gitignored and is not in this checkout."
+                )
+            else:
+                out["calendarsync-final-run-hash"] = (
+                    f"Final run hash: `{h}`. Check it with "
+                    f"`python scripts/verify_trace.py logs/trace-{hero['run_id']}.jsonl --expected-run-hash {h} --require-nemotron`."
+                )
         else:
             out["calendarsync-final-run-hash"] = "Final run hash: **TBD** (trace not found or not verified)."
     if not readme:

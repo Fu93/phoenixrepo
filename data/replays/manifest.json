@@ -2,11 +2,11 @@
   "replays": [
     {
       "id": "invoice-already-exists",
-      "title": "Invoice generator — recorded ALREADY_EXISTS",
+      "title": "Invoice generator — deterministic score, no model, SAMPLE seal",
       "repo_id": "tharani-2006/Invoice-generator-application",
       "data_class": "RECORDED",
       "trace_class": "SAMPLE",
-      "summary": "Deterministic score run venture-019ca0071780 refused the invoice generator. The chain is a SAMPLE seal over that record."
+      "summary": "Deterministic score (llm_used false) sealed here as SAMPLE. Not the scored gate-1 run: that verdict is CANDIDATE (false pass). The Zetaris-evidence run was ALREADY_EXISTS. Verdicts vary with the evidence source and the run."
     },
     {
       "id": "hygen-already-exists-quote",
@@ -173,7 +173,7 @@
     {
       "id": "needs-review-model-trace",
       "title": "Only one recorded NEEDS_REVIEW model trace",
-      "reason": "Only one committed trace carries a model verdict of NEEDS_REVIEW: aa12gq-stack-file-sync-vscode (run judge-20261026213423). data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score. Trace jsonl files are committed under data/replays/ only for the recorded replays."
+      "reason": "Only one committed replay records a model verdict of NEEDS_REVIEW: aa12gq-stack-file-sync-vscode (run judge-20261026213423, data/replays/aa12gq-stack-file-sync-vscode/trace.jsonl). data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score."
     },
     {
       "id": "historical-gate2-trace",
