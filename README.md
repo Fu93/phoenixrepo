@@ -184,22 +184,7 @@ Counted from those 16 human labels and from each trace's `DISCOVERY_FILTER` verd
 
 The 4 false passes are `tharani-2006/Invoice-generator-application`, `goodreasonai/ScrapeServ`, `rianvdm/raindrop-wordpress-linkblog-sync`, and `Shabi-x/go-file-sync`. The fifth must-reject case, `Selfdb-io/SelfDB`, is `ALREADY_EXISTS` and agrees. The other two disagreements are not false passes: `DSRegoitia/CalendarSyncProject` is `NEEDS_PRIOR_ART` (acceptable is `CANDIDATE` or `NEEDS_REVIEW`), and `Dhaiwat10/x402-sovereign` is `ALREADY_EXISTS` where the label allows `CANDIDATE` or `NEEDS_REVIEW` (1 over-refusal).
 
-Twelve scored traces are `CANDIDATE`. Eight of those reasons start with `must beat <name>: did not block`. That string is written in `app/agents/relevance.py` around 2017–2020, inside the branch that begins when the model verdict is `ALREADY_EXISTS` (around 1956). The trace does not store the raw model verdict. All 4 false passes are among those 8. The other 4 `CANDIDATE` reasons (`samuelarogbonlo/knetvis`, `Carvenjizaks/gc-sync-webhook`, `ri-char/pwatch`, `0xMH/fichero-printer`) do not use that format.
-
-On Invoice, raindrop, and go-file-sync the verdict is `CANDIDATE`, and the commercial pages sit under `must_beat` with `did not block`. They are not `NEEDS_REVIEW`.
-
-- Invoice: Excel (`excel.cloud.microsoft`), Canva (`canva.com/invoice` and `/invoice/templates/`), and Invoice Ninja (`invoiceninja.com`) are full-overlap web rows. Each `must_beat` line says no push or release date, `stars=0`, and `official=False`. The search row sets `stars` to 0 and `pushed_at` to empty, and does not set `official`, `commercial`, `page_checked_at`, `pricing_page`, or `free_tier` (`app/agents/relevance.py` around 2391). `_docs_shaped` in `app/agents/blocker.py` is the first-party docs shortcut, and it requires a docs-shaped URL. Those three URLs are not docs-shaped. The named alternative in the reason is `jeroenvheel/MyClientBase` (stale push date, 42 stars, licence line). `al1abb/invoify` and `InvoicePlane/InvoicePlane` do not appear in this trace.
-- ScrapeServ: the string `Gotenberg` does not appear. Web-found GitHub rows `web:https://github.com/hodlthedoor/screenforge` and `web:https://github.com/wysie/groktocrawl` are full overlap under `must_beat` with `stars=0`. The named alternative is `YeDawa/Shotlink` (stale push date, 1 star).
-- raindrop: the IFTTT page `web:https://ifttt.com/connect/raindrop/wordpress` is full overlap under `must_beat` with the same empty date, `stars=0`, and licence line. The named alternative is `web:https://github.com/rosswintle/sync-raindrop` (`stars=0`).
-- go-file-sync: LocalSend, FileFly, and xosend are full-overlap web rows under `must_beat` with `did not block`. `abhi16180/photon` is full overlap with a verified quote, and its `must_beat` reason is only the free-and-self-hostable / no permissive-licence line. The trace does not record an SPDX id for Photon. The named alternative is `KuroLabs/Airshare` (stale push date and that licence line).
-
-`Dhaiwat10/x402-sovereign` is `ALREADY_EXISTS`. The trace says `https://docs.x402.org/dev-tools/facilitators` already solves the same problem and overrides an LLM `CANDIDATE`. The host starts with `docs`, so `_docs_shaped` matches. The human label cites `https://docs.x402.org/getting-started/quickstart-sellers` (`data/eval/gate1_labels.json`).
-
-The scored CalendarSync verdict is `NEEDS_PRIOR_ART`, reason `Zero alternatives checked in prior-art search.` That verdict is outside the label set `CANDIDATE` or `NEEDS_REVIEW`.
-
-Of the 10 label agreements, `aa12gq/stack-file-sync-vscode` is `NEEDS_REVIEW` because `alternative_repo` `espenalbert/path-sync` was not found in the prior-art rows (`app/agents/relevance.py` around 1975). The same trace lists `web:https://espenalbert.github.io/path-sync/` with overlap `partial`. That is an id mismatch. It is not a verified full-overlap refusal.
-
-Gate 1 has no category-popularity signal. `scripts/score_candidates.py` and `app/agents/relevance.py` do not read one, so a famous product page does not refuse a repository on its own. Each of the 16 scored traces has an `evidence_source` line `evidence_source=csv` with `prior_rows=0`, so no scored verdict used a `prior_art` row. In the committed Zetaris gate-1 trace, Invoice is `ALREADY_EXISTS` and the evidence alternative is `al1abb/invoify`, with the quote from that row. The trace's `prior_art` query for Invoice returned 1 row and selected `licence_spdx`, `stars`, and `pushed_at`. The committed `data/real/prior_art.csv` row for `al1abb/invoify` is MIT, 6376 stars, pushed `2026-08-24T02:55:34Z`.
+The cause for each case is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). The gate currently cannot refuse a repo because of a famous commercial product.
 
 <!-- BEGIN numbers: eval-summary-table -->
 | Measure | Result |
@@ -332,6 +317,7 @@ That skeleton includes the FastAPI process, the Docker image, the evidence graph
 | `data/replays/` | 19 RECORDED and 4 SAMPLE replays (`data/replays/manifest.json`) |
 | `data/eval/gate1_labels.json` | Human labels. 16 cases carry `audit` |
 | `docs/GATES.md` | Gate command notes moved out of this file |
+| `docs/SCORED_RUN_AUDIT.md` | Cause per scored case. Not a new run |
 | `docs/EVIDENCE_POLICY_TRACK.md` | `POST /run` track moved out of this file |
 | `PRE_EVENT_PLAN.md`, `OPENING_READY.md` | 8 Oct 2026 skeleton notes |
 
@@ -339,7 +325,11 @@ That skeleton includes the FastAPI process, the Docker image, the evidence graph
 
 These pull requests are open. They are not merged, and they are not the behaviour of this branch except where #58's README wording is already the base of this file.
 
-**Pull request #59 (not merged).** Rule B (`PHOENIX_UNKNOWN_BLOCKER_REVIEW`, default on in that pull request) is a safety hold for future gate-1 runs: a future `CANDIDATE` can become `NEEDS_REVIEW` when a same-problem, full-overlap, non-forge web page has a verified quote and only unknown blocker facts. The scored v3 result is still 10 label agreements out of 16. The rule was designed after looking at those same 16 cases and has no held-out validation. This note does not say the hold changed any committed verdict.
+**Pull request #59 (not merged).** Rule B (`PHOENIX_UNKNOWN_BLOCKER_REVIEW`) is on when that variable is unset, on that branch only. It is not on this branch. An offline reading of the recorded `must_beat` lines is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). It is not a live run and it is not a reported number.
+
+**Pull request #62 (not merged).** `PHOENIX_WEB_GITHUB_API_LOOKUP` stays off unless set to `1`, `true`, `yes`, `on`, or `enabled`. Not on this branch. Not part of any number on this page.
+
+**Pull request #66 (not merged).** `PHOENIX_COMMODITY_CATEGORY_RULE` stays off unless set to `1`, `true`, `yes`, `on`, or `enabled`. It was designed on these 16 cases. Not on this branch. Not part of any number on this page.
 
 **Pull request #57 (not merged).** Adds `scripts/verify_nemotron_evidence.py`. It is not on this branch, so the quickstart does not run it.
 
