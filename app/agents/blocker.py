@@ -5,7 +5,6 @@ comparable platform, maintained, mature or official, and reachable on the same t
 as the candidate. Anything else is kept as context the candidate must beat. It does
 not refuse the repository, and it never produces RESURRECTED.
 """
-
 from __future__ import annotations
 
 import re
@@ -136,7 +135,10 @@ def classify_page(alternative: dict[str, Any]) -> str:
     explicit = str(alternative.get("page_kind") or "").strip().lower()
     if explicit:
         return explicit
-    blob = " ".join(str(alternative.get(key) or "") for key in ("alternative_id", "url", "description", "excerpt", "title")).lower()
+    blob = " ".join(
+        str(alternative.get(key) or "")
+        for key in ("alternative_id", "url", "description", "excerpt", "title")
+    ).lower()
     if "perf_event_open" in blob or blob.strip() in {"syscall", "a syscall"}:
         return "syscall"
     if "/category" in blob or "category page" in blob:
@@ -214,7 +216,10 @@ def _docs_shaped(host: str, path: str) -> bool:
 
 
 def _page_text(alternative: dict[str, Any]) -> str:
-    return " ".join(str(alternative.get(key) or "") for key in ("title", "name", "product", "description", "excerpt", "readme", "text"))
+    return " ".join(
+        str(alternative.get(key) or "")
+        for key in ("title", "name", "product", "description", "excerpt", "readme", "text")
+    )
 
 
 def _verified_quote(alternative: dict[str, Any]) -> bool:
@@ -263,7 +268,10 @@ def _paid_only(alternative: dict[str, Any]) -> bool:
 
 
 def _core_value_is_free(candidate: dict[str, Any]) -> bool:
-    blob = " ".join(str(candidate.get(key) or "") for key in ("description", "readme_excerpt", "problem_excerpt", "tagline", "pitch"))
+    blob = " ".join(
+        str(candidate.get(key) or "")
+        for key in ("description", "readme_excerpt", "problem_excerpt", "tagline", "pitch")
+    )
     return _FREE_CORE.search(blob) is not None
 
 
@@ -289,7 +297,11 @@ def _forge_repo_page(alternative: dict[str, Any]) -> bool:
     source = str(alternative.get("source") or "").strip().lower()
     if source in {"github", "gitlab", "codeberg", "bitbucket"}:
         return True
-    for raw in (_page_url(alternative), str(alternative.get("alternative_id") or "")[4:] if str(alternative.get("alternative_id") or "").startswith("web:") else ""):
+    pages = [_page_url(alternative)]
+    alt = str(alternative.get("alternative_id") or "")
+    if alt.startswith("web:"):
+        pages.append(alt[4:])
+    for raw in pages:
         host_name, _path = _hostname(raw)
         if host_name and any(_host_is(host_name, suffix) for suffix in _FORGE_SUFFIXES):
             return True
@@ -333,7 +345,8 @@ def _maintenance_date_unknown(alternative: dict[str, Any]) -> bool:
     """No push or release date. An official page_checked_at counts as a known maintenance date."""
     if _as_date(alternative.get("pushed_at")) is not None or _as_date(alternative.get("released_at")) is not None:
         return False
-    if (alternative.get("official") or alternative.get("commercial")) and _as_date(alternative.get("page_checked_at")) is not None:
+    official = alternative.get("official") or alternative.get("commercial")
+    if official and _as_date(alternative.get("page_checked_at")) is not None:
         return False
     return True
 
@@ -470,9 +483,15 @@ def evaluate_blocker(candidate: dict[str, Any], alternative: dict[str, Any], *, 
         # value is being free. A vendor feature that the quote does not price is kept.
         if _paid_only(alternative) and _core_value_is_free(candidate) and cand_free:
             access_ok = False
-            access_why = "access mismatch: the quote shows the alternative is paid-only and the candidate's core value is being free"
+            access_why = (
+                "access mismatch: the quote shows the alternative is paid-only "
+                "and the candidate's core value is being free"
+            )
         elif _paid_only(alternative):
-            access_why = "access kept: the quote shows a paid-only feature, and the candidate's core value is not being free"
+            access_why = (
+                "access kept: the quote shows a paid-only feature, "
+                "and the candidate's core value is not being free"
+            )
         else:
             access_why = "access kept: the quote does not show the alternative is paid-only"
     elif cand_free and not _licence_ok(alternative):
@@ -494,14 +513,30 @@ def evaluate_blocker(candidate: dict[str, Any], alternative: dict[str, Any], *, 
         return finish(False, "source_error", reasons, kind)
 
     hard_fail = [r for r in reasons if r]
-    if not hard_fail and same_job and overlap == "full" and kind not in NOT_AN_ALTERNATIVE and maintained and mature and access_ok:
+    if (
+        not hard_fail
+        and same_job
+        and overlap == "full"
+        and kind not in NOT_AN_ALTERNATIVE
+        and maintained
+        and mature
+        and access_ok
+    ):
         notes = [maintain_why, mature_why]
         if access_why:
             notes.append(access_why)
         return _result(True, "block", notes, kind, maintenance_date_unknown=date_unknown)
 
     # A mature partial overlap still needs a person. An immature one does not refuse.
-    if overlap == "partial" and alternative.get("same_problem") is True and kind not in NOT_AN_ALTERNATIVE and maintained and mature and access_ok and fetch_status != "source_error":
+    if (
+        overlap == "partial"
+        and alternative.get("same_problem") is True
+        and kind not in NOT_AN_ALTERNATIVE
+        and maintained
+        and mature
+        and access_ok
+        and fetch_status != "source_error"
+    ):
         partial_reasons = list(reasons or ["partial overlap of a maintained product"])
         if access_why:
             partial_reasons.append(access_why)

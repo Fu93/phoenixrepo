@@ -400,7 +400,10 @@ class FallbackBudget:
     def stop(self, cause: str) -> InfraFallbackStop:
         """Build the stop from the trigger that actually fired."""
         if cause == "time_cap":
-            message = f"infra: time cap exceeded after {self.completed_calls} completed alternative calls with {self.batch_502s} batch 502s and {self.per_item_502s} per-item 502s"
+            message = (
+                f"infra: time cap exceeded after {self.completed_calls} completed alternative calls "
+                f"with {self.batch_502s} batch 502s and {self.per_item_502s} per-item 502s"
+            )
         else:
             message = f"infra: stopped after {self.failures} infrastructure failures"
         if self.last_cause:
@@ -773,10 +776,9 @@ class RelevanceClient:
         """
         last = ("", self.model, "")
         for n in range(max(1, attempts)):
-            p = (
-                prompt
-                if n == 0
-                else (prompt + f"\n\n(Retry {n}: your previous reply could not be used. Reply with ONLY one strict JSON object that follows the schema exactly: no prose, no code fences.)")
+            p = prompt if n == 0 else (
+                prompt + f"\n\n(Retry {n}: your previous reply could not be used. Reply with ONLY one strict "
+                "JSON object that follows the schema exactly: no prose, no code fences.)"
             )
             text, req_m, srv_m = self.complete(p, system_prompt, repo_id=repo_id, step=step)
             obj = extract_json_object(text)
@@ -800,11 +802,7 @@ class RelevanceClient:
         self._sent_request_settings = None
         try:
             return self._complete(
-                prompt,
-                system_prompt,
-                repo_id=repo_id,
-                step=step,
-                call_budget_s=call_budget_s,
+                prompt, system_prompt, repo_id=repo_id, step=step, call_budget_s=call_budget_s,
             )
         except RelevanceLLMError:
             if not self._call_noted:
@@ -813,12 +811,7 @@ class RelevanceClient:
                 # request_settings is set only after the HTTP body was built.
                 requested, _body, tier = self.route(step)
                 self._observe(
-                    requested,
-                    "",
-                    repo_id,
-                    step,
-                    status="error",
-                    tier=tier,
+                    requested, "", repo_id, step, status="error", tier=tier,
                     request_settings=self._sent_request_settings,
                 )
             raise
@@ -848,7 +841,9 @@ class RelevanceClient:
         sampling.update(body_extra)
         inference_sha = inference_settings_sha256(sampling)
         settings_sha = request_settings_sha256(sent_request_settings(sampling))
-        cache_key = hashlib.sha256(f"{model}\n---\n{prompt_hash}\n---\n{input_hash}\n---\n{inference_sha}".encode("utf-8")).hexdigest()
+        cache_key = hashlib.sha256(
+            f"{model}\n---\n{prompt_hash}\n---\n{input_hash}\n---\n{inference_sha}".encode("utf-8")
+        ).hexdigest()
         cache_file = self.cache_dir / f"{cache_key}.json"
         self.last_reasoning = ""
 
@@ -862,7 +857,9 @@ class RelevanceClient:
                 served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
                     self._observe(model, served, repo_id, step, status="error", tier=tier_label)
-                    raise RelevanceLLMError(f"Nightshift served local model {served}; refusing to score with a small local model")
+                    raise RelevanceLLMError(
+                        f"Nightshift served local model {served}; refusing to score with a small local model"
+                    )
                 if self.nemotron_policy != "label" and model_mismatch(served):
                     # Written under the label policy. Under require / fallback-nvidia a
                     # non-Nemotron answer is not reused; it is asked again below.
@@ -873,15 +870,9 @@ class RelevanceClient:
                 self.last_routing = dict(cached_routing)
                 self.last_reasoning = str(cached.get("reasoning") or "")
                 self._observe(
-                    req_m,
-                    served,
-                    repo_id,
-                    step,
-                    routing=cached_routing or None,
-                    provider=str(cached.get("provider") or "nightshift"),
-                    tier=tier_label,
-                    reasoning=self.last_reasoning if tier == "deep" else "",
-                    cache_hit=True,
+                    req_m, served, repo_id, step, routing=cached_routing or None,
+                    provider=str(cached.get("provider") or "nightshift"), tier=tier_label,
+                    reasoning=self.last_reasoning if tier == "deep" else "", cache_hit=True,
                 )
                 self.last_cache_hit = True
                 self.last_cache_file = cache_file
@@ -918,16 +909,9 @@ class RelevanceClient:
             cache_file.write_text(json.dumps(record, indent=2), encoding="utf-8")
             self.last_reasoning = reasoning
             self._observe(
-                model,
-                served,
-                repo_id,
-                step,
-                routing=routing or None,
-                provider=provider,
-                tier=tier_label,
-                reasoning=reasoning if tier == "deep" else "",
-                seconds=time.monotonic() - call_start,
-                request_settings=request_settings,
+                model, served, repo_id, step, routing=routing or None, provider=provider,
+                tier=tier_label, reasoning=reasoning if tier == "deep" else "",
+                seconds=time.monotonic() - call_start, request_settings=request_settings,
             )
             self.last_cache_hit = False
             self.last_cache_file = cache_file
@@ -940,7 +924,9 @@ class RelevanceClient:
             served = model if self.mock_served_model is None else self.mock_served_model
             if served.startswith("local-runtime/"):
                 self._observe(model, served, repo_id, step, status="error", tier=tier_label)
-                raise RelevanceLLMError(f"Nightshift served local model {served}; refusing to score with a small local model")
+                raise RelevanceLLMError(
+                    f"Nightshift served local model {served}; refusing to score with a small local model"
+                )
             resp_text = self.mock_handler(prompt, system_prompt)
             return _store(resp_text, served, {}, "nightshift", "")
 
@@ -1002,26 +988,14 @@ class RelevanceClient:
                     )
             except httpx.HTTPError as exc:
                 self._observe(
-                    direct_model,
-                    "",
-                    repo_id,
-                    step,
-                    status="error",
-                    provider="nvidia-direct",
-                    tier=tier_label,
+                    direct_model, "", repo_id, step, status="error", provider="nvidia-direct", tier=tier_label,
                     request_settings=self._sent_request_settings,
                 )
                 sys.stderr.write(f"[{repo_id or 'unknown'}] step={step} nvidia-direct failed after {reason}: {type(exc).__name__}\n")
                 return None
             if resp.status_code != 200:
                 self._observe(
-                    direct_model,
-                    "",
-                    repo_id,
-                    step,
-                    status="error",
-                    provider="nvidia-direct",
-                    tier=tier_label,
+                    direct_model, "", repo_id, step, status="error", provider="nvidia-direct", tier=tier_label,
                     request_settings=self._sent_request_settings,
                 )
                 sys.stderr.write(f"[{repo_id or 'unknown'}] step={step} nvidia-direct HTTP {resp.status_code} after {reason}\n")
@@ -1034,24 +1008,14 @@ class RelevanceClient:
             served = raw.strip() if isinstance(raw, str) else ""
             if model_mismatch(served):
                 self._observe(
-                    direct_model,
-                    served,
-                    repo_id,
-                    step,
-                    status="rejected",
-                    provider="nvidia-direct",
-                    tier=tier_label,
+                    direct_model, served, repo_id, step, status="rejected", provider="nvidia-direct", tier=tier_label,
                     request_settings=self._sent_request_settings,
                 )
                 return None
             msg, text = _message_text(data)
             self.direct_calls += 1
             return _store(
-                text,
-                served,
-                {"fallback_reason": reason[:120]},
-                "nvidia-direct",
-                reasoning_excerpt(msg, text),
+                text, served, {"fallback_reason": reason[:120]}, "nvidia-direct", reasoning_excerpt(msg, text),
                 request_settings=self._sent_request_settings,
             )
 
@@ -1059,10 +1023,8 @@ class RelevanceClient:
         for delay in RETRY_DELAYS:
             now = time.monotonic()
             if now - call_start + delay > total_cap:
-                raise (
-                    last_exc
-                    if isinstance(last_exc, RelevanceLLMError) and "not Nemotron" in str(last_exc)
-                    else RelevanceLLMError(f"Nightshift call exceeded total timeout limit of {total_cap}s across retries.")
+                raise last_exc if isinstance(last_exc, RelevanceLLMError) and "not Nemotron" in str(last_exc) else RelevanceLLMError(
+                    f"Nightshift call exceeded total timeout limit of {total_cap}s across retries."
                 )
             if delay > 0:
                 time.sleep(delay)
@@ -1099,7 +1061,9 @@ class RelevanceClient:
                 rescued = _direct("nightshift timeout")
                 if rescued is not None:
                     return rescued
-                raise RelevanceLLMError(f"Nightshift request timed out (wall-clock cap of {time_left:.2f}s exceeded).")
+                raise RelevanceLLMError(
+                    f"Nightshift request timed out (wall-clock cap of {time_left:.2f}s exceeded)."
+                )
             if "error" in box:
                 exc = box["error"]
                 if isinstance(exc, httpx.HTTPError):
@@ -1123,42 +1087,31 @@ class RelevanceClient:
                 served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
                     self._observe(
-                        model,
-                        served,
-                        repo_id,
-                        step,
-                        status="error",
-                        tier=tier_label,
+                        model, served, repo_id, step, status="error", tier=tier_label,
                         request_settings=self._sent_request_settings,
                     )
-                    raise RelevanceLLMError(f"Nightshift served local model {served}; refusing to score with a small local model")
+                    raise RelevanceLLMError(
+                        f"Nightshift served local model {served}; refusing to score with a small local model"
+                    )
                 routing = routing_meta(data, getattr(resp, "headers", None))
                 self.last_routing = routing
                 msg, text = _message_text(data)
                 if self.nemotron_policy != "label" and model_mismatch(served):
                     # The answer exists but was not written by Nemotron: it is traced and discarded.
                     self._observe(
-                        model,
-                        served,
-                        repo_id,
-                        step,
-                        status="rejected",
-                        routing=routing or None,
-                        tier=tier_label,
-                        seconds=time.monotonic() - call_start,
+                        model, served, repo_id, step, status="rejected", routing=routing or None,
+                        tier=tier_label, seconds=time.monotonic() - call_start,
                         request_settings=self._sent_request_settings,
                     )
                     rescued = _direct(f"nightshift served {served or '(missing)'}")
                     if rescued is not None:
                         return rescued
-                    last_exc = RelevanceLLMError(f"Nightshift served {served or '(missing)'}, not Nemotron; PHOENIX_NEMOTRON_POLICY={self.nemotron_policy} discarded it")
+                    last_exc = RelevanceLLMError(
+                        f"Nightshift served {served or '(missing)'}, not Nemotron; PHOENIX_NEMOTRON_POLICY={self.nemotron_policy} discarded it"
+                    )
                     continue
                 return _store(
-                    text,
-                    served,
-                    routing,
-                    "nightshift",
-                    reasoning_excerpt(msg, text),
+                    text, served, routing, "nightshift", reasoning_excerpt(msg, text),
                     request_settings=self._sent_request_settings,
                 )
 
@@ -1171,7 +1124,6 @@ class RelevanceClient:
                     return rescued
 
         raise last_exc or RelevanceLLMError("Nightshift request failed after retries.")
-
 
 def is_valid_demand_signal_url(url: str, candidate_repo_id: str) -> tuple[bool, str]:
     """Validate signal URL: must be issue/discussion/forum, not PR, code file, repo root or candidate repo."""
@@ -1223,7 +1175,11 @@ def extract_capabilities(
         client = RelevanceClient()
 
     prompt_record = load_prompt("relevance_capabilities")
-    user_prompt = f"Candidate Repository: {repo_id}\nStored README Excerpt:\n```\n{readme}\n```\n\nExtract up to 5 user-facing capabilities as strict JSON."
+    user_prompt = (
+        f"Candidate Repository: {repo_id}\n"
+        f"Stored README Excerpt:\n```\n{readme}\n```\n\n"
+        "Extract up to 5 user-facing capabilities as strict JSON."
+    )
 
     try:
         text, req_m, srv_m = client.complete(user_prompt, prompt_record.text, repo_id=repo_id, step="capabilities")
@@ -1323,7 +1279,7 @@ def judge_demand(
         client = RelevanceClient()
 
     prompt_record = load_prompt("relevance_demand")
-    caps_str = "\n".join(f'- {c["name"]} (quote: "{c["quote"]}")' for c in candidate_capabilities)
+    caps_str = "\n".join(f"- {c['name']} (quote: \"{c['quote']}\")" for c in candidate_capabilities)
     user_prompt = (
         f"Candidate Capabilities:\n{caps_str}\n\n"
         f"Signal URL: {url}\n"
@@ -1332,7 +1288,9 @@ def judge_demand(
     )
 
     try:
-        text, req_m, srv_m = client.complete(user_prompt, prompt_record.text, repo_id=candidate_repo_id, step="demand")
+        text, req_m, srv_m = client.complete(
+            user_prompt, prompt_record.text, repo_id=candidate_repo_id, step="demand"
+        )
     except Exception as exc:
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
             raise
@@ -1417,76 +1375,58 @@ def judge_alternative_coverage(
     prompt_record = load_prompt("relevance_coverage")
     user_prompt = (
         f"Candidate Capability: {capability['name']}\n"
-        f'Candidate Quote: "{capability["quote"]}"\n\n'
+        f"Candidate Quote: \"{capability['quote']}\"\n\n"
         f"Alternative ({alternative.get('alternative_id', '')}) Text:\n```\n{alt_text}\n```\n\n"
         "Judge if the alternative covers this capability. Strict JSON output."
     )
 
     try:
-        text, req_m, srv_m = client.complete(user_prompt, prompt_record.text, repo_id=repo_id, step="coverage")
+        text, req_m, srv_m = client.complete(
+            user_prompt, prompt_record.text, repo_id=repo_id, step="coverage"
+        )
     except Exception as exc:
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
             raise
-        return (
-            False,
-            "",
-            {
-                "requested_model": getattr(client, "model", DEFAULT_NIGHTSHIFT_MODEL),
-                "served_model": "",
-                "fallback": True,
-                "error": str(exc),
-            },
-        )
+        return False, "", {
+            "requested_model": getattr(client, "model", DEFAULT_NIGHTSHIFT_MODEL),
+            "served_model": "",
+            "fallback": True,
+            "error": str(exc),
+        }
 
     obj = extract_json_object(text)
     if obj is None:
-        return (
-            False,
-            "",
-            {
-                "requested_model": req_m,
-                "served_model": srv_m,
-                "fallback": True,
-                "error": "LLM output invalid JSON",
-            },
-        )
+        return False, "", {
+            "requested_model": req_m,
+            "served_model": srv_m,
+            "fallback": True,
+            "error": "LLM output invalid JSON",
+        }
 
     covered = bool(obj.get("covered"))
     if not covered:
-        return (
-            False,
-            "",
-            {
-                "requested_model": req_m,
-                "served_model": srv_m,
-                "fallback": False,
-                "why": str(obj.get("why") or "Not covered"),
-            },
-        )
-
-    quote = str(obj.get("quote") or "").strip()
-    if not quote or quote not in alt_text:
-        return (
-            False,
-            "",
-            {
-                "requested_model": req_m,
-                "served_model": srv_m,
-                "fallback": False,
-                "reason": "Covered quote not found in alternative text",
-            },
-        )
-
-    return (
-        True,
-        quote,
-        {
+        return False, "", {
             "requested_model": req_m,
             "served_model": srv_m,
             "fallback": False,
-            "why": str(obj.get("why") or ""),
-        },
-    )
+            "why": str(obj.get("why") or "Not covered"),
+        }
+
+    quote = str(obj.get("quote") or "").strip()
+    if not quote or quote not in alt_text:
+        return False, "", {
+            "requested_model": req_m,
+            "served_model": srv_m,
+            "fallback": False,
+            "reason": "Covered quote not found in alternative text",
+        }
+
+    return True, quote, {
+        "requested_model": req_m,
+        "served_model": srv_m,
+        "fallback": False,
+        "why": str(obj.get("why") or ""),
+    }
 
 
 def is_client_configured(client: RelevanceClient | None) -> bool:
@@ -1504,27 +1444,11 @@ def normalize_whitespace(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
-_MARKUP_TRANS = str.maketrans(
-    {
-        "*": " ",
-        "_": " ",
-        "`": " ",
-        "#": " ",
-        ">": " ",
-        "\u2018": "'",
-        "\u2019": "'",
-        "\u201c": '"',
-        "\u201d": '"',
-        "\u2013": "-",
-        "\u2014": "-",
-        "\u2010": "-",
-        "\u2011": "-",
-        "\u2012": "-",
-        "\u2015": "-",
-        "\u2212": "-",
-        "\u2026": "...",
-    }
-)
+_MARKUP_TRANS = str.maketrans({
+    "*": " ", "_": " ", "`": " ", "#": " ", ">": " ",
+    "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-",
+    "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2015": "-", "\u2212": "-", "\u2026": "...",
+})
 _DASH_SPACING = re.compile(r"\s*-\s*")
 
 
@@ -1559,45 +1483,12 @@ def build_search_queries(candidate: dict[str, Any], problem_statement: dict[str,
     - official-feature query (<platform> export <format> / <platform> built-in <job>)
     """
     known_platforms = [
-        "youtrack",
-        "jira",
-        "github",
-        "gitlab",
-        "notion",
-        "confluence",
-        "slack",
-        "discord",
-        "obsidian",
-        "trello",
-        "linear",
-        "clickup",
-        "airtable",
-        "salesforce",
-        "zendesk",
-        "shopify",
-        "stripe",
-        "docker",
-        "kubernetes",
-        "aws",
-        "gcp",
-        "azure",
-        "postgres",
-        "sqlite",
-        "mysql",
-        "redis",
-        "mongodb",
-        "elastic",
-        "grafana",
-        "prometheus",
-        "sentry",
-        "bitbucket",
-        "jenkins",
-        "circleci",
-        "ansible",
-        "terraform",
-        "vault",
-        "kafka",
-        "rabbitmq",
+        "youtrack", "jira", "github", "gitlab", "notion", "confluence", "slack",
+        "discord", "obsidian", "trello", "linear", "clickup", "airtable", "salesforce",
+        "zendesk", "shopify", "stripe", "docker", "kubernetes", "aws", "gcp",
+        "azure", "postgres", "sqlite", "mysql", "redis", "mongodb", "elastic",
+        "grafana", "prometheus", "sentry", "bitbucket", "jenkins", "circleci",
+        "ansible", "terraform", "vault", "kafka", "rabbitmq",
     ]
     known_formats = ["markdown", "json", "csv", "pdf", "html", "yaml", "xml", "text", "excel"]
     known_jobs = ["export", "sync", "import", "backup", "edit", "fetch", "generate", "publish", "migrate", "archive"]
@@ -1669,20 +1560,8 @@ def build_search_queries(candidate: dict[str, Any], problem_statement: dict[str,
         extra_queries.append(f"open source {category}")
 
     stack_components = {
-        "postgres",
-        "sqlite",
-        "mysql",
-        "redis",
-        "mongodb",
-        "elastic",
-        "docker",
-        "kubernetes",
-        "aws",
-        "gcp",
-        "azure",
-        "kafka",
-        "rabbitmq",
-        "developer",
+        "postgres", "sqlite", "mysql", "redis", "mongodb", "elastic", "docker", "kubernetes",
+        "aws", "gcp", "azure", "kafka", "rabbitmq", "developer",
     }
     identity_text = f"{cand_id} {desc}"
     if platform in stack_components or not re.search(r"\b" + re.escape(platform) + r"\b", identity_text):
@@ -1820,7 +1699,10 @@ def _alternative_quote_verified(row: dict[str, Any]) -> bool:
         return False
     if row.get("quote_verified") is True:
         return True
-    text = " ".join(str(row.get(key) or "") for key in ("excerpt", "description", "text", "readme", "title", "name", "product"))
+    text = " ".join(
+        str(row.get(key) or "")
+        for key in ("excerpt", "description", "text", "readme", "title", "name", "product")
+    )
     return bool(text.strip()) and all(quote_in_text(quote, text) for quote in quotes)
 
 
@@ -1989,7 +1871,10 @@ def judge_discovery(
         err_sources = [s for s, st in source_status.items() if st == "SOURCE_ERROR"]
         coverage_reason = f"INSUFFICIENT_PRIOR_ART_COVERAGE: source error in {', '.join(err_sources)}"
     elif budget_cut:
-        coverage_reason = f"INSUFFICIENT_PRIOR_ART_COVERAGE: tool budget exhausted before the search finished ({', '.join(budget_cut)}); an unfinished search is not evidence of no competition"
+        coverage_reason = (
+            f"INSUFFICIENT_PRIOR_ART_COVERAGE: tool budget exhausted before the search finished ({', '.join(budget_cut)}); "
+            "an unfinished search is not evidence of no competition"
+        )
     elif zero_results:
         coverage_reason = "INSUFFICIENT_PRIOR_ART_COVERAGE: zero alternatives found across all sources"
     elif fewer_than_two:
@@ -2000,34 +1885,41 @@ def judge_discovery(
     def _is_web_row(r: dict[str, Any]) -> bool:
         return str(r.get("source") or "") == "web" or str(r.get("alternative_id") or "").startswith("web:")
 
-    mainstream_overlap = [r for r in combined_priors if _is_web_row(r) and r.get("same_problem") is True and str(r.get("overlap") or "") in {"partial", "full"}]
+    mainstream_overlap = [
+        r for r in combined_priors
+        if _is_web_row(r) and r.get("same_problem") is True and str(r.get("overlap") or "") in {"partial", "full"}
+    ]
     # A verified full-overlap alternative of any source (GitHub included) means an open-source or
     # commercial substitute exists; GitHub partial overlap only needs a human look.
-    full_overlap_rows = [r for r in combined_priors if r.get("same_problem") is True and str(r.get("overlap") or "") == "full"]
+    full_overlap_rows = [
+        r for r in combined_priors
+        if r.get("same_problem") is True and str(r.get("overlap") or "") == "full"
+    ]
     # Must-beat copies are appended when the model names a full-overlap row, so Rule B
     # sees that path as well as the rows collected here.
     rule_b_rows: list[dict[str, Any]] = list(full_overlap_rows)
-    github_partial_rows = [r for r in combined_priors if not _is_web_row(r) and r.get("same_problem") is True and str(r.get("overlap") or "") == "partial"]
+    github_partial_rows = [
+        r for r in combined_priors
+        if not _is_web_row(r) and r.get("same_problem") is True and str(r.get("overlap") or "") == "partial"
+    ]
     # Show same-problem alternatives (web first) to the judge before unrelated rows.
     combined_priors.sort(key=lambda r: (r.get("same_problem") is not True, not _is_web_row(r)))
 
     if not is_client_configured(client):
         verdict, reason = decide_discovery(candidate, combined_priors, demand_rows)
         clean_reason = reason.replace("Method: phrase/keyword.", "").rstrip().rstrip(".")
-        unknown_blocker = None
         if verdict == "CANDIDATE":
             hit = _unknown_blocker_review(candidate, combined_priors, trace)
             if hit is not None:
                 verdict = "NEEDS_REVIEW"
                 clean_reason = hit["reason"]
-                unknown_blocker = hit["record"]
                 picked_fallback = [{**hit["row"], "overlap": "full", "reason": clean_reason}]
                 return DiscoveryDecision(
                     verdict,
                     f"{clean_reason}. Method: phrase/keyword (fallback).",
                     _evidence_rows(picked_fallback),
                     [],
-                    unknown_blocker,
+                    hit["record"],
                 )
         return verdict, f"{clean_reason}. Method: phrase/keyword (fallback)."
 
@@ -2071,17 +1963,15 @@ def judge_discovery(
     else:
         user_prompt_lines.append("External Demand Signals: None")
 
-    user_prompt_lines.append("Judge whether this candidate is CANDIDATE, ALREADY_EXISTS, or NO_GO according to the rubric. Output strict JSON.")
+    user_prompt_lines.append(
+        "Judge whether this candidate is CANDIDATE, ALREADY_EXISTS, or NO_GO according to the rubric. Output strict JSON."
+    )
     user_prompt = "\n\n".join(user_prompt_lines)
 
     # Retry an unusable answer (and drop it from the cache, so it is never replayed): one malformed
     # reply must not turn a repo into NEEDS_REVIEW for every later run.
     obj, text, req_m, srv_m = _complete_json(
-        client,
-        user_prompt,
-        prompt_record.text,
-        repo_id,
-        "discovery",
+        client, user_prompt, prompt_record.text, repo_id, "discovery",
         validate=lambda o: "verdict" in o,
     )
     if obj is None:
@@ -2150,7 +2040,10 @@ def judge_discovery(
         elif github_partial_rows and not mainstream_overlap and _blocker(github_partial_rows[0])["role"] == "mature_partial":
             m = github_partial_rows[0]
             verdict = "NEEDS_REVIEW"
-            reason = f"ALTERNATIVE_OVERLAP: repo {m.get('url') or m.get('alternative_id')} solves the same problem (overlap partial); a human must confirm the remaining gap before CANDIDATE"
+            reason = (
+                f"ALTERNATIVE_OVERLAP: repo {m.get('url') or m.get('alternative_id')} solves the same problem "
+                f"(overlap partial); a human must confirm the remaining gap before CANDIDATE"
+            )
             picked = [{**m, "reason": reason}]
         elif mainstream_overlap and _blocker(mainstream_overlap[0])["role"] == "mature_partial":
             # A maintained official or mature product on the web solves the same problem in part.
@@ -2207,12 +2100,7 @@ def judge_discovery(
                 verdict = "NEEDS_REVIEW"
                 reason = f"unverified ALREADY_EXISTS: alternative '{matched_row.get('alternative_id')}' has overlap '{matched_row.get('overlap')}', requires verified full overlap"
                 picked = [{**matched_row, "quotes": [alt_quote] if alt_quote else [], "reason": reason}]
-            elif (
-                any(r.get("overlap") for r in combined_priors)
-                and not any(r.get("overlap") == "full" for r in combined_priors)
-                and matched_row.get("overlap") != "full"
-                and not matched_row.get("licence_spdx")
-            ):
+            elif any(r.get("overlap") for r in combined_priors) and not any(r.get("overlap") == "full" for r in combined_priors) and matched_row.get("overlap") != "full" and not matched_row.get("licence_spdx"):
                 verdict = "NEEDS_REVIEW"
                 reason = "unverified ALREADY_EXISTS: requires at least one verified full-overlap alternative"
                 picked = [{**matched_row, "quotes": [alt_quote] if alt_quote else [], "reason": reason}]
@@ -2234,7 +2122,10 @@ def judge_discovery(
                     m = blocking_full[0]
                     quotes = [str(q) for q in (m.get("quotes") or []) if str(q).strip()]
                     verdict = "ALREADY_EXISTS"
-                    reason = f"verified full-overlap alternative {m.get('url') or m.get('alternative_id')} already solves the same problem" + (f" (quote: '{quotes[0]}')" if quotes else "")
+                    reason = (
+                        f"verified full-overlap alternative {m.get('url') or m.get('alternative_id')} already solves the same problem"
+                        + (f" (quote: '{quotes[0]}')" if quotes else "")
+                    )
                     picked = [{**m, "quotes": quotes, "overlap": "full", "reason": reason}]
                 else:
                     rule_b_rows.append(named)
@@ -2247,7 +2138,6 @@ def judge_discovery(
                         verdict = "NEEDS_REVIEW"
                         reason = f"must beat {named.get('alternative_id')}: {why}"
                         picked = [{**named, "reason": reason}]
-
         def _quote_checks(row: dict[str, Any]) -> list[str]:
             text = f"{row.get('excerpt', '')} {row.get('description', '')} {row.get('text', '')} {row.get('readme', '')}"
             return [str(q) for q in (row.get("quotes") or []) if str(q).strip() and quote_in_text(str(q), text)]
@@ -2308,7 +2198,10 @@ def judge_discovery(
     # Rule B did not block the row. Keep it on must_beat as well as in the review evidence.
     blocked_names: set[str] = set()
     if not unknown_blocker:
-        blocked_names = {str(p.get("alternative_id") or p.get("alternative") or p.get("url") or "").casefold() for p in picked}
+        blocked_names = {
+            str(p.get("alternative_id") or p.get("alternative") or p.get("url") or "").casefold()
+            for p in picked
+        }
     deduped: list[dict[str, str]] = []
     seen_beat: set[str] = set()
     for item in must_beat:
@@ -2351,7 +2244,9 @@ def extract_problem_statement(
     )
 
     try:
-        obj, text, req_m, srv_m = _complete_json(client, user_prompt, prompt_record.text, repo_id, "problem")
+        obj, text, req_m, srv_m = _complete_json(
+            client, user_prompt, prompt_record.text, repo_id, "problem"
+        )
     except Exception as exc:
         if isinstance(exc, RelevanceLLMError) and "refusing to score with a small local model" in str(exc):
             raise
@@ -2445,13 +2340,11 @@ def search_prior_art(
     own_filtered: list[dict[str, str]] = []
 
     def _own(row: dict[str, Any], why: str) -> None:
-        own_filtered.append(
-            {
-                "alternative": str(row.get("alternative_id") or row.get("full_name") or row.get("name") or ""),
-                "url": str(row.get("url") or row.get("html_url") or ""),
-                "reason": why,
-            }
-        )
+        own_filtered.append({
+            "alternative": str(row.get("alternative_id") or row.get("full_name") or row.get("name") or ""),
+            "url": str(row.get("url") or row.get("html_url") or ""),
+            "reason": why,
+        })
 
     results: list[dict[str, Any]] = []
     seen_ids: set[str] = {cand_id.casefold()}
@@ -2626,22 +2519,17 @@ def search_prior_art(
                         _own(web_row, why or "own repository URL")
                         continue
                     desc = f"{title} - {snippet}" if title and snippet else (title or snippet)
-                    bucket.append(
-                        (
-                            url_lower,
-                            {
-                                "alternative_id": f"web:{url}",
-                                "url": url,
-                                "description": desc,
-                                "readme": snippet,
-                                "licence_spdx": "",
-                                "stars": 0,
-                                "pushed_at": "",
-                                "source": "web",
-                                "query": q,
-                            },
-                        )
-                    )
+                    bucket.append((url_lower, {
+                        "alternative_id": f"web:{url}",
+                        "url": url,
+                        "description": desc,
+                        "readme": snippet,
+                        "licence_spdx": "",
+                        "stars": 0,
+                        "pushed_at": "",
+                        "source": "web",
+                        "query": q,
+                    }))
             elif not web_res.ok and str(web_res.error or "") == "BUDGET_EXHAUSTED":
                 truncated.add("web")
             elif not web_res.ok:
@@ -2766,10 +2654,7 @@ def judge_alternative_relevance(
 
     try:
         text, req_m, srv_m = client.complete(
-            user_prompt,
-            prompt_record.text,
-            repo_id=candidate_repo_id,
-            step="alternative",
+            user_prompt, prompt_record.text, repo_id=candidate_repo_id, step="alternative",
             call_budget_s=call_budget_s,
         )
     except Exception as exc:
@@ -2882,8 +2767,8 @@ BATCH_CALL_ATTEMPTS = 2
 ALTERNATIVE_CHUNK_SIZE = 2
 _BATCH_RETRY_NOTE = (
     "\n\n(Retry: your previous reply could not be used. Reply with ONLY one strict JSON object "
-    'of the form {"results": [{"index": <number>, "same_problem": true|false, '
-    '"overlap": "full"|"partial"|"none", "reason": "...", "quotes": ["..."]}]}. '
+    "of the form {\"results\": [{\"index\": <number>, \"same_problem\": true|false, "
+    "\"overlap\": \"full\"|\"partial\"|\"none\", \"reason\": \"...\", \"quotes\": [\"...\"]}]}. "
     "No prose and no code fences.)"
 )
 
@@ -2938,11 +2823,16 @@ def _trace_llm(
 def _batch_prompt(problem_statement: dict[str, Any], items: list[tuple[int, dict[str, Any], str]], max_chars: int) -> str:
     blocks = []
     for i, res, text in items:
-        blocks.append(f"[{i}] Alternative: {res.get('alternative_id', '')}\nURL: {res.get('url', '')}\nDescription and README Excerpt:\n```\n{text[:max_chars]}\n```")
+        blocks.append(
+            f"[{i}] Alternative: {res.get('alternative_id', '')}\nURL: {res.get('url', '')}\n"
+            f"Description and README Excerpt:\n```\n{text[:max_chars]}\n```"
+        )
     return (
         f"Candidate Problem: {problem_statement.get('problem', '')}\n"
         f"Target User: {problem_statement.get('target_user', '')}\n"
-        f"Category: {problem_statement.get('category', '')}\n\n" + "\n\n".join(blocks) + "\n\nFor every alternative index, judge whether it solves the same core user problem, the overlap "
+        f"Category: {problem_statement.get('category', '')}\n\n"
+        + "\n\n".join(blocks)
+        + "\n\nFor every alternative index, judge whether it solves the same core user problem, the overlap "
         "degree (full, partial, none), and give verbatim supporting quotes. Output strict JSON."
     )
 
@@ -3060,9 +2950,7 @@ def _per_item(
     same = True if alt_row is not None else meta.get("same_problem")
     quote_verified = alt_row is not None
     _trace_llm(
-        trace,
-        "ALTERNATIVE_CALL",
-        candidate_repo_id,
+        trace, "ALTERNATIVE_CALL", candidate_repo_id,
         str(meta.get("requested_model") or (client.model if client is not None else "")),
         str(meta.get("served_model") or ""),
         {
@@ -3141,10 +3029,7 @@ def judge_alternatives_batch(
             started = fallback_budget.clock()
         try:
             text, req_m, srv_m = client.complete(
-                prompt,
-                system,
-                repo_id=candidate_repo_id,
-                step="alternative_batch",
+                prompt, system, repo_id=candidate_repo_id, step="alternative_batch",
                 call_budget_s=left,
             )
         except InfraFallbackStop:
@@ -3155,13 +3040,8 @@ def judge_alternatives_batch(
             if fallback_budget is not None:
                 fallback_budget.charge_failure(fallback_budget.clock() - started, str(exc), kind="batch")
             _trace_llm(
-                trace,
-                "ALTERNATIVE_BATCH_CALL",
-                candidate_repo_id,
-                client.model,
-                "",
-                {"indexes": which, "reason": str(exc)[:160], "chunk_index": chunk_index},
-                status="error",
+                trace, "ALTERNATIVE_BATCH_CALL", candidate_repo_id, client.model, "",
+                {"indexes": which, "reason": str(exc)[:160], "chunk_index": chunk_index}, status="error",
                 record_model=getattr(client, "trace", None) is None,
             )
             raise
@@ -3169,11 +3049,7 @@ def judge_alternatives_batch(
             fallback_budget.note_completed()
         entries = extract_result_entries(text)
         _trace_llm(
-            trace,
-            "ALTERNATIVE_BATCH_CALL",
-            candidate_repo_id,
-            req_m,
-            srv_m,
+            trace, "ALTERNATIVE_BATCH_CALL", candidate_repo_id, req_m, srv_m,
             {"indexes": which, "parsed_indexes": sorted(_index_map(entries)), "chunk_index": chunk_index},
             status="ok" if entries else "error",
             record_model=getattr(client, "trace", None) is None,
@@ -3274,13 +3150,7 @@ def judge_alternatives_batch(
         try:
             for _i, res, _rtext in missing:
                 alt_row = _per_item(
-                    problem_statement,
-                    candidate_repo_id,
-                    res,
-                    client,
-                    trace,
-                    fallback_budget,
-                    _i,
+                    problem_statement, candidate_repo_id, res, client, trace, fallback_budget, _i,
                     chunk_index=chunk_index,
                 )
                 if alt_row is not None:
@@ -3388,17 +3258,12 @@ def filter_relevant_alternatives(
     try:
         for chunk_index, start in enumerate(range(0, len(rows), ALTERNATIVE_CHUNK_SIZE)):
             budget.guard_new_chunk()
-            chunk = rows[start : start + ALTERNATIVE_CHUNK_SIZE]
+            chunk = rows[start:start + ALTERNATIVE_CHUNK_SIZE]
             judged = False
             if len(chunk) > 1:
                 batch = judge_alternatives_batch(
-                    problem_statement,
-                    candidate_repo_id,
-                    chunk,
-                    client=client,
-                    trace=trace,
-                    fallback_budget=budget,
-                    chunk_index=chunk_index,
+                    problem_statement, candidate_repo_id, chunk, client=client, trace=trace,
+                    fallback_budget=budget, chunk_index=chunk_index,
                 )
                 if batch is not None:
                     verified_alts.extend(batch)
@@ -3412,12 +3277,7 @@ def filter_relevant_alternatives(
                         raise budget.stop("time_cap")
                     before = budget.failures
                     alt_row = _per_item(
-                        problem_statement,
-                        candidate_repo_id,
-                        res,
-                        client,
-                        trace,
-                        budget,
+                        problem_statement, candidate_repo_id, res, client, trace, budget,
                         chunk_index=chunk_index,
                     )
                     if budget.failures > before:
@@ -3472,26 +3332,29 @@ def judge_partial_alternatives(
         overlap = str(row.get("overlap") or "").strip().lower()
         quotes = [str(q).strip() for q in (row.get("quotes") or []) if str(q).strip()]
         quote_ok = row.get("quote_verified") is not False and bool(quotes)
-        labels.append(f"{name} (overlap {overlap or 'unknown'}, {'quote verified' if quote_ok else 'quote unverified'})")
+        labels.append(
+            f"{name} (overlap {overlap or 'unknown'}, {'quote verified' if quote_ok else 'quote unverified'})"
+        )
         if row.get("same_problem") is not True or overlap != "full" or not quote_ok:
             continue
         decision = evaluate_blocker(candidate, row, as_of=when)
         if decision.get("blocks") and decision.get("verdict_if_blocked") == "ALREADY_EXISTS":
             blocking.append(row)
             continue
-        must_beat.append(
-            {
-                "alternative": name,
-                "overlap": overlap,
-                "quote": quotes[0] if quotes else "",
-                "reason": "did not block: " + "; ".join(decision.get("reasons") or []),
-            }
-        )
+        must_beat.append({
+            "alternative": name,
+            "overlap": overlap,
+            "quote": quotes[0] if quotes else "",
+            "reason": "did not block: " + "; ".join(decision.get("reasons") or []),
+        })
     if blocking:
         chosen = blocking[0]
         quotes = [str(q).strip() for q in (chosen.get("quotes") or []) if str(q).strip()]
         name = chosen.get("url") or chosen.get("alternative_id")
-        reason = f"verified full-overlap alternative {name} already solves the same problem" + (f" (quote: '{quotes[0]}')" if quotes else "")
+        reason = (
+            f"verified full-overlap alternative {name} already solves the same problem"
+            + (f" (quote: '{quotes[0]}')" if quotes else "")
+        )
         if unjudged_chunks:
             reason += f". Alternatives phase stopped with {unjudged_chunks} chunk(s) unjudged"
         picked = [{**chosen, "quotes": quotes, "overlap": "full", "reason": reason}]
