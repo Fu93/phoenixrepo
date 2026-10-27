@@ -1,0 +1,60 @@
+{
+  "id": "carvenjizaks-gc-sync-webhook",
+  "title": "Carvenjizaks/gc-sync-webhook — recorded CANDIDATE",
+  "repo_id": "Carvenjizaks/gc-sync-webhook",
+  "repo_url": "",
+  "data_class": "RECORDED",
+  "trace_class": "RECORDED",
+  "banner": "RECORDED trace. The JSONL was copied unchanged from the source file. The hash chain is the original chain, not a SAMPLE seal.",
+  "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for Carvenjizaks/gc-sync-webhook.",
+  "model_verdict_recorded": true,
+  "sources": [
+    "reports\\judge-20261026212325\\scores.json"
+  ],
+  "recorded_run": {
+    "run_id": "judge-20261026212325",
+    "run_hash": "459b10a988b87c68d9c15bb846073a20e793a8b92e891a74f24f54afb840c27b",
+    "llm_used": true,
+    "source": "reports\\judge-20261026212325\\scores.json",
+    "jsonl_committed": true
+  },
+  "verdict": {
+    "verdict": "CANDIDATE",
+    "verdict_kind": "recorded_score",
+    "reason": "",
+    "quote": "",
+    "quote_source_url": "",
+    "quote_source_path": "reports\\judge-20261026212325\\scores.json",
+    "alternatives": [],
+    "acceptable": [
+      "CANDIDATE",
+      "NEEDS_REVIEW"
+    ],
+    "gate2": {
+      "state": null,
+      "historical_trace": false,
+      "why": "The copied trace does not record REVIVE_BLOCKED_BY_GATE1 or a revive result.",
+      "rule_quote": "",
+      "rule_source": ""
+    },
+    "rescue": {
+      "score": 18.7,
+      "changes_verdict": false,
+      "source": "github_api",
+      "components": {
+        "stars": 0,
+        "forks": 0,
+        "open_issues_count": 0,
+        "external_breakage": 0,
+        "staleness_days": 187,
+        "stars_vs_staleness": 0.0,
+        "ci_state": "no_ci",
+        "ci_date": null,
+        "dependabot_open": 0,
+        "renovate_open": 0
+      },
+      "note": "Stored rescue_potential from the verdict file. Not recomputed for this replay.",
+      "inputs_source": "reports\\judge-20261026212325\\scores.json"
+    }
+  }
+}

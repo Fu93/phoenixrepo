@@ -1,0 +1,60 @@
+{
+  "id": "samwho-spacer",
+  "title": "samwho/spacer — recorded CANDIDATE",
+  "repo_id": "samwho/spacer",
+  "repo_url": "",
+  "data_class": "RECORDED",
+  "trace_class": "RECORDED",
+  "banner": "RECORDED trace. The JSONL was copied unchanged from the source file. The hash chain is the original chain, not a SAMPLE seal.",
+  "summary": "Copied unchanged from a trace file. Verdict CANDIDATE for samwho/spacer.",
+  "model_verdict_recorded": true,
+  "sources": [
+    "reports\\judge-20261026220921\\scores.json"
+  ],
+  "recorded_run": {
+    "run_id": "judge-20261026220921",
+    "run_hash": "6f1c4392af970dc02709593ad928606aed267a60626a0a9e2c20c5cc10001a52",
+    "llm_used": true,
+    "source": "reports\\judge-20261026220921\\scores.json",
+    "jsonl_committed": true
+  },
+  "verdict": {
+    "verdict": "CANDIDATE",
+    "verdict_kind": "recorded_score",
+    "reason": "",
+    "quote": "",
+    "quote_source_url": "",
+    "quote_source_path": "reports\\judge-20261026220921\\scores.json",
+    "alternatives": [],
+    "acceptable": [
+      "CANDIDATE",
+      "NEEDS_REVIEW"
+    ],
+    "gate2": {
+      "state": null,
+      "historical_trace": false,
+      "why": "The copied trace does not record REVIVE_BLOCKED_BY_GATE1 or a revive result.",
+      "rule_quote": "",
+      "rule_source": ""
+    },
+    "rescue": {
+      "score": 1958.2,
+      "changes_verdict": false,
+      "source": "github_api",
+      "components": {
+        "stars": 1818,
+        "forks": 24,
+        "open_issues_count": 1,
+        "external_breakage": 0,
+        "staleness_days": 422,
+        "stars_vs_staleness": 131.14,
+        "ci_state": "ci_configured_zero_runs",
+        "ci_date": null,
+        "dependabot_open": 0,
+        "renovate_open": 0
+      },
+      "note": "Stored rescue_potential from the verdict file. Not recomputed for this replay.",
+      "inputs_source": "reports\\judge-20261026220921\\scores.json"
+    }
+  }
+}

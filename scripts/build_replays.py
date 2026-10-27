@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Build data/replays from files already committed in this repository.
+"""Build the SAMPLE replays in data/replays from files already committed in this repository.
 
 No Nightshift call, no network, no Docker. Hash chains written here are SAMPLE
-seals: logs/ is gitignored and no historical trace jsonl is in git. The script
-copies recorded rows and, for the gate-2 card, calls revive() so the blocked
+seals. Imported RECORDED traces already under data/replays/ are left byte for
+byte: this script does not rewrite their trace.jsonl or record.json, and it
+keeps those rows in manifest.json. logs/ is gitignored. The script copies
+recorded rows and, for the gate-2 card, calls revive() so the blocked
 state is the function's own return value.
 """
 
@@ -140,7 +142,7 @@ def main() -> int:
     }
     _write_replay(
         "invoice-already-exists",
-        title="Invoice generator — recorded ALREADY_EXISTS",
+        title="Invoice generator — deterministic score, no model, SAMPLE seal",
         repo_id=INVOICE,
         repo_url=discovery["html_url"],
         data_class="RECORDED",
@@ -150,7 +152,12 @@ def main() -> int:
             "This JSONL is not logs/trace-venture-019ca0071780.jsonl. "
             f"The recorded run hash {scores['run_hash']} cannot be recomputed from this file."
         ),
-        summary="Deterministic score run venture-019ca0071780 refused the invoice generator. The chain is a SAMPLE seal over that record.",
+        summary=(
+            "Deterministic score (llm_used false) sealed here as SAMPLE. "
+            "Not the scored gate-1 run: that verdict is CANDIDATE (false pass). "
+            "The Zetaris-evidence run was ALREADY_EXISTS. "
+            "Verdicts vary with the evidence source and the run."
+        ),
         model_verdict_recorded=False,
         sources=[
             "docs/revival/venture_scores.json",
@@ -187,7 +194,8 @@ def main() -> int:
         evidence=mirror_evidence,
         summary=(
             "Human label says CANDIDATE or NEEDS_REVIEW would be acceptable. "
-            "No committed file records a model verdict of NEEDS_REVIEW."
+            "This replay is the human label only; a recorded model verdict of NEEDS_REVIEW "
+            "is in the aa12gq-stack-file-sync-vscode replay."
         ),
         verdict_value=None,
     )
@@ -207,15 +215,17 @@ def main() -> int:
             _summary("hygen-already-exists-quote"),
             _summary("mirrormate-human-label"),
             _summary("invoice-gate2-sample"),
+            *_imported_recorded_rows(),
         ],
         "missing": [
             {
                 "id": "needs-review-model-trace",
-                "title": "No recorded NEEDS_REVIEW model verdict",
+                "title": "Only one recorded NEEDS_REVIEW model trace",
                 "reason": (
-                    "No committed JSON file contains a model verdict of NEEDS_REVIEW. "
-                    "data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score. "
-                    "Two RECORDED gate-1 traces may already be in data/replays/. Other case traces stay out of the checkout while logs/ is gitignored."
+                    "Only one committed replay records a model verdict of NEEDS_REVIEW: "
+                    "aa12gq-stack-file-sync-vscode (run judge-20261026213423, "
+                    "data/replays/aa12gq-stack-file-sync-vscode/trace.jsonl). "
+                    "data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score."
                 ),
             },
             {
@@ -228,10 +238,12 @@ def main() -> int:
             },
             {
                 "id": "mismatch-and-source-error-trace",
-                "title": "No committed MODEL_MISMATCH or SOURCE_ERROR trace",
+                "title": "No committed SOURCE_ERROR trace; MODEL_MISMATCH only on failed calls",
                 "reason": (
                     "The timeline shows MODEL_MISMATCH and SOURCE_ERROR when a trace line contains them. "
-                    "No committed jsonl has those flags. The player does not invent a model name or a duration."
+                    "No committed jsonl has SOURCE_ERROR. MODEL_MISMATCH appears only on failed calls with no served model "
+                    "(selfdb-io-selfdb, samwho-spacer, 0xmh-fichero-printer), never on a used answer. "
+                    "The player does not invent a model name or a duration."
                 ),
             },
         ],
@@ -462,6 +474,28 @@ def _write_replay(
             "verdict": verdict,
         },
     )
+
+
+def _imported_recorded_rows() -> list[dict[str, Any]]:
+    """RECORDED catalog rows already imported. Their trace and record files stay untouched."""
+
+    path = OUT / "manifest.json"
+    if not path.is_file():
+        return []
+    current = json.loads(path.read_text(encoding="utf-8"))
+    rows: list[dict[str, Any]] = []
+    for row in current.get("replays") or []:
+        if row.get("trace_class") != "RECORDED":
+            continue
+        replay_id = str(row.get("id") or "")
+        if not replay_id:
+            continue
+        if not (OUT / replay_id / "record.json").is_file():
+            continue
+        if not (OUT / replay_id / "trace.jsonl").is_file():
+            continue
+        rows.append(_summary(replay_id))
+    return rows
 
 
 def _summary(replay_id: str) -> dict[str, Any]:

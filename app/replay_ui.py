@@ -4,8 +4,9 @@ Facts shown for a replay are copied from files already in the repository.
 ``trace_class: SAMPLE`` means the JSONL was sealed in-repo (over those copies,
 or by a local ``revive()`` call). It is not a Nightshift log.
 ``trace_class: RECORDED`` means the JSONL was copied byte for byte from a real
-trace. Two gate-1 traces are committed under ``data/replays/``. ``logs/`` is
-gitignored, so traces that still live only under ``logs/`` are not in a checkout.
+trace. 17 RECORDED traces are committed under ``data/replays/``: the 16 v3 case
+traces and the Zetaris-backed gate 1 trace. ``logs/`` is gitignored, so a trace
+that was not imported is not in a checkout.
 """
 
 from __future__ import annotations

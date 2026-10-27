@@ -1,0 +1,60 @@
+{
+  "id": "aa12gq-stack-file-sync-vscode",
+  "title": "aa12gq/stack-file-sync-vscode — recorded NEEDS_REVIEW",
+  "repo_id": "aa12gq/stack-file-sync-vscode",
+  "repo_url": "",
+  "data_class": "RECORDED",
+  "trace_class": "RECORDED",
+  "banner": "RECORDED trace. The JSONL was copied unchanged from the source file. The hash chain is the original chain, not a SAMPLE seal.",
+  "summary": "Copied unchanged from a trace file. Verdict NEEDS_REVIEW for aa12gq/stack-file-sync-vscode.",
+  "model_verdict_recorded": true,
+  "sources": [
+    "reports\\judge-20261026213423\\scores.json"
+  ],
+  "recorded_run": {
+    "run_id": "judge-20261026213423",
+    "run_hash": "54c66dd2653dc9b68eb087dfd434088abc76f8b57f6a8782bb1a1389b99d3b82",
+    "llm_used": true,
+    "source": "reports\\judge-20261026213423\\scores.json",
+    "jsonl_committed": true
+  },
+  "verdict": {
+    "verdict": "NEEDS_REVIEW",
+    "verdict_kind": "recorded_score",
+    "reason": "unverified LLM quote: alternative_repo 'espenalbert/path-sync' not found in candidate prior-art. Method: llm+verified quote (requested=nvidia/nemotron-3-ultra-550b-a55b, served=nvidia/nemotron-3-ultra-550b-a55b).",
+    "quote": "",
+    "quote_source_url": "",
+    "quote_source_path": "reports\\judge-20261026213423\\scores.json",
+    "alternatives": [],
+    "acceptable": [
+      "CANDIDATE",
+      "NEEDS_REVIEW"
+    ],
+    "gate2": {
+      "state": null,
+      "historical_trace": false,
+      "why": "The copied trace does not record REVIVE_BLOCKED_BY_GATE1 or a revive result.",
+      "rule_quote": "",
+      "rule_source": ""
+    },
+    "rescue": {
+      "score": 65.7,
+      "changes_verdict": false,
+      "source": "github_api",
+      "components": {
+        "stars": 3,
+        "forks": 0,
+        "open_issues_count": 0,
+        "external_breakage": 0,
+        "staleness_days": 627,
+        "stars_vs_staleness": 0.15,
+        "ci_state": "no_ci",
+        "ci_date": null,
+        "dependabot_open": 0,
+        "renovate_open": 0
+      },
+      "note": "Stored rescue_potential from the verdict file. Not recomputed for this replay.",
+      "inputs_source": "reports\\judge-20261026213423\\scores.json"
+    }
+  }
+}

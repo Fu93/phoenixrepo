@@ -12,16 +12,17 @@ python main.py
 # open http://127.0.0.1:8000/ui
 ```
 
-Check the two committed gate-1 traces against the run hashes published here. Pass the hash: a file that is edited and then re-sealed still verifies, and it gets a new run hash.
+`data/replays/manifest.json` lists 21 replays: 17 RECORDED and 4 SAMPLE. The RECORDED set is the 16 v3 case traces plus the Zetaris-backed gate 1 trace. `/ui` opens on the first RECORDED entry, `selfdb-io-selfdb`. Check a RECORDED trace against the run hash in its `record.json`. Pass the hash: a file that is edited and then re-sealed still verifies, and it gets a new run hash.
 
 ```bash
+python scripts/verify_trace.py data/replays/selfdb-io-selfdb/trace.jsonl --expected-run-hash 147b7b32cbf0141079a58ffe71dc832d1092e81dfd42e512332ad4579e7fd711 --require-nemotron
 python scripts/verify_trace.py data/replays/dsregoitia-calendarsyncproject/trace.jsonl --expected-run-hash 2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0 --require-nemotron
 python scripts/verify_trace.py data/replays/tharani-2006-invoice-generator-application/trace.jsonl --expected-run-hash cfbe3cc16adb981ee3d7e5ec240424505eb9fe32fe10f1f54b3110f3c56f340f --require-nemotron
 ```
 
 What that command repeats is the recorded file and its hash chain. Re-running the model is a new run: CalendarSyncProject has returned `CANDIDATE`, `NEEDS_REVIEW`, and the scored `NEEDS_PRIOR_ART`.
 
-No install at all: **https://fu93.github.io/phoenixrepo/** is the same page as a static copy, rebuilt from `main` by `.github/workflows/pages.yml` (`scripts/export_static_ui.py`; the chain and tamper results there were computed by `scripts/verify_trace.py` at export time). Or `docker build -t phoenixrepo . && docker run --rm -p 8000:8000 phoenixrepo`. The page plays the catalog in `data/replays/`: two RECORDED gate-1 traces (CalendarSyncProject and Invoice-generator-application) and SAMPLE seals over committed files. It shows which model answered each call, the alternative, the quote that was checked word for word, and the hash chain. **Tamper** flips one character of a copy in memory, without re-sealing, and that copy fails the chain. A re-sealed file needs `--expected-run-hash` with the hash above. Replays labelled SAMPLE are reconstructions; RECORDED ones are real trace files copied byte for byte.
+No install at all: **https://fu93.github.io/phoenixrepo/** is the same page as a static copy, rebuilt from `main` by `.github/workflows/pages.yml` (`scripts/export_static_ui.py`; the chain and tamper results there were computed by `scripts/verify_trace.py` at export time). Or `docker build -t phoenixrepo . && docker run --rm -p 8000:8000 phoenixrepo`. The page plays the catalog in `data/replays/`: 17 RECORDED traces (the 16 v3 case traces, including CalendarSyncProject and Invoice-generator-application, and the Zetaris-backed gate 1 trace) and 4 SAMPLE seals over committed files. It shows which model answered each call, the alternative, the quote that was checked word for word, and the hash chain. **Tamper** flips one character of a copy in memory, without re-sealing, and that copy fails the chain. A re-sealed file needs `--expected-run-hash` with the hash above. Replays labelled SAMPLE are reconstructions; RECORDED ones are real trace files copied byte for byte.
 
 ## How it decides
 
@@ -126,17 +127,17 @@ Source: `logs/eval-nemotron-v3.json`, summarised by `scripts/eval_summary.py`. A
 
 Of the 5 judged cases the label says to refuse: 4 `CANDIDATE`, 1 `ALREADY_EXISTS`. A `CANDIDATE` among them is a false pass that gate 2 would act on.
 
-Each row's trace is `logs/trace-<run_id>.jsonl` on the author's machine; the chain column is `scripts/verify_trace.py` on that file. `(missing)` in a served-model count is a call that failed or was discarded before any answer, not an answer used.
+Each row was written as `logs/trace-<run_id>.jsonl` (`logs/` is gitignored). The committed copy of each of the 16 is under `data/replays/`. The chain column is `scripts/verify_trace.py` and shows the first 12 hex characters of the run hash. `(missing)` in a served-model count is a call that failed or was discarded before any answer, not an answer used.
 <!-- END numbers: per-case-table -->
 
-Two of those traces are in this repository: `data/replays/dsregoitia-calendarsyncproject/trace.jsonl` (run hash `2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0`) and `data/replays/tharani-2006-invoice-generator-application/trace.jsonl` (run hash `cfbe3cc16adb981ee3d7e5ec240424505eb9fe32fe10f1f54b3110f3c56f340f`). The other 14 case traces are not in the checkout while `logs/` is gitignored. If a file is later present at `logs/trace-<run_id>.jsonl`, the check is `scripts/verify_trace.py` with `--expected-run-hash` and the full hash from the machine that wrote it. The chain column shows the first 12 hex characters. Verdicts vary with the evidence source and the run: Invoice-generator-application is `CANDIDATE` on this scored run (a false pass) and `ALREADY_EXISTS` on the Zetaris-evidence run below.
+All 16 of those case traces are in this repository, labelled RECORDED, under `data/replays/`. The run hash for each is `recorded_run.run_hash` in that replay's `record.json`. Two of them are `data/replays/dsregoitia-calendarsyncproject/trace.jsonl` (run hash `2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0`) and `data/replays/tharani-2006-invoice-generator-application/trace.jsonl` (run hash `cfbe3cc16adb981ee3d7e5ec240424505eb9fe32fe10f1f54b3110f3c56f340f`). `logs/` is gitignored, so `logs/trace-<run_id>.jsonl` is not the path in a checkout; the committed copy is `data/replays/<id>/trace.jsonl`. Check it with `scripts/verify_trace.py` and `--expected-run-hash`. The chain column shows the first 12 hex characters. Verdicts vary with the evidence source and the run: Invoice-generator-application is `CANDIDATE` on this scored run (a false pass) and `ALREADY_EXISTS` on the Zetaris-evidence run below.
 
 ### Zetaris scope
 
 Gate 1 can read its evidence from Zetaris (`EVIDENCE_SOURCE=zetaris`). In this submission Zetaris was exercised live, read-only, on the 2 repositories in `data/real`: `tharani-2006/Invoice-generator-application` and `SergioMendolia/ytkb`. `scripts/zetaris_check.py` loads their evidence rows and seals a trace; it calls no model and writes no verdict.
 
 <!-- BEGIN numbers: zetaris-gate1-run -->
-Gate 1 was then run with its evidence read from Zetaris (`EVIDENCE_SOURCE=zetaris`, `python scripts/score_candidates.py --snapshot data/real --llm`) on those 2 repositories, on 26 Oct 2026. Run hash `4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad`. The trace path is `logs/trace-zetaris-gate1.jsonl`. That path is gitignored, so a checkout of this repository does not contain the file; it is on the author's machine until it is imported. If the file is present, check it with `python scripts/verify_trace.py logs/trace-zetaris-gate1.jsonl --expected-run-hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad --require-nemotron`. On the author's copy that command passed: 27 of 27 answers used were Nemotron's (Nightshift 21, `nvidia-direct` 6; served `nvidia/nemotron-3-ultra-550b-a55b` 24, `nvidia/nemotron-3.5-super-vl-120b-a12b` 3, the latter chosen by Nightshift). `scripts/zetaris_check.py` is a separate read-only evidence load and still writes no verdict; its sealed trace is also not in this checkout.
+Gate 1 was then run with its evidence read from Zetaris (`EVIDENCE_SOURCE=zetaris`, `python scripts/score_candidates.py --snapshot data/real --llm`) on those 2 repositories, on 26 Oct 2026. Run hash `4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad`. The original path `logs/trace-zetaris-gate1.jsonl` is gitignored. The committed copy is `data/replays/zetaris-gate1-tharani-2006-invoice-generator-application/trace.jsonl`. Check it with `python scripts/verify_trace.py data/replays/zetaris-gate1-tharani-2006-invoice-generator-application/trace.jsonl --expected-run-hash 4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad --require-nemotron`. That command on the committed copy reports 27 of 27 answers used were Nemotron's (Nightshift 21, `nvidia-direct` 6; served `nvidia/nemotron-3-ultra-550b-a55b` 24, `nvidia/nemotron-3.5-super-vl-120b-a12b` 3, the latter chosen by Nightshift). `scripts/zetaris_check.py` is a separate read-only evidence load and still writes no verdict; its sealed trace is also not in this checkout.
 
 | Repository | Verdict with Zetaris evidence | Human label |
 | --- | --- | --- |
@@ -170,7 +171,7 @@ Final verdict on the recorded run (`judge-20261026202603`): **NEEDS_PRIOR_ART** 
 <!-- END numbers: calendarsync-final-verdict -->
 
 <!-- BEGIN numbers: calendarsync-final-run-hash -->
-Final run hash: `2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0`. Check it with `python scripts/verify_trace.py logs/trace-judge-20261026202603.jsonl --expected-run-hash 2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0 --require-nemotron`.
+Final run hash: `2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0`. The committed copy is `data/replays/dsregoitia-calendarsyncproject/trace.jsonl`. Check it with `python scripts/verify_trace.py data/replays/dsregoitia-calendarsyncproject/trace.jsonl --expected-run-hash 2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0 --require-nemotron`. `logs/trace-judge-20261026202603.jsonl` is gitignored and is not in this checkout.
 <!-- END numbers: calendarsync-final-run-hash -->
 
 ### What a passing verdict is allowed to mean
@@ -185,7 +186,7 @@ Target prize: Best use of NVIDIA Nemotron.
 
 | Requirement | Where it is met |
 | --- | --- |
-| At least one Nemotron model, through Meterless Nightshift | Every gate-1 call requests `nvidia/nemotron-*` from Nightshift first; the provider split below counts the Nightshift answers. The Zetaris-backed run: 21 of its 27 answers came through Nightshift. That run's trace is not in this checkout while `logs/` stays gitignored; the run hash is in [Zetaris scope](#zetaris-scope). |
+| At least one Nemotron model, through Meterless Nightshift | Every gate-1 call requests `nvidia/nemotron-*` from Nightshift first; the provider split below counts the Nightshift answers. The Zetaris-backed run: 21 of its 27 answers came through Nightshift. The committed copy is `data/replays/zetaris-gate1-tharani-2006-invoice-generator-application/trace.jsonl`; the run hash is in [Zetaris scope](#zetaris-scope). `logs/` stays gitignored. |
 | In a working feature | The gate-1 judge: problem extraction, every overlap check, and the verdict. Gate 2: one committed rescue plan, fichero-printer, drafted by Nemotron via `nvidia-direct` (see its live status). |
 | Shows which model handled the request | `served_model` on every `LLM_CALL` trace line, the served-model table and badge in `/ui`, the evidence report, and `python scripts/verify_trace.py <trace> --require-nemotron`. |
 
@@ -216,7 +217,7 @@ python scripts/verify_trace.py logs/trace-<run_id>.jsonl --require-nemotron
 
  The `/ui` badge and `scripts/eval_summary.py` count used answers whose `served_model` starts with `nvidia/nemotron-*` (`config.settings.is_nemotron_family`). A discarded or rejected line is not an answer used.
 
-`/ui` shows an "N of M answers by NVIDIA Nemotron" badge, built from `answers_by_nemotron` and `answers_used`. The verdict card shows a reasoning field only when the used final-verdict line in that trace actually carries one. The two committed gate-1 traces do not, so the card stays hidden on them. The verdict still stands only when its quotes are found in the alternative's own text and the alternative passes the maturity checks.
+`/ui` shows an "N of M answers by NVIDIA Nemotron" badge, built from `answers_by_nemotron` and `answers_used`. The verdict card shows a reasoning field only when the used final-verdict line in that trace actually carries one. None of the 17 committed RECORDED traces carries a reasoning field, so the card stays hidden on them. The verdict still stands only when its quotes are found in the alternative's own text and the alternative passes the maturity checks.
 
 <!-- BEGIN numbers: nemotron-answer-share -->
 Answers by NVIDIA Nemotron on the scored run: **218** of **218** answers used (16 of 16 case traces verified, `logs/eval-nemotron-v3.json`). The final-verdict answer (the `discovery` step) was written by Nemotron in **16** of the **16** cases whose trace has one.
@@ -247,7 +248,7 @@ Final-verdict (deep tier) answers that carried a separate reasoning field or `<t
 
 **Running the judge on your own Nemotron.** Both model routes are OpenAI-compatible base URLs. Pointing `METERLESS_BASE_URL` (or, for the fallback, `NVIDIA_BASE_URL`) at a local server that serves Nemotron, for example an NVIDIA NIM container on a DGX Spark, runs the same judge with the same trace and the same `--require-nemotron` check; `served_model` records whatever the local server reports. Nemotron 3 is an open model family, so a verdict can then be rerun with no external service. This path is configuration only and was not tested in this submission.
 
-The same page, with no install, is the static demo at <https://fu93.github.io/phoenixrepo/>. Two replays in this repository are labelled RECORDED: CalendarSyncProject (`data/replays/dsregoitia-calendarsyncproject/`) and Invoice-generator-application (`data/replays/tharani-2006-invoice-generator-application/`). The others stay labelled SAMPLE. `scripts/import_replay.py` copies a further trace byte for byte and labels that id RECORDED.
+The same page, with no install, is the static demo at <https://fu93.github.io/phoenixrepo/>. `data/replays/manifest.json` lists 17 RECORDED traces (the 16 v3 case traces and the Zetaris-backed gate 1 trace) and 4 SAMPLE replays. `scripts/import_replay.py` copies a further trace byte for byte and labels that id RECORDED. `/ui` opens on `selfdb-io-selfdb`, the first RECORDED entry.
 
 ## What it does now: two gates
 
@@ -342,7 +343,7 @@ Lane failure handling in `app/llm/provider.py`: HTTP 429, 502 and timeouts retry
 
 Each run writes `logs/trace-<run_id>.jsonl`: canonical JSON lines with `prev_hash` and `line_hash`, closed by `RUN_SEAL`. `python scripts/verify_trace.py <trace>` recomputes the chain and exits nonzero if a line was altered in place. `python scripts/render_trace.py <trace> --format md|html` renders the timeline for a human reviewer. The chain detects an accidental or partial edit. A file that is rewritten and re-sealed verifies and prints a new run hash; pass `--expected-run-hash` with a hash published outside the file (this README, or the quickstart commands) to require the original seal. The chain does not prove that the content is true; the quote checks and the source links are what let someone verify the content. The quote check is `quote_in_text` in `app/agents/relevance.py`: a case-insensitive substring after whitespace, Markdown and typographic normalisation, with no minimum length.
 
-`GET /ui` replays the catalog under `data/replays/` with no token, no network, and no Docker. Two entries are **RECORDED** gate-1 traces copied byte for byte (`dsregoitia-calendarsyncproject`, `tharani-2006-invoice-generator-application`). The other entries are **SAMPLE**: each of those JSONL files was sealed here over copies of committed files and is not a file from `logs/`. The page shows `MODEL_MISMATCH` and a served-model table when a trace line carries `requested_model`, `served_model`, and that flag. To add another real trace, copy the JSONL unchanged and add the verdict to the manifest. No JSON is edited by hand:
+`GET /ui` replays the catalog under `data/replays/` with no token, no network, and no Docker. 17 entries are **RECORDED** traces copied byte for byte: the 16 v3 case traces (including `selfdb-io-selfdb`, `dsregoitia-calendarsyncproject`, and `tharani-2006-invoice-generator-application`) and `zetaris-gate1-tharani-2006-invoice-generator-application`. The other 4 entries are **SAMPLE**: each of those JSONL files was sealed here over copies of committed files and is not a file from `logs/`. The page opens on `selfdb-io-selfdb`. The page shows `MODEL_MISMATCH` and a served-model table when a trace line carries `requested_model`, `served_model`, and that flag. To add another real trace, copy the JSONL unchanged and add the verdict to the manifest. No JSON is edited by hand:
 
 ```bash
 python scripts/import_replay.py logs/trace-<run_id>.jsonl --verdict path/to/scores.json

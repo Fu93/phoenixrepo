@@ -51,7 +51,7 @@ Final verdict on the recorded run (`judge-20261026202603`): **NEEDS_PRIOR_ART** 
 <!-- END numbers: calendarsync-final-verdict -->
 
 <!-- BEGIN numbers: calendarsync-final-run-hash -->
-Final run hash: `2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0`. Check it with `python scripts/verify_trace.py logs/trace-judge-20261026202603.jsonl --expected-run-hash 2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0 --require-nemotron`.
+Final run hash: `2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0`. The committed copy is `data/replays/dsregoitia-calendarsyncproject/trace.jsonl`. Check it with `python scripts/verify_trace.py data/replays/dsregoitia-calendarsyncproject/trace.jsonl --expected-run-hash 2eb5a1e3157e3f5a148ede12fc06d4ca6f4e7a8a7262d7f2c0a5326569a56cd0 --require-nemotron`. `logs/trace-judge-20261026202603.jsonl` is gitignored and is not in this checkout.
 <!-- END numbers: calendarsync-final-run-hash -->
 
 The 25 Oct 2026 batch of 30 repositories, described in the README under Current status, is an earlier run. It is not this table.
@@ -110,9 +110,9 @@ See `docs/RUNBOOK_WINDOWS.md` for the Windows commands. Pull requests #17, #18, 
 - [ ] `python scripts/zetaris_check.py --snapshot data/real` with Zetaris running. Read-only. Keep the printed run hash. The command covers the snapshot's discovery rows, which are the two repositories named above, not the 16 evaluation repositories.
 - [ ] Live eval, one commit for all 16 cases, new file (no `--resume` from a run of older code): `python scripts/eval_gate1.py --audit-only --deadline <seconds to 08:00 UTC> --out logs/eval-nemotron-v3.json`. If it is cut short, continue with `--resume logs/eval-nemotron-v3.json` on the same commit.
 - [ ] Optional, with Zetaris running and nothing else judging: `python scripts/score_candidates.py --snapshot data/real --llm --output-json logs/zetaris-gate1.json --output-md logs/zetaris-gate1.md`. Its verdicts are the only gate-1 verdicts that read Zetaris; fill `zetaris-gate1-run` in the README from it, or delete that paragraph.
-- [ ] For each scored trace: `python scripts/verify_trace.py logs/trace-<run_id>.jsonl --require-nemotron`. Its `nemotron:` line is the provider split.
+- [ ] For each scored trace: `python scripts/verify_trace.py data/replays/<id>/trace.jsonl --expected-run-hash <recorded_run.run_hash> --require-nemotron`. The original `logs/trace-<run_id>.jsonl` path is gitignored. Its `nemotron:` line is the provider split.
 - [ ] `python scripts/fill_results.py logs/eval-nemotron-v3.json --write` and commit. Check the printed warnings: a missing or failing trace is reported and that slot is not given a number.
-- [ ] Two RECORDED gate-1 traces are already in `data/replays/` (CalendarSyncProject, Invoice-generator-application). Further traces, including an agreeing refusal such as SelfDB, are not in the checkout while `logs/` is gitignored. Import with `python scripts/import_replay.py` when those files are on the machine. On camera, name a replay SAMPLE or RECORDED from the label on the page.
+- [x] 17 RECORDED traces are in `data/replays/`: the 16 v3 case traces and the Zetaris-backed gate 1 trace. SelfDB (`selfdb-io-selfdb`) is the first RECORDED entry, and `/ui` opens on it. The 4 reconstructed replays stay SAMPLE. On camera, name a replay SAMPLE or RECORDED from the label on the page.
 - [ ] **12:00 UTC 27 Oct: submit the first version** (Track 02, description, repository link, declarations). The video may follow.
 - [ ] Record `docs/VIDEO_SCRIPT.md`. Check that no token or `.env` is visible, and that the Zetaris sentence names only the two `data/real` repositories.
 - [ ] Final commit: `python -m ruff check .`, `python -m pytest -q`, `python scripts/compliance_check.py`. Paste the build-window commit count.

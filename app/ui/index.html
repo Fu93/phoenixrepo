@@ -142,7 +142,7 @@
 <details class="panel" id="about-replays">
   <summary>About these replays: SAMPLE, RECORDED, and how to add a real trace</summary>
   <div class="banner sample-hero" id="sample-explainer">
-    <strong>SAMPLE and RECORDED.</strong> Two replays in this repository are RECORDED gate-1 traces copied byte for byte (CalendarSyncProject, Invoice-generator-application). The others are SAMPLE hash chains sealed here over copies of committed files; a SAMPLE file is not a Nightshift log. The label stays on the timeline and on the verdict card. A trace you import with the command below is labelled RECORDED: the JSONL is copied unchanged. The page opens on the first RECORDED replay. An agreeing refusal such as SelfDB is not in this catalog.
+    <strong>SAMPLE and RECORDED.</strong> 17 replays in this repository are RECORDED traces copied byte for byte: the 16 v3 case traces and the Zetaris-backed gate 1 trace. The other 4 are SAMPLE hash chains sealed here over copies of committed files; a SAMPLE file is not a Nightshift log. The label stays on the timeline and on the verdict card. A trace you import with the command below is labelled RECORDED: the JSONL is copied unchanged. The page opens on the first RECORDED replay, SelfDB (selfdb-io-selfdb), an agreeing refusal.
   </div>
   <h3>Swap in a real trace</h3>
   <p>No JSON editing. The script checks the hash chain, copies <span>logs/trace-*.jsonl</span> byte for byte, writes the verdict row, and adds the replay to <span>data/replays/manifest.json</span>. When the verdict file lists more than one repository, pass <span>--repo owner/name</span>. Running it again for the same id replaces that replay.</p>
