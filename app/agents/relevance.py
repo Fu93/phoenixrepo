@@ -116,6 +116,26 @@ def extra_body_from_env(name: str = "PHOENIX_LLM_EXTRA_BODY") -> dict[str, Any]:
     return {key: item for key, item in value.items() if key not in _PROTECTED_BODY_KEYS}
 
 
+def sent_request_settings(payload: dict[str, Any]) -> dict[str, Any]:
+    """Sampling and reasoning flags present on the HTTP body that was posted.
+
+    A key that was not sent is omitted. This does not invent a default, and it
+    does not include the model, the messages, or any header.
+    """
+
+    sent: dict[str, Any] = {}
+    for key in ("temperature", "top_p", "max_tokens"):
+        if key in payload:
+            sent[key] = payload[key]
+    template = payload.get("chat_template_kwargs")
+    if isinstance(template, dict) and "enable_thinking" in template:
+        sent["enable_thinking"] = template["enable_thinking"]
+    for key in ("reasoning_effort", "reasoning_budget"):
+        if key in payload:
+            sent[key] = payload[key]
+    return sent
+
+
 # Two Nemotron tiers. Many short overlap judgements go to the fast model (MODEL_NAME, usually
 # a small Nemotron with thinking off). The steps in PHOENIX_DEEP_STEPS (default: the final
 # discovery verdict) go to PHOENIX_DEEP_MODEL with its own body, so a larger Nemotron can reason
@@ -602,6 +622,7 @@ class RelevanceClient:
         self.last_cache_hit: bool = False
         self.last_cache_file: Path | None = None
         self._call_noted: bool = False
+        self._sent_request_settings: dict[str, Any] | None = None
 
     def _call_label(self, served: str) -> str:
         return served if served else "(missing)"
@@ -626,6 +647,7 @@ class RelevanceClient:
         reasoning: str = "",
         seconds: float | None = None,
         cache_hit: bool = False,
+        request_settings: dict[str, Any] | None = None,
     ) -> None:
         """Count one model reply and, when a trace is attached, write one LLM_CALL line.
 
@@ -660,12 +682,17 @@ class RelevanceClient:
             summary["cache_hit"] = True
         if reasoning:
             summary["reasoning"] = reasoning
+        llm: dict[str, Any] = {"requested_model": requested, "served_model": served}
+        # Settings of a call that was actually posted. A cache hit does not pass them:
+        # the cache key does not include them, so the stored answer may be from another body.
+        if request_settings:
+            llm["request_settings"] = request_settings
         self.trace.event(
             agent_name="orchestrator",
             action="LLM_CALL",
             input_summary={"repo_id": repo_id, "step": step or ""},
             output_summary=summary,
-            llm={"requested_model": requested, "served_model": served},
+            llm=llm,
             status=status,
             summary_limit=4000 if reasoning else 500,
         )
@@ -727,6 +754,7 @@ class RelevanceClient:
         """Return (response_text, requested_model, served_model)."""
 
         self._call_noted = False
+        self._sent_request_settings = None
         try:
             return self._complete(
                 prompt, system_prompt, repo_id=repo_id, step=step, call_budget_s=call_budget_s,
@@ -735,7 +763,11 @@ class RelevanceClient:
             if not self._call_noted:
                 # The join already gave up. Record the requested id and an empty serve.
                 # Do not copy a model id from a response that arrived after the cap.
-                self._observe(self.route(step)[0], "", repo_id, step, status="error")
+                # request_settings is set only after the HTTP body was built.
+                self._observe(
+                    self.route(step)[0], "", repo_id, step, status="error",
+                    request_settings=self._sent_request_settings,
+                )
             raise
 
     def _complete(
@@ -789,7 +821,14 @@ class RelevanceClient:
             except Exception:
                 pass
 
-        def _store(text: str, served: str, routing: dict[str, str], provider: str, reasoning: str) -> tuple[str, str, str]:
+        def _store(
+            text: str,
+            served: str,
+            routing: dict[str, str],
+            provider: str,
+            reasoning: str,
+            request_settings: dict[str, Any] | None = None,
+        ) -> tuple[str, str, str]:
             record = {
                 "cache_key": cache_key,
                 "model": model,
@@ -808,7 +847,7 @@ class RelevanceClient:
             self._observe(
                 model, served, repo_id, step, routing=routing or None, provider=provider,
                 tier=tier_label, reasoning=reasoning if tier == "deep" else "",
-                seconds=time.monotonic() - call_start,
+                seconds=time.monotonic() - call_start, request_settings=request_settings,
             )
             self.last_cache_hit = False
             self.last_cache_file = cache_file
@@ -850,6 +889,7 @@ class RelevanceClient:
             "max_tokens": int(self.max_tokens),
         }
         payload.update(body_extra)
+        self._sent_request_settings = sent_request_settings(payload)
 
         if isinstance(self.timeout, (int, float)):
             configured_read = float(self.timeout)
@@ -883,11 +923,17 @@ class RelevanceClient:
                         json=body,
                     )
             except httpx.HTTPError as exc:
-                self._observe(direct_model, "", repo_id, step, status="error", provider="nvidia-direct", tier=tier_label)
+                self._observe(
+                    direct_model, "", repo_id, step, status="error", provider="nvidia-direct", tier=tier_label,
+                    request_settings=self._sent_request_settings,
+                )
                 sys.stderr.write(f"[{repo_id or 'unknown'}] step={step} nvidia-direct failed after {reason}: {type(exc).__name__}\n")
                 return None
             if resp.status_code != 200:
-                self._observe(direct_model, "", repo_id, step, status="error", provider="nvidia-direct", tier=tier_label)
+                self._observe(
+                    direct_model, "", repo_id, step, status="error", provider="nvidia-direct", tier=tier_label,
+                    request_settings=self._sent_request_settings,
+                )
                 sys.stderr.write(f"[{repo_id or 'unknown'}] step={step} nvidia-direct HTTP {resp.status_code} after {reason}\n")
                 return None
             try:
@@ -897,11 +943,17 @@ class RelevanceClient:
             raw = data.get("model") if isinstance(data, dict) else None
             served = raw.strip() if isinstance(raw, str) else ""
             if model_mismatch(served):
-                self._observe(direct_model, served, repo_id, step, status="rejected", provider="nvidia-direct", tier=tier_label)
+                self._observe(
+                    direct_model, served, repo_id, step, status="rejected", provider="nvidia-direct", tier=tier_label,
+                    request_settings=self._sent_request_settings,
+                )
                 return None
             msg, text = _message_text(data)
             self.direct_calls += 1
-            return _store(text, served, {"fallback_reason": reason[:120]}, "nvidia-direct", reasoning_excerpt(msg, text))
+            return _store(
+                text, served, {"fallback_reason": reason[:120]}, "nvidia-direct", reasoning_excerpt(msg, text),
+                request_settings=self._sent_request_settings,
+            )
 
         last_exc: Exception | None = None
         for delay in RETRY_DELAYS:
@@ -970,7 +1022,7 @@ class RelevanceClient:
                 raw_served = data.get("model") if isinstance(data, dict) else None
                 served = raw_served.strip() if isinstance(raw_served, str) else ""
                 if served.startswith("local-runtime/"):
-                    self._observe(model, served, repo_id, step, status="error")
+                    self._observe(model, served, repo_id, step, status="error", request_settings=self._sent_request_settings)
                     raise RelevanceLLMError(
                         f"Nightshift served local model {served}; refusing to score with a small local model"
                     )
@@ -982,6 +1034,7 @@ class RelevanceClient:
                     self._observe(
                         model, served, repo_id, step, status="rejected", routing=routing or None,
                         tier=tier_label, seconds=time.monotonic() - call_start,
+                        request_settings=self._sent_request_settings,
                     )
                     rescued = _direct(f"nightshift served {served or '(missing)'}")
                     if rescued is not None:
@@ -990,7 +1043,10 @@ class RelevanceClient:
                         f"Nightshift served {served or '(missing)'}, not Nemotron; PHOENIX_NEMOTRON_POLICY={self.nemotron_policy} discarded it"
                     )
                     continue
-                return _store(text, served, routing, "nightshift", reasoning_excerpt(msg, text))
+                return _store(
+                    text, served, routing, "nightshift", reasoning_excerpt(msg, text),
+                    request_settings=self._sent_request_settings,
+                )
 
             if resp.status_code in (401, 403):
                 raise RelevanceLLMError(f"Nightshift returned HTTP {resp.status_code}: Unauthorized")
