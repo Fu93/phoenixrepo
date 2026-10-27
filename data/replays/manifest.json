@@ -2,11 +2,11 @@
   "replays": [
     {
       "id": "invoice-already-exists",
-      "title": "Invoice generator — recorded ALREADY_EXISTS",
+      "title": "Invoice generator — deterministic score, no model, SAMPLE seal",
       "repo_id": "tharani-2006/Invoice-generator-application",
       "data_class": "RECORDED",
       "trace_class": "SAMPLE",
-      "summary": "Deterministic score run venture-019ca0071780 refused the invoice generator. The chain is a SAMPLE seal over that record."
+      "summary": "Deterministic score (llm_used false) sealed here as SAMPLE. Not the scored gate-1 run: that verdict is CANDIDATE (false pass). The Zetaris-evidence run was ALREADY_EXISTS. Verdicts vary with the evidence source and the run."
     },
     {
       "id": "hygen-already-exists-quote",
@@ -53,7 +53,7 @@
     {
       "id": "needs-review-model-trace",
       "title": "No recorded NEEDS_REVIEW model verdict",
-      "reason": "No committed JSON file contains a model verdict of NEEDS_REVIEW. data/eval/gate1_labels.json is a human label file, and its note says it is not a live Nightshift score. No trace jsonl is committed on any branch (logs/ is gitignored)."
+      "reason": "No committed replay records a model verdict of NEEDS_REVIEW. Two RECORDED gate-1 traces are in data/replays/ (CalendarSyncProject NEEDS_PRIOR_ART, Invoice-generator-application CANDIDATE). The other case traces are not in the checkout while logs/ is gitignored."
     },
     {
       "id": "historical-gate2-trace",

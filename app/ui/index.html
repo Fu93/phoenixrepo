@@ -134,7 +134,7 @@
   </div>
   <section class="panel chain" id="chain">
     <h2>Hash chain</h2>
-    <p class="muted">Verification uses the same check as <span>scripts/verify_trace.py</span>. The chain shows the file was not edited after it was sealed. It does not show the words are true. Flip one character changes a server copy only.</p>
+    <p class="muted">Verification uses the same check as <span>scripts/verify_trace.py</span>. The chain detects an accidental or partial edit. A file that is edited and re-sealed gets a new run hash and still verifies here. Full integrity needs the run hash published outside the file (the README quickstart) and passed as <span>--expected-run-hash</span>. This button flips one character of a copy and does not re-seal. It does not show the words are true.</p>
     <p id="chain-status">No replay loaded.</p>
     <button type="button" id="tamper">Flip one character and verify the copy</button>
     <pre id="chain-result"></pre>
@@ -142,7 +142,7 @@
 <details class="panel" id="about-replays">
   <summary>About these replays: SAMPLE, RECORDED, and how to add a real trace</summary>
   <div class="banner sample-hero" id="sample-explainer">
-    <strong>SAMPLE.</strong> Every replay shipped in this repository is a SAMPLE hash chain sealed here over copies of committed files. It is not a Nightshift log. The label stays on the timeline and on the verdict card. A trace you import with the command below is labelled RECORDED: the JSONL is copied unchanged.
+    <strong>SAMPLE and RECORDED.</strong> Two replays in this repository are RECORDED gate-1 traces copied byte for byte (CalendarSyncProject, Invoice-generator-application). The others are SAMPLE hash chains sealed here over copies of committed files; a SAMPLE file is not a Nightshift log. The label stays on the timeline and on the verdict card. A trace you import with the command below is labelled RECORDED: the JSONL is copied unchanged. The page opens on the first RECORDED replay. An agreeing refusal such as SelfDB is not in this catalog.
   </div>
   <h3>Swap in a real trace</h3>
   <p>No JSON editing. The script checks the hash chain, copies <span>logs/trace-*.jsonl</span> byte for byte, writes the verdict row, and adds the replay to <span>data/replays/manifest.json</span>. When the verdict file lists more than one repository, pass <span>--repo owner/name</span>. Running it again for the same id replaces that replay.</p>
@@ -258,8 +258,8 @@
     }
     var head = "";
     if (step.reasoning) {
-      head = "Model reasoning (" + (step.served_model || "model") + (step.tier ? ", " + step.tier + " tier" : "") +
-        "). Shown as the model's account; the verdict stands only on the verbatim quote checks.\n" +
+      head = "Reasoning field on this trace line (" + (step.served_model || "model") + (step.tier ? ", " + step.tier + " tier" : "") +
+        "). Shown only because this line contains the field. The verdict stands on the quote checks.\n" +
         step.reasoning + "\n\n";
     }
     if (step.provider && step.provider !== "nightshift") {
@@ -312,10 +312,10 @@
     var thoughtHtml = "";
     if (thought && thought.text) {
       thoughtHtml =
-        "<h2>" + (thought.nemotron ? "Nemotron's reasoning" : "Model reasoning") + "</h2>" +
-        "<p class=\"muted\">Written by " + esc(thought.served_model || "an unrecorded model") +
+        "<h2>Reasoning field on this trace line</h2>" +
+        "<p class=\"muted\">Shown only because this trace line contains a reasoning field. Written by " + esc(thought.served_model || "an unrecorded model") +
         (thought.provider && thought.provider !== "nightshift" ? " via " + esc(thought.provider) : " via Meterless Nightshift") +
-        " (step " + esc(thought.step_index) + "). It is the model's account; the verdict stands only on the verbatim quote below.</p>" +
+        " (step " + esc(thought.step_index) + "). The verdict stands on the quote below.</p>" +
         "<blockquote class=\"reasoning\">" + esc(thought.text) + "</blockquote>";
     }
     node.innerHTML =

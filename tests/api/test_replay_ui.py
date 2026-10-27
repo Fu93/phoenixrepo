@@ -370,4 +370,5 @@ def test_verdict_card_carries_the_nemotron_reasoning_and_share(tmp_path, monkeyp
     assert body["models"]["answers_used"] == 2 and body["models"]["answers_by_nemotron"] == 2
     assert body["models"]["discarded_by_policy"] == 1
     page = CLIENT.get("/ui").text
-    assert "Nemotron's reasoning" in page and "answers by NVIDIA Nemotron" in page
+    assert "Reasoning field on this trace line" in page and "answers by NVIDIA Nemotron" in page
+    assert "Nemotron's reasoning" not in page
