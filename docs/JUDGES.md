@@ -64,7 +64,7 @@ No, not verified execution. `README.md` Limitations says gate 2 verified executi
 
 The gate-2 tests script the model. `tests/test_revive_prd_verify.py` says the model is scripted and pytest on the fixture is real. `tests/test_revive_loop.py` uses a `complete_json` stand-in that replays scripted objects.
 
-One committed rescue plan is not verified execution. The file is `docs/rescue/trace-rescue-0xmh__fichero-printer-20261027T001117Z.jsonl`. Its `LLM_CALL` stores Requested and Served `nvidia/nemotron-3-ultra-550b-a55b`, `provider` `nvidia-direct`, and `routing.fallback_reason` `nightshift HTTP 502`. `README.md` says `verify_trace.py --require-nemotron` with run hash `51e828e538ed8f05dda15648fc673c3461ca310a87c0af77c53482e1f0a086c4` prints 1 of 1 answers used, providers nvidia-direct 1. It is a rescue plan, not a gate-1 verdict.
+Gate 2 part 1 (the rescue plan) ran on all 8 v3 CANDIDATEs that agree with the human label: 6 plans drafted by Nemotron (served nvidia/nemotron-3-ultra-550b-a55b), 2 deterministic after Nemotron's drafts were not used. Each plan trace verifies with --require-nemotron and stores the gate-1 run hash. See README "Gate 1 → rescue plan". Gate 2 verified execution (install and tests) has not run on a real CANDIDATE. The file is `docs/rescue/trace-rescue-0xmh__fichero-printer-20261027T001117Z.jsonl`. Its `LLM_CALL` stores Requested and Served `nvidia/nemotron-3-ultra-550b-a55b`, `provider` `nvidia-direct`, and `routing.fallback_reason` `nightshift HTTP 502`. `README.md` says `verify_trace.py --require-nemotron` with run hash `51e828e538ed8f05dda15648fc673c3461ca310a87c0af77c53482e1f0a086c4` prints 1 of 1 answers used, providers nvidia-direct 1. It is a rescue plan, not a gate-1 verdict.
 
 `app/revive_verify.py` says the verifier rejects a diff that deletes, skips, or loosens tests. `verify_revival` sets `resurrection_allowed` false when tests were weakened, final checks are worse than the baseline, no kept item has a passing acceptance check, the baseline was not broken or outdated, or the diff scope failed. `weakened_test_diff` also fails a change to `scripts.test` or `scripts.pretest` in `package.json`. `tests/test_revive_prd_verify.py` (`test_verifier_rejects_a_deleted_or_loosened_test_even_when_the_run_is_green`) shows a green run still fails when an assertion is replaced with `assert True`, and when a test file is removed.
 
@@ -105,10 +105,12 @@ The 4 false passes are `tharani-2006/Invoice-generator-application`, `goodreason
 
 The 10/25 batch is human audit labels only, no traces. `README.md` gives 5 of 16, 11 of 11, and 0 of 5. Those counts are recomputed from `data/eval/gate1_labels.json`: 16 `audit` objects dated 2026-10-25, classes LEGIT 5, WEAK 8, WRONG 3. The file stores no model id. A case in that row agrees when `acceptable` contains `ALREADY_EXISTS` (5 of 16). Should-pass cases that do not list `ALREADY_EXISTS` are 11, all class WEAK or WRONG, so over-refusals are 11 of 11. Must-reject cases are 5, all class LEGIT, so false passes are 0 of 5.
 
-Open pull-request status below is as of 27 Oct 2026 20:26 UTC.
+Open pull-request status below is as of 27 Oct 2026 22:40 UTC.
 
 Pull requests #59, #62, #65, and #66 are open and not merged. `README.md` and `docs/SCORED_RUN_AUDIT.md` say each switch is default off (`1`, `true`, `yes`, `on`, or `enabled`; unset stays off) and is not part of any reported number. The names `PHOENIX_UNKNOWN_BLOCKER_REVIEW`, `PHOENIX_WEB_GITHUB_API_LOOKUP`, `PHOENIX_QUOTE_FAIL_FLAG`, and `PHOENIX_COMMODITY_CATEGORY_RULE` are not in the Python on this checkout. No mechanism-level change from those pull requests is merged here.
 
 Pull request #63 is open and not merged. It is not on this checkout.
+
+Pull request #77 (rerun finished, not merged). Pull request #84 (draft).
 
 The change from pull request #67 (`GATE_DECISION`) is merged on `main` as `37ab838` (committed 18:00 UTC); GitHub lists the pull request itself as closed. It records a `GATE_DECISION` line when the blocker gate keeps or overturns the model.
