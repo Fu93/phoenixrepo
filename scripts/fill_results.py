@@ -234,7 +234,7 @@ def nemotron_evidence(data: dict[str, Any]) -> str:
                     direct_rejected += 1
                 continue
             model = str(record.get("served_model") or "(missing)")
-            tier = str(fields.get("tier") or "single")
+            tier = str(fields.get("tier") or "no tier (scoring calls outside the two-tier client)")
             tiers.setdefault(tier, {})[model] = tiers.setdefault(tier, {}).get(model, 0) + 1
             if tier == "deep":
                 deep_used += 1

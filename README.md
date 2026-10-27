@@ -152,9 +152,7 @@ All 16 were `ALREADY_EXISTS` in the 25 Oct batch, which is why the human audit e
 
 `DSRegoitia/CalendarSyncProject` was rejected by the older Phoenix because FullCalendar "displays public Google Calendar events". The human label in `data/eval/gate1_labels.json` calls that a WRONG over-rejection: the candidate pushes events the other way, from FullCalendar into Google Calendar. `ALREADY_EXISTS` is outside the acceptable set. The acceptable set is `CANDIDATE` or `NEEDS_REVIEW`.
 
-The current gate 1 returns `CANDIDATE` or `NEEDS_REVIEW` for this repository. Both sit inside that acceptable set. `NEEDS_REVIEW` on this case is a partial overlap: a verbatim quote is handed to a human. Two independent runs, with different generated queries, returned `CANDIDATE` and `NEEDS_REVIEW`.
-
-The run recorded for the submission is still open.
+The current gate 1 has not refused it in any run. It has given three different answers: `CANDIDATE` and `NEEDS_REVIEW` in two runs on 26 Oct (the second a partial overlap with FullCalendar's docs, handed to a human with the quote), and `NEEDS_PRIOR_ART` on the scored run, because that run's search checked zero alternatives and the gate will not call an idea new on an empty search. `NEEDS_PRIOR_ART` is outside the label's acceptable set, so the scored table counts it as a disagreement. The three answers come from three different generated query sets, which is the variance described in [Limits](#limits).
 
 <!-- BEGIN numbers: calendarsync-final-verdict -->
 Final verdict on the recorded run (`judge-20261026202603`): **NEEDS_PRIOR_ART** (disagrees with the human label). Reason: Zero alternatives checked in prior-art search.
@@ -224,7 +222,7 @@ How Nemotron was used on the scored run, counted from the same verified traces: 
 | --- | --- |
 | deep | `nvidia/nemotron-3-ultra-550b-a55b` 16 |
 | fast | `nvidia/nemotron-3-ultra-550b-a55b` 174, `nvidia/nemotron-3.5-super-vl-120b-a12b` 18 |
-| single | `nvidia/nemotron-3-ultra-550b-a55b` 7, `nvidia/nemotron-3.5-lightning-30b-a3b` 3 |
+| no tier (scoring calls outside the two-tier client) | `nvidia/nemotron-3-ultra-550b-a55b` 7, `nvidia/nemotron-3.5-lightning-30b-a3b` 3 |
 
 | Served model | Live answers | Median seconds | Max seconds |
 | --- | --- | --- | --- |
