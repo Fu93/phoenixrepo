@@ -14,6 +14,12 @@ pytestmark = pytest.mark.docker
 
 # Everything that does not need the internet must pass whenever Docker works.
 OFFLINE_CHECKS = {
+    "python_image_auto_selected",
+    "node_image_auto_selected_non_root",
+    "node_git_dir_read_only",
+    "node_network_unreachable_in_test_phase",
+    "node_container_removed_afterwards",
+    "go_project_refused_with_clear_message",
     "container_starts_and_venv_on_path",
     "non_root_user",
     "git_dir_read_only",
@@ -48,7 +54,7 @@ def test_offline_isolation_checks_all_pass(smoke):
 
 
 def test_install_then_test_flow_works_when_the_machine_is_online(smoke):
-    flow = ("network_available_in_install_phase", "pip_install_into_venv_in_install_phase", "installed_package_importable_in_test_phase", "pytest_in_sandbox_no_network_expected_results")
+    flow = ("network_available_in_install_phase", "pip_install_into_venv_in_install_phase", "installed_package_importable_in_test_phase", "pytest_in_sandbox_no_network_expected_results", "npm_install_in_install_phase", "npm_test_offline_passes", "node_staged_tree_sees_installed_modules")
     if smoke["network_available_in_install_phase"].status == "SKIP":
         pytest.skip(smoke["network_available_in_install_phase"].detail)
     assert {name: smoke[name].status for name in flow} == {name: "PASS" for name in flow}

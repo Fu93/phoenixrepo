@@ -2,7 +2,7 @@
 
 Status: **experimental, opt-in, smoke-tested on a tiny fixture only.** No real CANDIDATE repository has been run
 through it. Nothing here shows that Gate 2 works; it only shows that the container plumbing behaves as described
-below on one Windows machine (Docker Desktop, Docker Engine 29.9.2, image `python:3.12-slim`).
+below on one Windows machine (Docker Desktop, Docker Engine 29.9.2, images `python:3.12-slim` and `node:22-slim`).
 
 Gate 2 runs a candidate repository's own install and test commands. Those commands are untrusted code.
 `--sandbox-mode docker` runs them in a container instead of on the host. The default is `--sandbox-mode host`
@@ -20,10 +20,18 @@ python -m pytest -m docker                             # real-Docker tests (skip
 - **One persistent container per run.** `docker run -d --name phoenix-g2-<run id> ... ` once, then one
   `docker exec` per command, so a `pip install` in one command is still there for the next one. The container is
   removed by `close()` in a `finally` (also after exceptions) and by an `atexit` safety net.
-- **Writable state without a writable root.** The root filesystem is `--read-only`. `HOME`, `TMPDIR`, the pip cache
-  and a venv (`/sandbox/venv`, first on `PATH`, so `pip` and `python -m pytest` use it) live on a tmpfs at
-  `/sandbox` owned by uid 1000. It lasts as long as the container and is never written into the clone.
-  `/tmp` is a separate `noexec` tmpfs. Python only; the image has no Node, so `npm` candidates fail with exit 127.
+- **Image by project type.** Chosen once, from the clone's manifest, with the same precedence as `detect_commands`:
+  `package.json` -> `node:22-slim`; `pyproject.toml`, `requirements.txt`, `setup.py` or `setup.cfg` ->
+  `python:3.12-slim`; no manifest -> `python:3.12-slim`. An explicit `image=` argument overrides it.
+  **Go (`go.mod`) is not supported**: every command returns exit 125 with "Go projects (go.mod) are not supported
+  by the Docker sandbox ... Use --sandbox-mode host", nothing is started, and `scripts/revive.py` stops before any
+  model call. A repository with several manifests is treated as its first match (a repo with a `package.json` used
+  only for tooling runs in the Node image).
+- **Writable state without a writable root.** The root filesystem is `--read-only`. `HOME`, `TMPDIR`, the pip and
+  npm caches live on a tmpfs at `/sandbox` owned by uid 1000. For Python it also holds a venv (`/sandbox/venv`,
+  first on `PATH`, so `pip` and `python -m pytest` use it). It lasts as long as the container and is never written
+  into the clone. `/tmp` is a separate `noexec` tmpfs. For Node, `node_modules` is installed into the clone (the
+  rw mount), as in host mode; a staged tree (see below) gets a symlink to it.
 - **Only the clone is mounted.** The clone is bind-mounted read-write at `/workspace` and its `.git` is mounted
   read-only on top. No other host path, no `.env`, no `docker.sock`, no `--env-file`. The host environment is not
   passed in; only a fixed baseline plus caller variables whose names do not look like credentials.
@@ -35,6 +43,7 @@ python -m pytest -m docker                             # real-Docker tests (skip
   install --no-save` repair in `ensure_env`) gets a network. Before each command the runner attaches the container
   to `bridge` (install) or runs `docker network disconnect` (every other phase, and any unknown or missing phase).
   The command text is never inspected. If the network state cannot be set, the command is not run.
+  npm projects: `npm install`/`npm ci` run in the install phase with network; `npm test` runs offline.
   The loop's own dependency lookups (`npm outdated`, `pip list --outdated`, version probes) and audits run in a
   non-install phase, so in Docker mode they have no network and will report nothing or "unavailable".
 - **Timeouts.** A timed-out command kills every process in the container except PID 1 (`kill -9 -1`) and the
@@ -62,8 +71,9 @@ python -m pytest -m docker                             # real-Docker tests (skip
   read-only `.git` mount held, but that depends on the Docker Desktop version and the drive's sharing settings.
   If the mount is not writable the smoke test reports `workspace_writable_by_non_root` as FAIL and no automatic
   workaround is applied; run from a Linux/WSL path or fix the ACL.
-- **Smoke-tested on a fixture only.** One pure-python repo with one passing and one failing test. Real candidates
-  (native extensions, services, large dependency trees, Node projects) are untested.
+- **Smoke-tested on fixtures only.** One pure-python repo (one passing, one failing test) and one npm repo (one
+  dependency, one passing test). Real candidates (native extensions, services, large dependency trees, lifecycle
+  scripts that need more than the container offers) are untested.
 - **No Gate 2 claim.** This changes where commands run. It does not change what counts as a revival, and it does not
   make a Gate 2 verdict true.
 

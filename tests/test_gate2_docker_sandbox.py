@@ -17,11 +17,13 @@ from app import revive_loop as rl
 from app.revive_loop import CmdResult, ReviveResult
 from app.revive_prd import write_reports
 from app.revive_sandbox import (
+    UNSUPPORTED_GO_MESSAGE,
     CommandRunner,
     DockerSandboxRunner,
     HostRunner,
     VerificationSealConflict,
     check_verification_seal,
+    detect_project_kind,
     get_runner,
     seal_verification,
 )
@@ -94,7 +96,7 @@ def test_container_is_persistent_locked_down_and_mounts_only_the_clone(tmp_path:
     assert "--pids-limit" in args and "--read-only" in args
     assert "--memory=2g" in args and "--cpus=2" in args and "--memory-swap=2g" in args
     assert args[args.index("-w") + 1] == "/workspace"
-    assert args[-4:-2] == ["python:3.12-slim", "python"] and args[-2] == "-c"
+    assert args[-4:] == ["python:3.12-slim", "sh", "-c", "while :; do wait; sleep 1; done"]
 
     # Mounts: the clone rw and its .git ro, nothing else from the host.
     mounts = [args[i + 1] for i, token in enumerate(args) if token == "--mount"]
@@ -143,6 +145,75 @@ def test_exec_args_scrub_credentials_and_reserved_names(tmp_path: Path) -> None:
     assert passed == {"SAFE_CUSTOM_FLAG": "enabled", "BUILD_TARGET": "production"}
     assert args[-4:] == ["phoenix-g2-unit2", "sh", "-c", "pytest -q"]
     assert args[:4] == ["docker", "exec", "-w", "/workspace"]
+
+
+# ---- image selection by project type ------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("files", "kind"),
+    [
+        (["package.json"], "node"),
+        (["package.json", "requirements.txt"], "node"),  # same precedence as detect_commands
+        (["pyproject.toml"], "python"),
+        (["requirements.txt"], "python"),
+        (["setup.py"], "python"),
+        (["go.mod"], "go"),
+        (["go.mod", "requirements.txt"], "python"),
+        ([], "unknown"),
+    ],
+)
+def test_detect_project_kind(tmp_path: Path, files: list[str], kind: str) -> None:
+    for name in files:
+        (tmp_path / name).write_text("", encoding="utf-8")
+    assert detect_project_kind(tmp_path) == kind
+
+
+@pytest.mark.parametrize(
+    ("files", "image"),
+    [(["package.json"], "node:22-slim"), (["pyproject.toml"], "python:3.12-slim"), ([], "python:3.12-slim")],
+)
+def test_image_follows_the_manifest_and_an_explicit_image_wins(tmp_path: Path, files: list[str], image: str) -> None:
+    for name in files:
+        (tmp_path / name).write_text("", encoding="utf-8")
+    runner = DockerSandboxRunner(dry_run=True)
+    assert runner.build_run_args(tmp_path)[-4] == image
+    assert runner.image_used == image
+    explicit = DockerSandboxRunner(image="example/custom:1", dry_run=True)
+    assert explicit.build_run_args(tmp_path)[-4] == "example/custom:1"
+
+
+def test_node_container_has_no_venv_and_installs_run_on_the_network_phase(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+    runner = DockerSandboxRunner(run_id="node1", dry_run=True)
+    runner("npm install --no-audit --no-fund", tmp_path, 60, phase="install")
+    runner("npm test --silent", tmp_path, 60, phase="test")
+    flat = _flat(runner.planned)
+    run_line = next(line for line in flat if line.startswith("docker run -d"))
+    assert "node:22-slim" in run_line and "VIRTUAL_ENV" not in run_line and "/sandbox/venv" not in run_line
+    assert "npm_config_cache=/sandbox/npm-cache" in run_line
+    boot = next(line for line in flat if "mkdir -p /sandbox/home" in line)
+    assert "venv" not in boot
+    order = [line.split()[2] if line.startswith("docker network") else ("INSTALL" if "npm install" in line else "TEST" if "npm test" in line else "") for line in flat]
+    assert [x for x in order if x] == ["INSTALL", "disconnect", "TEST"]
+
+
+def test_staged_node_tree_is_linked_to_the_clones_node_modules(tmp_path: Path) -> None:
+    clone = _mk(tmp_path / "clone")
+    (clone / "package.json").write_text("{}", encoding="utf-8")
+    other = _mk(tmp_path / "other")
+    runner = DockerSandboxRunner(run_id="node2", dry_run=True)
+    runner("npm test", clone, 5, phase="verify")
+    runner("npm test", other, 5, phase="verify")
+    assert any("ln -s /workspace/node_modules" in line for line in _flat(runner.planned))
+
+
+def test_go_projects_are_refused_with_a_clear_message_and_start_no_container(tmp_path: Path) -> None:
+    (tmp_path / "go.mod").write_text("module x\n", encoding="utf-8")
+    runner = DockerSandboxRunner(dry_run=True)
+    res = runner("go test ./...", tmp_path, 30, phase="test")
+    assert res.code == 125 and UNSUPPORTED_GO_MESSAGE in res.output and "--sandbox-mode host" in res.output
+    assert runner.planned == []
 
 
 # ---- lifecycle and network phases -------------------------------------------------------------

@@ -60,7 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["host", "docker"],
         help=(
             "Where the candidate's install/test commands run: 'host' (default, unchanged) or 'docker' "
-            "(one persistent python:3.12-slim container per run, non-root, network only during the install phase). "
+            "(one persistent container per run, python:3.12-slim or node:22-slim chosen from the manifest, Go unsupported, "
+            "non-root, network only during the install phase). "
             "Docker mode requires a running Docker Engine and has been smoke-tested only on a tiny fixture repo "
             "(scripts/gate2_sandbox_smoke.py); no real candidate has been run through it. See docs/GATE2_SANDBOX.md."
         ),
@@ -220,6 +221,12 @@ def run_job(args: argparse.Namespace, job: dict, index: int) -> int:
         description = str(judge_repo.fetch_repo(full_name)["repo"].get("description") or "")
     except Exception:  # noqa: BLE001
         pass
+    if getattr(args, "sandbox_mode", "host") == "docker":
+        from app.revive_sandbox import UNSUPPORTED_GO_MESSAGE, detect_project_kind
+
+        if detect_project_kind(target) == "go":
+            sys.stderr.write(UNSUPPORTED_GO_MESSAGE + "\n")
+            return 2
     client = build_relevance_client(trace=trace)
     result = revive_loop.revive(
         target,

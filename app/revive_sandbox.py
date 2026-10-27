@@ -1,6 +1,7 @@
 """Gate 2 container sandbox runner and verification-hash sealing.
 
-Two runners share one interface (CommandRunner):
+Two runners share one interface (CommandRunner). The image follows the project type (python:3.12-slim
+for Python, node:22-slim for Node; Go is refused, see detect_project_kind):
 
 - HostRunner: runs on the host through shell_runner. This is the default and is unchanged.
 - DockerSandboxRunner: runs every command of ONE revival run inside ONE persistent container
@@ -50,13 +51,20 @@ from app.revive_loop import (
 )
 
 DEFAULT_IMAGE = "python:3.12-slim"
+NODE_IMAGE = "node:22-slim"
+IMAGES = {"python": DEFAULT_IMAGE, "node": NODE_IMAGE}
+UNSUPPORTED_GO_MESSAGE = (
+    "Go projects (go.mod) are not supported by the Docker sandbox: no Go image is configured and nothing "
+    "was run. Use --sandbox-mode host for this repository."
+)
 CONTAINER_PREFIX = "phoenix-g2-"
 SANDBOX_LABEL = "phoenix.g2.sandbox"
 WORKSPACE = "/workspace"
 SANDBOX_DIR = "/sandbox"
-# PID 1 inside the container: reaps orphans and ignores SIGKILL sent from inside, so a timeout can
-# `kill -9 -1` everything else without stopping the container (and losing the tmpfs venv).
-_REAPER = "import os,time;exec('while 1:\\n try: os.wait()\\n except ChildProcessError: time.sleep(1)')"
+# PID 1 inside the container (a plain shell, so every image works): `wait` reaps orphans, and PID 1
+# ignores SIGKILL sent from inside the container, so a timeout can `kill -9 -1` every other process
+# without stopping the container (and losing the tmpfs state).
+_REAPER = ["sh", "-c", "while :; do wait; sleep 1; done"]
 _RESERVED_ENV = frozenset({"PATH", "HOME", "VIRTUAL_ENV", "TMPDIR", "PIP_CACHE_DIR"})
 
 
@@ -65,12 +73,26 @@ def _clean_mount_path(path: Path | str) -> str:
     return Path(path).resolve().as_posix()
 
 
-def _baseline_env() -> dict[str, str]:
+def detect_project_kind(root: Path | str) -> str:
+    """"node", "python", "go" or "unknown", from the manifest. Same precedence as detect_commands:
+    package.json first, then Python manifests, then go.mod. A repo with several is treated as the first."""
+    base = Path(root)
+    if (base / "package.json").is_file():
+        return "node"
+    if any((base / name).is_file() for name in ("pyproject.toml", "requirements.txt", "setup.py", "setup.cfg")):
+        return "python"
+    if (base / "go.mod").is_file():
+        return "go"
+    return "unknown"
+
+
+def _baseline_env(kind: str = "python") -> dict[str, str]:
+    venv = kind != "node"
     return {
         "HOME": f"{SANDBOX_DIR}/home",
         "TMPDIR": f"{SANDBOX_DIR}/tmp",
-        "VIRTUAL_ENV": f"{SANDBOX_DIR}/venv",
-        "PATH": f"{SANDBOX_DIR}/venv/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin",
+        **({"VIRTUAL_ENV": f"{SANDBOX_DIR}/venv"} if venv else {}),
+        "PATH": ("/sandbox/venv/bin:" if venv else "") + "/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin",
         "PIP_CACHE_DIR": f"{SANDBOX_DIR}/pip-cache",
         "PIP_DISABLE_PIP_VERSION_CHECK": "1",
         "PIP_NO_INPUT": "1",
@@ -142,7 +164,7 @@ class DockerSandboxRunner(CommandRunner):
 
     def __init__(
         self,
-        image: str = DEFAULT_IMAGE,
+        image: str | None = None,
         uid_gid: str = "1000:1000",
         memory_limit: str = "2g",
         cpus: str = "2",
@@ -157,7 +179,9 @@ class DockerSandboxRunner(CommandRunner):
     ) -> None:
         if not re.fullmatch(r"\d+:\d+", uid_gid) or uid_gid.split(":")[0] == "0":
             raise ValueError(f"uid_gid must be a non-root numeric uid:gid, got {uid_gid!r}")
-        self.image = image
+        self.image = image  # None: chosen from the project type on the first command
+        self.kind = "unknown"
+        self._resolved = False
         self.uid_gid = uid_gid
         self.memory_limit = memory_limit
         self.cpus = cpus
@@ -191,9 +215,20 @@ class DockerSandboxRunner(CommandRunner):
         """Only a phase that is explicitly listed gets a network. Unknown phases get none."""
         return phase in self.network_enabled_phases
 
+    def _resolve(self, root: Path) -> None:
+        if not self._resolved:
+            self.kind = detect_project_kind(root)
+            self._resolved = True
+
+    @property
+    def image_used(self) -> str:
+        """The image this runner starts: the explicit one, else by project type (Python for unknown)."""
+        return self.image or IMAGES.get(self.kind, DEFAULT_IMAGE)
+
     def build_run_args(self, root: Path) -> list[str]:
         """`docker run -d` for the persistent container. Mounts: the clone (rw) and its .git (ro)."""
         resolved = Path(root).resolve()
+        self._resolve(resolved)
         src = _clean_mount_path(resolved)
         if "," in src:
             raise ValueError("clone path contains a comma; docker --mount cannot express it")
@@ -219,9 +254,9 @@ class DockerSandboxRunner(CommandRunner):
         if git_entry.exists():
             args += ["--mount", f"type=bind,source={_clean_mount_path(git_entry)},target={WORKSPACE}/.git,readonly"]
         args += ["-w", WORKSPACE]
-        for key, value in _baseline_env().items():
+        for key, value in _baseline_env(self.kind).items():
             args += ["-e", f"{key}={value}"]
-        args += [self.image, "python", "-c", _REAPER]
+        args += [self.image_used, *_REAPER]
         return args
 
     def build_exec_args(self, cmd: str, workdir: str, environ: dict[str, str] | None = None) -> list[str]:
@@ -277,7 +312,9 @@ class DockerSandboxRunner(CommandRunner):
             return f"docker run failed ({code}): {out.strip()[-400:]}"
         self._started = True
         self._net_attached = True
-        boot = f"mkdir -p {SANDBOX_DIR}/home {SANDBOX_DIR}/tmp {SANDBOX_DIR}/pip-cache {SANDBOX_DIR}/npm-cache {SANDBOX_DIR}/stage && python -m venv {SANDBOX_DIR}/venv"
+        boot = f"mkdir -p {SANDBOX_DIR}/home {SANDBOX_DIR}/tmp {SANDBOX_DIR}/pip-cache {SANDBOX_DIR}/npm-cache {SANDBOX_DIR}/stage"
+        if self.kind != "node":
+            boot += f" && python -m venv {SANDBOX_DIR}/venv"
         code, out = self._docker(["exec", "-w", WORKSPACE, self.name, "sh", "-c", boot], 180)
         if code != 0:
             return f"sandbox bootstrap failed ({code}): {out.strip()[-400:]}"
@@ -319,7 +356,7 @@ class DockerSandboxRunner(CommandRunner):
         dest = f"{SANDBOX_DIR}/stage/{uuid.uuid4().hex[:8]}"
         if self.dry_run:
             self.planned.append([self.docker_bin, "exec", "-i", self.name, "tar", "-x", "-C", dest])
-            return dest, None
+            return dest, self._link_node_modules(dest)
         proc = subprocess.Popen(
             [self.docker_bin, "exec", "-i", self.name, "sh", "-c", f"mkdir -p {dest} && tar -x -C {dest}"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -339,7 +376,15 @@ class DockerSandboxRunner(CommandRunner):
             return None, f"staging failed: {type(exc).__name__}: {exc}"
         if proc.returncode != 0:
             return None, f"staging failed ({proc.returncode}): {decode_output(out)[-300:]}"
-        return dest, None
+        return dest, self._link_node_modules(dest)
+
+    def _link_node_modules(self, dest: str) -> str | None:
+        """A staged Node tree has no node_modules (snapshots skip it); point it at the clone's install."""
+        if self.kind != "node":
+            return None
+        link = f"[ ! -d {WORKSPACE}/node_modules ] || [ -e {dest}/node_modules ] || ln -s {WORKSPACE}/node_modules {dest}/node_modules"
+        code, out = self._docker(["exec", self.name, "sh", "-c", link], 30)
+        return None if code == 0 else f"could not link node_modules into the staged tree: {out.strip()[-200:]}"
 
     # ---- the runner ---------------------------------------------------------------------
 
@@ -356,6 +401,9 @@ class DockerSandboxRunner(CommandRunner):
                 host_cwd = Path(cwd).resolve()
                 if self._root is None:
                     self._root = host_cwd
+                self._resolve(self._root)
+                if self.kind == "go":
+                    return fail(UNSUPPORTED_GO_MESSAGE)
                 self._note = ""
                 err = self._ensure_container(self._root)
                 if err:
@@ -421,7 +469,7 @@ class DockerSandboxRunner(CommandRunner):
             pass
 
 
-def get_runner(mode: str = "host", image: str = DEFAULT_IMAGE, **kwargs: Any) -> CommandRunner:
+def get_runner(mode: str = "host", image: str | None = None, **kwargs: Any) -> CommandRunner:
     """Factory: 'host' (default) or 'docker'."""
     mode_lower = (mode or "host").strip().lower()
     if mode_lower in ("host", "shell", "local"):
