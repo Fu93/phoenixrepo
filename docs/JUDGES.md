@@ -54,7 +54,7 @@ The recorded why is the `reason` string on the `DISCOVERY_FILTER` line, together
 
 `docs/SCORED_RUN_AUDIT.md`: eight of the twelve v3 `CANDIDATE` reasons start with `must beat <name>: did not block`. That string is written in `app/agents/relevance.py` when the model verdict is `ALREADY_EXISTS` and the named alternative fails A-E. The audit marks this **inferred** from the reason format. The v3 trace does not record the raw model verdict. All 4 false passes take this path. The other four `CANDIDATE` reasons do not. A count of the 16 `DISCOVERY_FILTER` lines finds no `raw_verdict` field, and 8 reasons start with `must beat`.
 
-Pull request #56 is merged. `reasoning_excerpt` in `app/agents/relevance.py` can also copy text before a lone `</think>` when a JSON object follows. That code is post-v3. It did not rewrite these 16 traces. No committed file is a re-score of the 16. The 16 scored traces do not record that a live run used that function; the post-v3 single-repo demo in `docs/evidence/single-repo-demo/` demonstrates this live extraction.
+Pull request #56 is merged. `reasoning_excerpt` in `app/agents/relevance.py` can also copy text before a lone `</think>` when a JSON object follows. That code is post-v3. It did not rewrite these 16 traces. No committed file is a re-score of the 16. The post-v3 single-repo demo in `docs/evidence/single-repo-demo/` stores a reasoning excerpt on a Nightshift-served verdict line. The trace does not record which extraction path produced it.
 
 `README.md` Limitations also says the scored v3 traces do not record `PHOENIX_NEMOTRON_POLICY`. Policy is not a field on those lines.
 
