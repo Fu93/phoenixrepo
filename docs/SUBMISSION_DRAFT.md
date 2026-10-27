@@ -62,7 +62,7 @@ Full narration, timings, and on-screen directions: `docs/VIDEO_SCRIPT.md`. Recor
 
 The draft does not repeat the shot list, so the two cannot disagree.
 
-## (ii) Project description for the HackOS form (637 words)
+## (ii) Project description for the HackOS form (656 words)
 
 Agents that revive abandoned GitHub repositories start by patching code. Most of those repositories should not come back: someone already ships the same idea, better maintained. PhoenixRepo asks that question first, and every answer carries evidence a reviewer can check.
 
@@ -72,7 +72,7 @@ The fix that matters most is fewer wrong refusals. CalendarSyncProject was once 
 
 Gate 1's judgements are three separate facts. Requested model id: two tiers (Super for bulk checks, Ultra for the verdict). Served model id is the trace field `served_model`, not the requested id. Policy is `PHOENIX_NEMOTRON_POLICY=fallback-nvidia` on the path described here: Nightshift is tried first, and a failed Nightshift call is traced `provider: nvidia-direct` (a committed example is `data/replays/dsregoitia-calendarsyncproject/trace.jsonl`, `alternative_batch`, `fallback_reason` `nightshift HTTP 502`). The 50 nvidia-direct answers in the sentence below are the provider-split slot, not that one file. The scored v3 traces do not record temperature or thinking mode; neither is inferred from code defaults or later runs. The nemotron-evidence slot says fast-tier answers used were Ultra 174 and Super-VL 18; the 16 verdicts were served `nvidia/nemotron-3-ultra-550b-a55b`. The same slot's no-tier row is Ultra 7 and Lightning 3, which is why the provider split's Ultra count is 197 rather than 190. The scored traces recorded no reasoning text for the final verdict. The counter that wrote them recognised only a separate reasoning field or a complete think pair (0 of 16 in that slot), and Nightshift's answers carry reasoning inline before a bare closing think tag, so the scored traces cannot say whether the model reasoned. Meterless Nightshift is tried first, and NVIDIA's own API answers when Nightshift fails. On the scored run, Nemotron wrote 218 of the 218 answers used (Nightshift 168, nvidia-direct 50; 1 cached; 53 fallback calls, 50 answered and 3 failed, all 50 answered calls after HTTP 502).
 
-Every step is a line in a hash-chained trace that records the model that actually answered; one command verifies the chain and that every used answer was Nemotron. Gate 1 can load its evidence from Zetaris over SQL; this submission ran gate 1 that way, read-only, on two repositories, with every answer verified as Nemotron's (one of the two verdicts disagrees with the human label, and the README says so). The 16 scored evaluation repositories were fetched live from GitHub instead.
+Every step is a line in a hash-chained trace; one command verifies the chain and that every model answer used was Nemotron. Gate 1 can load its evidence from Zetaris over SQL; the evidence queries on this run are read-only SELECTs, on two repositories. The 27 model answers used were all Nemotron-served. One analysis step (ytkb venture_analyst) fell back to a deterministic baseline after a Nightshift 502, which is flagged LLM_FALLBACK in the trace (one of the two verdicts disagrees with the human label, and the README says so). The 16 scored evaluation repositories were fetched live from GitHub instead.
 
 Limits: no AI-written patch has fixed a real repository yet, and the code was written with AI assistance.
 
