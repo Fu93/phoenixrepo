@@ -1728,6 +1728,9 @@ def judge_discovery(
     Verifies alternative_repo against the union of prior_rows and problem_alternatives.
     Falls back to phrase/keyword decide_discovery when no RelevanceClient is configured.
     Enforces that absence is not evidence: insufficient coverage blocks CANDIDATE verdict.
+    Before a CANDIDATE is returned, COMMODITY_CATEGORY can refuse when several verified
+    full-overlap vendors already cover the same job. That check stays off unless
+    PHOENIX_COMMODITY_CATEGORY_RULE is 1, true, yes, on, or enabled.
     """
     from app.agents.market_filter import decide_discovery
 
@@ -2063,6 +2066,26 @@ def judge_discovery(
         verdict = "NEEDS_REVIEW"
         reason = coverage_reason
         picked = []
+
+    if verdict == "CANDIDATE":
+        # The model said CANDIDATE (~the LLM branch), or it named a row that does not block
+        # (~the must-beat branch). Both set CANDIDATE above and return through here.
+        from app.agents.blocker import commodity_category_overlap
+
+        problem_text = prob or desc
+        if problem_quote and quote_in_text(problem_quote, cand_text):
+            problem_text = problem_quote
+        hit = commodity_category_overlap(
+            candidate,
+            combined_priors,
+            as_of=_date.today(),
+            identity=identity,
+            problem=problem_text,
+        )
+        if hit is not None:
+            verdict = "ALREADY_EXISTS"
+            reason = str(hit["reason"])
+            picked = [{**row, "overlap": "full", "reason": reason} for row in hit["rows"]]
 
     clean_reason = reason.rstrip().rstrip(".")
     labeled_reason = f"{clean_reason}. Method: llm+verified quote (requested={req_m}, served={srv_m})."
