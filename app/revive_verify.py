@@ -6,15 +6,16 @@ exit codes, and rejects a diff that deletes, skips, or loosens tests.
 """
 from __future__ import annotations
 
+import difflib
 import json
 import re
-import shutil
 import tempfile
+import tomllib
 from pathlib import Path
 from typing import Any, Callable
 
 from app.quality_gate import MAX_DIFF_FILES, MAX_DIFF_LINES
-from app.revive_loop import CmdResult, acceptance_ok, is_protected
+from app.revive_loop import CmdResult, _safe_path, acceptance_ok, is_protected
 
 Runner = Callable[[str, Path, int], CmdResult]
 COUNT_RE = re.compile(r"(\d+)\s+(passed|failed|skipped|errors?|error)", re.IGNORECASE)
@@ -45,13 +46,22 @@ def parse_test_counts(output: str) -> dict[str, int] | None:
 
 
 def _materialize(snap: dict[str, bytes], dest: Path) -> None:
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir(parents=True, exist_ok=True)
+    # Validate the entire snapshot before writing anything, including on Windows.
+    targets = {rel: _safe_path(dest, rel) for rel in snap}
+    if any(target is None for target in targets.values()):
+        raise ValueError("snapshot contains an unsafe path")
+    if len(set(targets.values())) != len(targets):
+        raise ValueError("snapshot contains aliased paths")
+    dest.mkdir(parents=True, exist_ok=False)
     for rel, data in snap.items():
-        target = dest / rel
+        target = targets[rel]
+        assert target is not None
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
+
+
+class _UnavailableRun(CmdResult):
+    """The verifier could not execute the check; this is not a repository failure."""
 
 
 def _run_copy(runner: Runner, command: str, snap: dict[str, bytes], timeout: int) -> CmdResult | None:
@@ -61,9 +71,12 @@ def _run_copy(runner: Runner, command: str, snap: dict[str, bytes], timeout: int
         with tempfile.TemporaryDirectory(prefix="phoenix-verify-") as tmp:
             root = Path(tmp) / "tree"
             _materialize(snap, root)
-            return runner(command, root, timeout)
+            result = runner(command, root, timeout)
+            if result.code in {124, 127, 9009}:
+                return _UnavailableRun(command, result.code, f"check timed out or executable unavailable (exit {result.code}): {result.output}", result.seconds)
+            return result
     except Exception as exc:  # noqa: BLE001 — a verifier crash is UNVERIFIED, not a pass
-        return CmdResult(command, 1, f"verifier could not re-run: {type(exc).__name__}: {exc}")
+        return _UnavailableRun(command, 1, f"verifier could not re-run: {type(exc).__name__}: {exc}")
 
 
 def _test_names(text: str) -> set[str]:
@@ -97,6 +110,19 @@ def _test_command_changes(original: dict[str, bytes], patched: dict[str, bytes])
     """The repository's own test command is the validator, so the builder may not rewrite it."""
     reasons: list[str] = []
     for rel in sorted(set(original) | set(patched)):
+        if original.get(rel) == patched.get(rel):
+            continue
+        name = Path(rel).name
+        if name in {"pytest.ini", ".pytest.ini", "tox.ini"}:
+            reasons.append(f"test configuration changed in {rel}")
+        if name == "pyproject.toml":
+            try:
+                before_config = tomllib.loads((original.get(rel) or b"").decode("utf-8"))
+                after_config = tomllib.loads((patched.get(rel) or b"").decode("utf-8"))
+                if before_config.get("tool", {}).get("pytest") != after_config.get("tool", {}).get("pytest"):
+                    reasons.append(f"test configuration changed in {rel}: tool.pytest")
+            except (ValueError, AttributeError):
+                reasons.append(f"cannot compare test configuration in {rel}")
         if rel.rsplit("/", 1)[-1] != "package.json" or "node_modules/" in rel:
             continue
         before = _package_test_scripts(original.get(rel))
@@ -147,7 +173,11 @@ def _diff_stat(original: dict[str, bytes], patched: dict[str, bytes]) -> tuple[l
         files.append(rel)
         before = (original.get(rel) or b"").decode("utf-8", "replace").splitlines()
         after = (patched.get(rel) or b"").decode("utf-8", "replace").splitlines()
-        lines += abs(len(after) - len(before)) or 1
+        lines += sum(
+            (i2 - i1) + (j2 - j1)
+            for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, before, after, autojunk=False).get_opcodes()
+            if tag != "equal"
+        ) or 1
     return files, lines
 
 
@@ -156,11 +186,80 @@ def _acceptance_ok(result: CmdResult, expected: str) -> bool:
     return acceptance_ok(result, expected)
 
 
+def _dependency_versions(tree: dict[str, bytes], package: str) -> set[str]:
+    """Read named declarations, never unrelated versions in prose or lockfiles.
+
+    This verifies a manifest declaration, not the installed dependency or its safety.
+    Unsupported manifest formats deliberately produce no verification evidence.
+    """
+    versions: set[str] = set()
+    normalized = re.sub(r"[-_.]+", "-", package).lower()
+
+    def requirement(text: str) -> None:
+        match = re.match(r"^\s*([\w.-]+)(?:\[[^]]+\])?\s*(?:===|==|~=)\s*([^\s;#,]+)", text)
+        if match and re.sub(r"[-_.]+", "-", match[1]).lower() == normalized:
+            versions.add(match[2])
+
+    def poetry(table: Any) -> None:
+        if not isinstance(table, dict):
+            return
+        for name, value in table.items():
+            if re.sub(r"[-_.]+", "-", name).lower() == normalized:
+                value = value.get("version") if isinstance(value, dict) else value
+                if isinstance(value, str):
+                    versions.add(value.lstrip("^~"))
+
+    for rel, data in tree.items():
+        name = Path(rel).name
+        text = data.decode("utf-8", "replace")
+        try:
+            if name == "package.json":
+                manifest = json.loads(text)
+                if not isinstance(manifest, dict):
+                    continue
+                for section in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
+                    deps = manifest.get(section)
+                    value = deps.get(package) if isinstance(deps, dict) else None
+                    if isinstance(value, str):
+                        versions.add(value.lstrip("^~"))
+            elif name.startswith("requirements") and name.endswith(".txt"):
+                for line in text.splitlines():
+                    requirement(line)
+            elif name == "pyproject.toml":
+                manifest = tomllib.loads(text)
+                project = manifest.get("project", {})
+                for value in project.get("dependencies", []):
+                    requirement(value)
+                for group in project.get("optional-dependencies", {}).values():
+                    for value in group:
+                        requirement(value)
+                config = manifest.get("tool", {}).get("poetry", {})
+                poetry(config.get("dependencies"))
+                poetry(config.get("dev-dependencies"))
+                for group in config.get("group", {}).values():
+                    poetry(group.get("dependencies"))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    return versions
+
+
 def _manifest_has(patched: dict[str, bytes], package: str, version: str) -> bool:
-    blob = "\n".join(data.decode("utf-8", "replace") for rel, data in patched.items() if rel.endswith((".json", ".txt", ".toml", ".lock")))
-    if package not in blob:
-        return False
-    return not version or version in blob
+    return bool(version) and version in _dependency_versions(patched, package)
+
+
+def _version_increased(before: set[str], version: str) -> bool:
+    """Conservative comparison of numeric releases; other schemes need review."""
+    def release(value: str) -> tuple[int, ...] | None:
+        if not re.fullmatch(r"\d+(?:\.\d+)*", value):
+            return None
+        parts = [int(part) for part in value.split(".")]
+        while len(parts) > 1 and parts[-1] == 0:
+            parts.pop()
+        return tuple(parts)
+
+    target = release(version)
+    previous = [release(value) for value in before]
+    return target is not None and bool(previous) and all(value is not None and value < target for value in previous)
 
 
 def verify_revival(
@@ -183,18 +282,22 @@ def verify_revival(
 
     baseline_run = _run_copy(runner, test_cmd, original, timeout)
     final_run = _run_copy(runner, test_cmd, patched, timeout)
-    if baseline_run is None:
-        checks.append(_check("baseline_tests", "UNVERIFIED", "no test command"))
+    if baseline_run is None or isinstance(baseline_run, _UnavailableRun):
+        checks.append(_check("baseline_tests", "UNVERIFIED", baseline_run.output if baseline_run else "no test command"))
     else:
         checks.append(_check("baseline_tests", "PASS" if baseline_run.ok else "FAIL", f"exit {baseline_run.code}"))
-    if final_run is None:
-        checks.append(_check("final_tests", "UNVERIFIED", "no test command"))
+    if final_run is None or isinstance(final_run, _UnavailableRun):
+        checks.append(_check("final_tests", "UNVERIFIED", final_run.output if final_run else "no test command"))
     else:
         checks.append(_check("final_tests", "PASS" if final_run.ok else "FAIL", f"exit {final_run.code}"))
 
     base_counts = parse_test_counts(baseline_run.output) if baseline_run else None
     final_counts = parse_test_counts(final_run.output) if final_run else None
-    if base_counts is None or final_counts is None:
+    final_failures = bool(final_counts and (final_counts["failed"] or final_counts["errors"]))
+    if final_failures:
+        counts_fail = True
+        checks.append(_check("test_counts", "FAIL", f"final test output still reports failures: {final_counts}"))
+    elif base_counts is None or final_counts is None:
         checks.append(_check("test_counts", "UNVERIFIED", "the test output did not report passed/failed/skipped/errors"))
         counts_fail = False
     else:
@@ -211,21 +314,19 @@ def verify_revival(
         counts_fail = worse or fewer_passed or more_skipped
         checks.append(_check("test_counts", "FAIL" if counts_fail else "PASS", detail))
 
-    build_worse = False
+    build_failed = False
     if not build_cmd:
         checks.append(_check("build", "UNVERIFIED", "no build command was detected"))
     else:
-        base_build = _run_copy(runner, build_cmd, original, timeout)
         final_build = _run_copy(runner, build_cmd, patched, timeout)
-        if base_build is None or final_build is None:
+        if final_build is None or isinstance(final_build, _UnavailableRun):
+            build_failed = True
             checks.append(_check("build", "UNVERIFIED", "build command did not run"))
         elif final_build.ok:
-            checks.append(_check("build", "PASS", f"baseline exit {base_build.code}, final exit {final_build.code}"))
-        elif base_build.ok:
-            build_worse = True
-            checks.append(_check("build", "FAIL", f"baseline exit {base_build.code}, final exit {final_build.code}"))
+            checks.append(_check("build", "PASS", f"final exit {final_build.code}"))
         else:
-            checks.append(_check("build", "UNVERIFIED", f"baseline exit {base_build.code}, final exit {final_build.code}"))
+            build_failed = True
+            checks.append(_check("build", "FAIL", f"final exit {final_build.code}"))
 
     weakened = weakened_test_diff(original, patched)
     checks.append(_check("weakened_tests", "FAIL" if weakened else "PASS", "; ".join(weakened) or "no test was deleted, skipped, or loosened"))
@@ -238,17 +339,18 @@ def verify_revival(
         detail += f"; protected paths changed: {', '.join(protected)}"
     checks.append(_check("diff_scope", "FAIL" if too_wide else "PASS", detail))
 
-    kept_pass = False
+    kept_pass = bool(kept)
     for item in kept:
         command = str(item.get("acceptance_command") or (item.get("acceptance") or {}).get("command") or test_cmd)
         expected = str(item.get("expected") or (item.get("acceptance") or {}).get("expected") or "exit code 0")
         item_id = str(item.get("id") or "item")
         run = _run_copy(runner, command, patched, timeout)
-        if run is None:
-            checks.append(_check(f"acceptance:{item_id}", "UNVERIFIED", "no acceptance command"))
+        if run is None or isinstance(run, _UnavailableRun):
+            kept_pass = False
+            checks.append(_check(f"acceptance:{item_id}", "UNVERIFIED", run.output if run else "no acceptance command"))
             continue
         ok = _acceptance_ok(run, expected)
-        kept_pass = kept_pass or ok
+        kept_pass = kept_pass and ok
         checks.append(_check(f"acceptance:{item_id}", "PASS" if ok else "FAIL", f"exit {run.code}; expected {expected}"))
 
     for item in prd.get("work_items") or []:
@@ -263,37 +365,51 @@ def verify_revival(
             checks.append(_check(f"acceptance:{item_id}", "FAIL", "no acceptance command"))
             continue
         run = _run_copy(runner, command, patched, timeout)
-        if run is None:
-            checks.append(_check(f"acceptance:{item_id}", "UNVERIFIED", "command was not run"))
+        if run is None or isinstance(run, _UnavailableRun):
+            checks.append(_check(f"acceptance:{item_id}", "UNVERIFIED", run.output if run else "command was not run"))
             continue
         ok = _acceptance_ok(run, expected)
         checks.append(_check(f"acceptance:{item_id}", "PASS" if ok else "FAIL", f"exit {run.code}; expected {expected}"))
 
+    upgrade_failed = False
+    verified_upgrade = False
     for item in kept:
         if str(item.get("kind") or "") != "upgrade" and not item.get("package"):
             continue
         package = str(item.get("package") or "")
         version = str(item.get("version") or item.get("to_version") or "")
         if not package:
+            upgrade_failed = True
+            checks.append(_check("upgrade:unknown", "UNVERIFIED", "kept upgrade has no package name"))
             continue
         present = _manifest_has(patched, package, version)
-        checks.append(_check(f"upgrade:{package}", "PASS" if present else "FAIL", f"{package}@{version or '?'} in the manifest" if present else f"{package}@{version or '?'} is not in the manifest or lockfile"))
+        before = _dependency_versions(original, package)
+        changed = present and _version_increased(before, version)
+        upgrade_failed = upgrade_failed or not changed
+        verified_upgrade = verified_upgrade or changed
+        checks.append(_check(f"upgrade:{package}", "PASS" if changed else "FAIL", f"{package}@{version or '?'} declaration increased; installed version not verified" if changed else f"{package}@{version or '?'} has no verified numeric version increase"))
 
-    baseline_broken = baseline_run is not None and not baseline_run.ok
+    baseline_broken = baseline_run is not None and not isinstance(baseline_run, _UnavailableRun) and not baseline_run.ok
     if baseline_code is not None and baseline_run is None:
         baseline_broken = baseline_code != 0
-    outdated = any(str(item.get("kind") or "") == "upgrade" or item.get("package") for item in kept)
-    baseline_problem = baseline_broken or outdated
-    checks.append(_check("baseline_problem", "PASS" if baseline_problem else "FAIL", "baseline failed or a dependency upgrade was kept" if baseline_problem else "baseline already passed and no dependency upgrade was kept"))
+    baseline_problem = baseline_broken or verified_upgrade
+    checks.append(_check("baseline_problem", "PASS" if baseline_problem else "FAIL", "baseline test failed or a named dependency declaration changed" if baseline_problem else "no baseline failure or verified dependency declaration change"))
 
-    final_worse = bool(final_run is not None and baseline_run is not None and baseline_run.ok and not final_run.ok) or counts_fail or build_worse
     blocked: list[str] = []
     if weakened:
         blocked.append("tests were weakened")
-    if final_worse:
-        blocked.append("final checks are worse than the baseline")
+    if isinstance(baseline_run, _UnavailableRun):
+        blocked.append("baseline test command could not be verified")
+    if final_run is None or isinstance(final_run, _UnavailableRun) or not final_run.ok:
+        blocked.append("final test command did not pass")
+    if counts_fail:
+        blocked.append("final test counts failed verification")
+    if build_failed:
+        blocked.append("configured build did not pass")
     if not kept_pass:
-        blocked.append("no kept item has a passing acceptance check")
+        blocked.append("not every kept item has a passing acceptance check")
+    if upgrade_failed:
+        blocked.append("kept dependency upgrade failed verification")
     if not baseline_problem:
         blocked.append("baseline was not broken or outdated")
     if too_wide:

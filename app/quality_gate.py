@@ -87,31 +87,44 @@ def _unavailable_output(output: str, code: int) -> bool:
 
 def parse_npm_audit(output: str, code: int) -> dict[str, Any]:
     """Parse `npm audit --json`. Non-JSON is unavailable, never a pass."""
+    if code not in {0, 1}:
+        return _check("audit", "unavailable", f"npm audit could not complete (exit {code})")
     if _unavailable_output(output, code) and _json_value(output or "") is None:
         return _check("audit", "unavailable", output or f"npm audit exit {code}")
     data = _json_value(output or "")
     if not isinstance(data, dict):
         return _check("audit", "unavailable", output or "npm audit did not return JSON")
+    if data.get("error"):
+        return _check("audit", "unavailable", "npm audit returned an error payload")
     meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
     vulns = meta.get("vulnerabilities") if isinstance(meta.get("vulnerabilities"), dict) else None
     high = critical = moderate = 0
-    if isinstance(vulns, dict) and ("high" in vulns or "critical" in vulns):
-        high = int(vulns.get("high") or 0)
-        critical = int(vulns.get("critical") or 0)
-        moderate = int(vulns.get("moderate") or 0)
+    findings = 0
+    if isinstance(vulns, dict) and "high" in vulns and "critical" in vulns:
+        if any(type(value) is not int or value < 0 for value in vulns.values()):
+            return _check("audit", "unavailable", "npm audit vulnerability counts are invalid")
+        high = vulns["high"]
+        critical = vulns["critical"]
+        moderate = vulns.get("moderate", 0)
+        findings = sum(vulns.values())
     elif isinstance(data.get("vulnerabilities"), dict):
         for item in data["vulnerabilities"].values():
             if not isinstance(item, dict):
-                continue
+                return _check("audit", "unavailable", "npm audit vulnerability record is invalid")
             severity = str(item.get("severity") or "").lower()
+            if severity not in {"high", "critical", "moderate", "low", "info"}:
+                return _check("audit", "unavailable", "npm audit vulnerability severity is missing or invalid")
+            findings += 1
             if severity == "high":
                 high += 1
             elif severity == "critical":
                 critical += 1
             elif severity == "moderate":
                 moderate += 1
-    elif "vulnerabilities" not in data and "metadata" not in data:
+    else:
         return _check("audit", "unavailable", "npm audit JSON has no vulnerability metadata")
+    if code != 0 and not findings:
+        return _check("audit", "unavailable", f"npm audit exited {code} without findings")
     status = "fail" if high + critical > 0 else "pass"
     detail = f"npm audit high={high} critical={critical} moderate={moderate} (exit {code})"
     return _check("audit", status, detail, high=high, critical=critical)
@@ -119,9 +132,13 @@ def parse_npm_audit(output: str, code: int) -> dict[str, Any]:
 
 def parse_pip_audit(output: str, code: int) -> dict[str, Any]:
     """Parse `pip-audit -f json`. Findings without a severity are counted as high, not ignored."""
+    if code not in {0, 1}:
+        return _check("audit", "unavailable", f"pip-audit could not complete (exit {code})")
     if _unavailable_output(output, code) and _json_value(output or "") is None:
         return _check("audit", "unavailable", output or f"pip-audit exit {code}")
     data = _json_value(output or "")
+    if isinstance(data, dict) and data.get("error"):
+        return _check("audit", "unavailable", "pip-audit returned an error payload")
     deps: list[Any] | None = None
     if isinstance(data, dict) and isinstance(data.get("dependencies"), list):
         deps = data["dependencies"]
@@ -129,13 +146,14 @@ def parse_pip_audit(output: str, code: int) -> dict[str, Any]:
         deps = data
     if deps is None:
         return _check("audit", "unavailable", output or "pip-audit did not return JSON")
-    high = critical = 0
+    high = critical = findings = 0
     for dep in deps:
-        if not isinstance(dep, dict):
-            continue
-        vulns = dep.get("vulns") or []
+        if not isinstance(dep, dict) or dep.get("skip_reason"):
+            return _check("audit", "unavailable", "pip-audit dependency record is invalid or was skipped")
+        vulns = dep.get("vulns")
         if not isinstance(vulns, list):
-            continue
+            return _check("audit", "unavailable", "pip-audit dependency has no valid vulnerability list")
+        findings += len(vulns)
         for vuln in vulns:
             if not isinstance(vuln, dict):
                 high += 1
@@ -148,6 +166,8 @@ def parse_pip_audit(output: str, code: int) -> dict[str, Any]:
                 continue
             else:
                 high += 1
+    if code != 0 and not findings:
+        return _check("audit", "unavailable", f"pip-audit exited {code} without findings")
     status = "fail" if high + critical > 0 else "pass"
     detail = f"pip-audit high={high} critical={critical} (unrated findings count as high; exit {code})"
     return _check("audit", status, detail, high=high, critical=critical)
