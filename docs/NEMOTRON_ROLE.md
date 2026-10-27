@@ -68,7 +68,7 @@ The 16 traces contain 211 `LLM_CALL` lines and 10 `LLM_SCORE` lines.
 
 Scored v3 traces do not record thinking or temperature. Neither is inferred from code defaults or later runs. A recount of the 16 files finds no `temperature`, `top_p`, `max_tokens`, `enable_thinking`, `thinking`, `reasoning_effort`, or `request_settings` on the model lines, and no `reasoning` field. The v3 eval's 0/16 reasoning figure is not recorded.
 
-`data/replays/e3-goodreasonai-scrapeserv/trace.jsonl` is not one of the 16 scored v3 traces. It has 17 `LLM_CALL` lines. `request_settings.chat_template_kwargs.enable_thinking` is true on 1 line (step `discovery`, `temperature` 1.0) and false on 16 lines (`temperature` 0).
+`data/replays/e3-goodreasonai-scrapeserv/trace.jsonl` is not one of the 16 scored v3 traces. It has 17 `LLM_CALL` lines. `request_settings.enable_thinking` is true on 1 line (step `discovery`, `temperature` 1.0) and false on 16 lines (`temperature` 0).
 
 ## Eligibility conditions for Best use of NVIDIA Nemotron
 

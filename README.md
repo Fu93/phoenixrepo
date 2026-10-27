@@ -374,7 +374,7 @@ H-MEM is this repository's own implementation of the public Meterless spec (`app
 - `verify_trace.py` prints `nightshift` for a missing `provider`. That print is not a stored field. On an `LLM_CALL` line the omission is the Nightshift route in [Nemotron use](#nemotron-use). `LLM_SCORE` never sets `provider`.
 - `quote_in_text` (`app/agents/relevance.py`) is a case-insensitive substring check after whitespace and Markdown normalisation. There is no minimum length. A match shows the quote occurs. It does not show that the quote supports the verdict.
 - A web row is created with `stars` set to `0` (`app/agents/relevance.py`). `RepoFactsClient.fetch_alternative` does call the GitHub API for a `github.com/owner/name` URL, including a `web:` prefix (`app/agents/repo_facts.py`), and `scripts/score_candidates.py` calls it on problem alternatives. It fills a field only when the current value is `None` or `""`, so the preset `0` is not replaced by the star count the API returns. A web-found GitHub repository still cannot meet the 100-star bar from that lookup.
-- Gate 2 verified execution runs the target repository's install and test commands with `subprocess.Popen(..., shell=True)` (`app/revive_loop.py`). There is no sandbox. It has not run on a real `CANDIDATE` here.
+- Gate 2 verified execution runs the target repository's install and test commands with `subprocess.Popen(..., shell=True)` (`app/revive_loop.py`). There is no sandbox. It has not run on a real `CANDIDATE` here. An opt-in Docker runner is in draft PR #84.
 - The 8 committed rescue plans are plans (6 drafted by Nemotron, 2 deterministic). The quote check shows the quote occurs in the cited text. It does not show that the quote supports the item. No AI-written patch in this repository has fixed a real repository's tests.
 - CI (`.github/workflows/ci.yml`) does not call a live Zetaris, Nightshift, or NVIDIA API. Live runs were done outside CI.
 - H-MEM on gate 1 records verdicts. It does not decide them. The official conformance suite was not run. The scored run predates the hook.
@@ -413,6 +413,8 @@ That skeleton includes the FastAPI process, the Docker image, the evidence graph
 ## In review
 
 These pull requests are open. They are not merged, and they are not the behaviour of this branch. Pull request #58 is on `main`.
+
+Gate 2 Docker sandbox: draft PR #84 (opt-in, default host). Tested on three fixtures only; no real CANDIDATE has run in it; not a proven security boundary.
 
 **Pull requests #59, #62, #65, and #66 (not merged).** Each switch is default off. It runs only when set to `1`, `true`, `yes`, `on`, or `enabled`. Unset stays off. None of them are on this branch, and none are part of any number on this page. The names are `PHOENIX_UNKNOWN_BLOCKER_REVIEW` (#59), `PHOENIX_WEB_GITHUB_API_LOOKUP` (#62), `PHOENIX_QUOTE_FAIL_FLAG` (#65), and `PHOENIX_COMMODITY_CATEGORY_RULE` (#66). An offline reading of Rule B on the recorded `must_beat` lines is in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md). It is not a live run.
 
