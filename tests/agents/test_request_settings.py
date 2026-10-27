@@ -52,7 +52,7 @@ def test_kept_request_settings_drops_a_token_and_unknown_keys():
     assert kept == {"temperature": 0, "enable_thinking": False, "reasoning_effort": "none"}
 
 
-def test_sent_settings_are_traced_and_are_not_part_of_the_cache_key(tmp_path: Path, monkeypatch):
+def test_sent_settings_are_traced_and_a_different_body_gets_its_own_cache_entry(tmp_path: Path, monkeypatch):
     for name in ("PHOENIX_LLM_EXTRA_BODY", "PHOENIX_LLM_MAX_TOKENS", "MODEL_NAME", "METERLESS_MODEL", "PHOENIX_DEEP_MODEL", "MODEL_NAME_DEEP"):
         monkeypatch.delenv(name, raising=False)
     calls = {"n": 0}
@@ -79,7 +79,7 @@ def test_sent_settings_are_traced_and_are_not_part_of_the_cache_key(tmp_path: Pa
         extra_body={"chat_template_kwargs": {"enable_thinking": False}, "top_p": 0.95},
     )
     first.complete("same prompt", "same system", repo_id="o/r", step="problem")
-    # A different extra body must not change the cache key. The replay is not a new HTTP call,
+    # The same extra body replays from the cache. The replay is not a new HTTP call,
     # so it must not claim those settings were sent.
     second = RelevanceClient(
         token="rt-test",
@@ -88,16 +88,39 @@ def test_sent_settings_are_traced_and_are_not_part_of_the_cache_key(tmp_path: Pa
         transport=httpx.MockTransport(handler),
         trace=trace,
         max_tokens=128,
-        extra_body={"chat_template_kwargs": {"enable_thinking": True}, "temperature": 0.6},
+        extra_body={"top_p": 0.95, "chat_template_kwargs": {"enable_thinking": False}},
     )
     second.complete("same prompt", "same system", repo_id="o/r", step="problem")
     assert calls["n"] == 1
     assert len(list(cache.glob("*.json"))) == 1
     cached = next(cache.glob("*.json")).read_text(encoding="utf-8")
-    assert "request_settings" not in cached
+    assert '"request_settings"' not in cached  # only a hash of the body is stored, not the values
     assert "enable_thinking" not in cached
+    assert "request_settings_sha256" in cached
+    # A different extra body is part of the cache key: it is a new call with its own entry.
+    other_calls = {"n": 0}
+
+    def other_handler(request: httpx.Request) -> httpx.Response:
+        other_calls["n"] += 1
+        body = json.loads(request.content)
+        assert body["temperature"] == 0.6
+        assert body["chat_template_kwargs"] == {"enable_thinking": True}
+        return httpx.Response(200, json={"model": NEMO, "choices": [{"message": {"content": '{"ok": false}'}}]})
+
+    third = RelevanceClient(
+        token="rt-test",
+        model=NEMO,
+        cache_dir=cache,
+        transport=httpx.MockTransport(other_handler),
+        trace=trace,
+        max_tokens=128,
+        extra_body={"chat_template_kwargs": {"enable_thinking": True}, "temperature": 0.6},
+    )
+    assert third.complete("same prompt", "same system", repo_id="o/r", step="problem")[0] == '{"ok": false}'
+    assert other_calls["n"] == 1
+    assert len(list(cache.glob("*.json"))) == 2
     lines = [json.loads(line) for line in trace.path.read_text(encoding="utf-8").splitlines()]
-    fresh, replay = [line for line in lines if line.get("action") == "LLM_CALL"]
+    fresh, replay, other = [line for line in lines if line.get("action") == "LLM_CALL"]
     assert fresh["request_settings"] == {
         "enable_thinking": False,
         "temperature": 0,
@@ -105,6 +128,8 @@ def test_sent_settings_are_traced_and_are_not_part_of_the_cache_key(tmp_path: Pa
         "max_tokens": 128,
     }
     assert "request_settings" not in replay
+    assert other["request_settings"]["temperature"] == 0.6
+    assert other["request_settings"]["enable_thinking"] is True
     assert "messages" not in json.dumps(fresh["request_settings"])
     trace.seal()
     ok, detail = verify(trace.path)

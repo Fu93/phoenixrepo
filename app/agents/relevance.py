@@ -147,6 +147,20 @@ _THINK_RE = re.compile(r"<think>(.*?)</think>", re.S | re.I)
 _THINK_LONE_CLOSE = re.compile(r"</think>", re.I)
 
 
+def _request_settings_fingerprint(extra: dict[str, Any] | None) -> str:
+    """SHA-256 of the normalised extra request body, or "" when there is none.
+
+    Keys are sorted and the JSON is compact, so the same settings always give the
+    same text whatever order they were written in. A missing or empty body gives "".
+    A value that is not JSON-serialisable is written with ``str`` rather than raising.
+    """
+
+    if not extra:
+        return ""
+    text = json.dumps(extra, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def _env_text(*names: str) -> str:
     for name in names:
         value = os.environ.get(name, "").strip()
@@ -455,7 +469,25 @@ class FallbackBudget:
 
 
 def extract_json_object(text: str) -> dict[str, Any] | None:
-    """Robustly extract a JSON object from text or markdown code fences."""
+    """Robustly extract a JSON object from text or markdown code fences.
+
+    Reasoning endpoints can put the reasoning in the reply and close it with a
+    ``</think>`` that has no opening tag (see ``_reasoning_before_lone_close``).
+    That reasoning may itself contain braces, so slicing from the first ``{`` to
+    the last ``}`` would span the tag and fail. The text after a ``</think>`` is
+    therefore tried first, the last tag first. A tag that sits inside a JSON
+    string leaves a tail that is not an object, so it is skipped and the whole
+    reply is parsed as before.
+    """
+    raw = str(text or "")
+    for match in reversed(list(_THINK_LONE_CLOSE.finditer(raw))):
+        tail = _extract_json_object_plain(raw[match.end() :])
+        if tail is not None:
+            return tail
+    return _extract_json_object_plain(raw)
+
+
+def _extract_json_object_plain(text: str) -> dict[str, Any] | None:
     raw = text.strip()
     if "```" in raw:
         match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw)
@@ -707,7 +739,8 @@ class RelevanceClient:
             summary["reasoning"] = reasoning
         llm: dict[str, Any] = {"requested_model": requested, "served_model": served}
         # Settings of a call that was actually posted. A cache hit does not pass them:
-        # the cache key does not include them, so the stored answer may be from another body.
+        # the cache record keeps only a hash of the extra body, and entries written before
+        # that hash existed have none, so the exact values sent are not known for a hit.
         if request_settings:
             llm["request_settings"] = request_settings
         self.trace.event(
@@ -807,7 +840,16 @@ class RelevanceClient:
         total_cap = self.total_timeout if call_budget_s is None else min(self.total_timeout, max(0.0, call_budget_s))
         prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
         input_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-        cache_key = hashlib.sha256(f"{model}\n---\n{prompt_hash}\n---\n{input_hash}".encode("utf-8")).hexdigest()
+        # Request settings (reasoning flags, temperature, any other extra body key)
+        # can change the answer, notably between the fast and the deep tier. Hash them
+        # deterministically (sorted keys, fixed separators) into the key so a response
+        # made with one body is never reused for another. An empty extra body adds
+        # nothing, so keys written before this change stay valid for that case.
+        settings_fp = _request_settings_fingerprint(body_extra)
+        key_material = f"{model}\n---\n{prompt_hash}\n---\n{input_hash}"
+        if settings_fp:
+            key_material += f"\n---\n{settings_fp}"
+        cache_key = hashlib.sha256(key_material.encode("utf-8")).hexdigest()
         cache_file = self.cache_dir / f"{cache_key}.json"
         self.last_reasoning = ""
 
@@ -857,6 +899,7 @@ class RelevanceClient:
                 "model": model,
                 "prompt_sha256": prompt_hash,
                 "input_sha256": input_hash,
+                "request_settings_sha256": settings_fp,
                 "requested_model": model,
                 "served_model": served,
                 "provider": provider,

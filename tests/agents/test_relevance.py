@@ -23,6 +23,7 @@ from app.agents.relevance import (
     RelevanceLLMError,
     build_search_queries,
     extract_capabilities,
+    extract_json_object,
     extract_problem_statement,
     filter_relevant_alternatives,
     is_valid_demand_signal_url,
@@ -566,6 +567,81 @@ def test_cache_key_changes_when_model_changes(tmp_path: Path):
 
     assert "gemini-3.1-pro-preview" in models_in_cache
     assert "meterless/auto" in models_in_cache
+
+
+def test_cache_key_changes_when_request_settings_change(tmp_path: Path):
+    """Fast and deep request bodies must never share a cached completion."""
+    cache_dir = tmp_path / "settings_cache"
+    client1 = RelevanceClient(
+        model="nvidia/nemotron-3.5-lightning-30b-a3b",
+        cache_dir=cache_dir,
+        extra_body={"temperature": 0, "reasoning": "off"},
+        mock_handler=lambda p, s: '{"tier": "fast"}',
+    )
+    client2 = RelevanceClient(
+        model="nvidia/nemotron-3.5-lightning-30b-a3b",
+        cache_dir=cache_dir,
+        extra_body={"reasoning": "on", "temperature": 0.6},
+        mock_handler=lambda p, s: '{"tier": "deep"}',
+    )
+
+    assert client1.complete("same prompt", "same system")[0] == '{"tier": "fast"}'
+    assert client2.complete("same prompt", "same system")[0] == '{"tier": "deep"}'
+    cache_files = list(cache_dir.glob("*.json"))
+    assert len(cache_files) == 2
+    assert len({json.loads(path.read_text(encoding="utf-8"))["request_settings_sha256"] for path in cache_files}) == 2
+
+
+def test_cache_key_ignores_extra_body_key_order_and_tolerates_none(tmp_path: Path):
+    """Same settings in another key order hit the same entry. No settings must not crash."""
+    cache_dir = tmp_path / "order_cache"
+    first = RelevanceClient(
+        model="m", cache_dir=cache_dir,
+        extra_body={"chat_template_kwargs": {"enable_thinking": True, "x": 1}, "temperature": 0.6},
+        mock_handler=lambda p, s: '{"n": 1}',
+    )
+    second = RelevanceClient(
+        model="m", cache_dir=cache_dir,
+        extra_body={"temperature": 0.6, "chat_template_kwargs": {"x": 1, "enable_thinking": True}},
+        mock_handler=lambda p, s: '{"n": 2}',
+    )
+    assert first.complete("p", "s")[0] == '{"n": 1}'
+    assert second.complete("p", "s")[0] == '{"n": 1}'  # served from the first entry
+    assert len(list(cache_dir.glob("*.json"))) == 1
+
+    plain = RelevanceClient(model="m", cache_dir=tmp_path / "plain", mock_handler=lambda p, s: '{"n": 3}')
+    plain.extra_body = None  # a missing body must not crash the key
+    assert plain.complete("p", "s")[0] == '{"n": 3}'
+    record = json.loads(next((tmp_path / "plain").glob("*.json")).read_text(encoding="utf-8"))
+    assert record["request_settings_sha256"] == ""
+
+
+def test_empty_extra_body_keeps_the_legacy_cache_key(tmp_path: Path):
+    """No extra body adds nothing to the key, so entries written before settings were hashed stay valid."""
+    import hashlib
+
+    cache_dir = tmp_path / "legacy_cache"
+    client = RelevanceClient(model="m", cache_dir=cache_dir, mock_handler=lambda p, s: '{"n": 1}')
+    client.complete("the prompt", "the system")
+    prompt_hash = hashlib.sha256(b"the system").hexdigest()
+    input_hash = hashlib.sha256(b"the prompt").hexdigest()
+    legacy = hashlib.sha256(f"m\n---\n{prompt_hash}\n---\n{input_hash}".encode("utf-8")).hexdigest()
+    assert [p.name for p in cache_dir.glob("*.json")] == [f"{legacy}.json"]
+
+
+def test_extract_json_object_reads_the_answer_after_a_lone_think_close_even_with_braces_before_it():
+    assert extract_json_object('</think>\n{"verdict":"CANDIDATE"}') == {"verdict": "CANDIDATE"}
+    braces = 'I will answer in the form {"verdict": ...} and check {x} first.</think>\n{"verdict": "CANDIDATE"}'
+    assert extract_json_object(braces) == {"verdict": "CANDIDATE"}
+    # The reasoning mentions the tag; the last boundary with an object after it wins.
+    twice = 'saw </think> {a} in a quote</think>{"verdict": "ALREADY_EXISTS"}'
+    assert extract_json_object(twice) == {"verdict": "ALREADY_EXISTS"}
+    # A tag inside a JSON string is not a boundary: the whole object still parses.
+    inside = '{"verdict": "CANDIDATE", "reason": "the readme shows </think> here"}'
+    assert extract_json_object(inside) == {"verdict": "CANDIDATE", "reason": "the readme shows </think> here"}
+    # No tag: unchanged behaviour (prose, then an object; fences).
+    assert extract_json_object('prose first {"a": 1}') == {"a": 1}
+    assert extract_json_object("no json </think> at all") is None
 
 
 def test_judge_discovery_verifies_against_union_of_prior_art_csv_and_problem_search(tmp_path: Path):

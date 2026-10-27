@@ -67,7 +67,7 @@ def line_hash(record: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_body(record).encode("utf-8")).hexdigest()
 
 
-# Copied onto a new LLM line only. Not part of the cache key. Old traces omit the field.
+# Copied onto a new LLM line only. A cache replay does not carry them. Old traces omit the field.
 _REQUEST_SETTING_KEYS = ("enable_thinking", "reasoning_effort", "reasoning_budget", "temperature", "top_p", "max_tokens")
 
 
