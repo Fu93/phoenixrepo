@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 import httpx
 
@@ -2064,6 +2065,15 @@ def judge_discovery(
         reason = coverage_reason
         picked = []
 
+    if verdict == "CANDIDATE":
+        # Unknown maturity is not "immature, did not block". A known archived, stale, or
+        # tiny alternative still does not refuse. A mature alternative already blocked above.
+        held = _unknown_maturity_hold(candidate, combined_priors)
+        if held is not None:
+            verdict = "NEEDS_REVIEW"
+            reason, held_row = held
+            picked = [held_row]
+
     clean_reason = reason.rstrip().rstrip(".")
     labeled_reason = f"{clean_reason}. Method: llm+verified quote (requested={req_m}, served={srv_m})."
     show = _evidence_rows(picked) if verdict in {"ALREADY_EXISTS", "NEEDS_REVIEW"} else []
@@ -2184,6 +2194,232 @@ class SearchResultsList(list):
         self.insufficient_coverage: bool = insufficient_coverage
 
 
+# Web-search rows store stars=0 and no push date. That zero is a placeholder, not a
+# measured star count. Looking the repository up is opt-in: unset does not call GitHub
+# and does not change a verdict. An explicit truthy value fills stars, push date,
+# licence and archived. This does not rescore a finished run.
+PHOENIX_WEB_GITHUB_API_LOOKUP = "PHOENIX_WEB_GITHUB_API_LOOKUP"
+_WEB_GITHUB_LOOKUP_ON = frozenset({"1", "true", "yes", "on", "enabled"})
+_MATURITY_UNKNOWN = "unknown"
+_GITHUB_SITE_ROOTS = frozenset({
+    "about",
+    "account",
+    "apps",
+    "collections",
+    "customer-stories",
+    "enterprise",
+    "events",
+    "explore",
+    "features",
+    "git-guides",
+    "issues",
+    "login",
+    "logout",
+    "marketplace",
+    "new",
+    "notifications",
+    "open-source",
+    "orgs",
+    "organizations",
+    "pricing",
+    "pulls",
+    "search",
+    "security",
+    "settings",
+    "signup",
+    "site",
+    "sponsors",
+    "topics",
+    "trending",
+    "users",
+})
+
+
+def web_github_api_lookup_enabled() -> bool:
+    """True only when ``PHOENIX_WEB_GITHUB_API_LOOKUP`` is an explicit on value.
+
+    Unset, blank, ``0``, ``off``, ``false``, ``no``, ``disabled``, and any other string
+    stay off. On values are ``1``, ``true``, ``yes``, ``on``, and ``enabled``.
+    """
+    raw = os.environ.get(PHOENIX_WEB_GITHUB_API_LOOKUP)
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in _WEB_GITHUB_LOOKUP_ON
+
+
+def github_repo_slug(url: str) -> str | None:
+    """``owner/repo`` when ``url`` is a github.com repository, including a subpath such as ``/releases``.
+
+    Site sections (``/topics/...``, ``/explore/...``) are not repositories. Query strings are ignored.
+    """
+    raw = str(url or "").strip()
+    if raw.startswith("web:"):
+        raw = raw[4:]
+    if not raw:
+        return None
+    if "://" not in raw:
+        raw = "https://" + raw
+    parsed = urlparse(raw)
+    host = (parsed.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if host != "github.com":
+        return None
+    parts = [part for part in (parsed.path or "").split("/") if part]
+    if len(parts) < 2:
+        return None
+    owner, repo = parts[0], parts[1]
+    if owner.casefold() in _GITHUB_SITE_ROOTS:
+        return None
+    if repo.casefold().endswith(".git"):
+        repo = repo[:-4]
+    if not owner or not repo or owner in {".", ".."} or repo in {".", ".."}:
+        return None
+    return f"{owner}/{repo}"
+
+
+def _mark_web_github_unknown(row: dict[str, Any]) -> None:
+    """Lookup failed. The maturity fields stay unknown, not the placeholder star count 0."""
+    row["stars"] = _MATURITY_UNKNOWN
+    row["pushed_at"] = _MATURITY_UNKNOWN
+    row["licence_spdx"] = _MATURITY_UNKNOWN
+    row["archived"] = _MATURITY_UNKNOWN
+    row["web_github_lookup"] = "failed"
+    row["fetch_status"] = "unknown"
+
+
+def _fill_web_github_payload(row: dict[str, Any], payload: dict[str, Any]) -> bool:
+    """Copy stars, pushed_at, licence and archived from a GitHub repo object. False if it is not one."""
+    if "stargazers_count" not in payload:
+        return False
+    try:
+        stars = int(payload.get("stargazers_count"))
+    except (TypeError, ValueError):
+        _mark_web_github_unknown(row)
+        return True
+    pushed = payload.get("pushed_at")
+    archived = payload.get("archived")
+    licence = payload.get("license") if isinstance(payload.get("license"), dict) else None
+    spdx = str((licence or {}).get("spdx_id") or "").strip() if licence else ""
+    row["stars"] = stars
+    row["pushed_at"] = str(pushed) if pushed else _MATURITY_UNKNOWN
+    row["archived"] = archived if isinstance(archived, bool) else _MATURITY_UNKNOWN
+    row["licence_spdx"] = spdx
+    row["web_github_lookup"] = "ok"
+    row["fetch_status"] = "ok"
+    row["host"] = "github"
+    return True
+
+
+def _enrich_web_github_repos(results: list[dict[str, Any]], toolbox: Any, *, lookup_quota: int) -> None:
+    """Look up web results that are GitHub repositories, one at a time, within the GitHub quota.
+
+    Each lookup is one ``github`` tool call, so it uses the same budget, token handling and
+    401 retry as a search. Cache hits for a slug already resolved in this call do not spend
+    another call. A failure marks the row unknown. Rows past the quota are unknown too:
+    they were not measured, and unknown is not the placeholder ``stars=0``.
+    """
+    if not web_github_api_lookup_enabled() or toolbox is None:
+        return
+    memo: dict[str, dict[str, Any] | None] = {}
+    looked = 0
+    for row in results:
+        if str(row.get("source") or "") != "web":
+            continue
+        slug = github_repo_slug(str(row.get("url") or ""))
+        if not slug:
+            continue
+        if slug in memo:
+            cached = memo[slug]
+            if cached is None:
+                _mark_web_github_unknown(row)
+            else:
+                _fill_web_github_payload(row, cached)
+            continue
+        budget = getattr(toolbox, "budget", None)
+        if looked >= lookup_quota or (budget is not None and budget.is_exhausted()):
+            _mark_web_github_unknown(row)
+            memo[slug] = None
+            continue
+        looked += 1
+        res = toolbox.call("github", {"action": "repo", "repo": slug})
+        payload = res.data if getattr(res, "ok", False) and isinstance(getattr(res, "data", None), dict) else None
+        if payload is not None and _fill_web_github_payload(row, payload):
+            memo[slug] = payload
+            continue
+        _mark_web_github_unknown(row)
+        memo[slug] = None
+
+
+def _full_overlap_verified_quote(row: dict[str, Any]) -> bool:
+    """Same problem, full overlap, and a quote already checked or found in the row's own text."""
+    if row.get("same_problem") is not True:
+        return False
+    if str(row.get("overlap") or "").strip().lower() != "full":
+        return False
+    if row.get("quote_verified") is False:
+        return False
+    quotes = [str(quote).strip() for quote in (row.get("quotes") or []) if str(quote).strip()]
+    if not quotes and str(row.get("quote") or "").strip():
+        quotes = [str(row.get("quote")).strip()]
+    if not quotes:
+        return False
+    if row.get("quote_verified") is True:
+        return True
+    text = " ".join(
+        str(row.get(key) or "")
+        for key in ("excerpt", "description", "text", "readme", "title", "name", "product")
+    )
+    return bool(text.strip()) and all(quote_in_text(quote, text) for quote in quotes)
+
+
+def _maturity_facts_unknown(row: dict[str, Any]) -> bool:
+    """True when a lookup left maturity unknown. Placeholder ``stars=0`` is not unknown."""
+    if str(row.get("web_github_lookup") or "") == "failed":
+        return True
+    return any(row.get(key) == _MATURITY_UNKNOWN for key in ("stars", "pushed_at", "released_at", "licence_spdx", "archived"))
+
+
+def _established_immature(candidate: dict[str, Any], row: dict[str, Any], as_of: Any) -> bool:
+    """True when a known fact already shows the alternative is archived, stale, or below the star bar."""
+    from app.agents.blocker import MAINTENANCE_DAYS, _as_date, _as_int, _mature
+
+    if row.get("archived") is True:
+        return True
+    dates = [parsed for parsed in (_as_date(row.get("pushed_at")), _as_date(row.get("released_at"))) if parsed is not None]
+    if dates and (as_of - max(dates)).days > MAINTENANCE_DAYS:
+        return True
+    if _as_int(row.get("stars")) is None:
+        return False
+    mature, _why = _mature(candidate, row)
+    return not mature
+
+
+def _unknown_maturity_hold(
+    candidate: dict[str, Any],
+    rows: list[dict[str, Any]],
+) -> tuple[str, dict[str, Any]] | None:
+    """A would-be CANDIDATE whose full-overlap quote has unknown maturity, not a known immature one.
+
+    Returns ``(reason, row)``. The reason is ``UNKNOWN_MATURITY: <alt>``. The hold uses the same
+    opt-in flag as the lookup, so an unset variable records the previous verdict.
+    ``ALREADY_EXISTS`` is decided earlier and is not rewritten here.
+    """
+    if not web_github_api_lookup_enabled():
+        return None
+    from datetime import date as _date
+
+    as_of = _date.today()
+    for row in rows:
+        if not isinstance(row, dict) or not _full_overlap_verified_quote(row):
+            continue
+        if not _maturity_facts_unknown(row) or _established_immature(candidate, row, as_of):
+            continue
+        alt = str(row.get("alternative_id") or row.get("url") or "").strip()
+        return f"UNKNOWN_MATURITY: {alt}", row
+    return None
+
+
 def search_prior_art(
     candidate: dict[str, Any],
     queries: list[str],
@@ -2195,6 +2431,9 @@ def search_prior_art(
     Queries GitHub, npm and the web (Exa, Parallel, Keenable, DuckDuckGo). PyPI search is not
     counted as a source (its search page is behind a bot challenge).
     Deduplicates results, excludes candidate itself and its forks, keeps at most 15 results.
+    A web result whose URL is a github.com repository is looked up through the GitHub tool
+    only when ``PHOENIX_WEB_GITHUB_API_LOOKUP`` is an explicit on value (default off). A failed
+    lookup is ``unknown``, not ``stars=0``.
     ``language`` is accepted for compatibility and deliberately not used to filter: prior art
     written in another language still solves the same problem.
     Never uses candidate's own stars or forks anywhere.
@@ -2446,6 +2685,9 @@ def search_prior_art(
         results.append(row)
         source_counts[row["source"]] = source_counts.get(row["source"], 0) + 1
 
+    # GitHub repositories found by web search. Sequential, capped by the github per-source quota.
+    _enrich_web_github_repos(results, toolbox, lookup_quota=quotas["github"])
+
     # README excerpts for selected GitHub rows only
     for row in results:
         if row["source"] != "github" or row["readme"] or toolbox is None:
@@ -2604,6 +2846,7 @@ def judge_alternative_relevance(
         "quote_verified": True,
         "source": str(search_result.get("source") or ""),
         "archived": search_result.get("archived", False),
+        "web_github_lookup": str(search_result.get("web_github_lookup") or ""),
     }
     return alt_row, {
         "same_problem": True,
@@ -2771,6 +3014,7 @@ def _row_from_entry(
         "quote_verified": True,
         "source": str(res.get("source") or ""),
         "archived": res.get("archived", False),
+        "web_github_lookup": str(res.get("web_github_lookup") or ""),
     }
 
 
