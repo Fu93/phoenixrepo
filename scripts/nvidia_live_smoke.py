@@ -12,6 +12,7 @@ A single live provenance smoke check requested <requested> and was served by
 <served>. It verifies the strict Nemotron-family trace path only; it is not an
 evaluation result, model-quality comparison, or Gate 2 repair claim.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,6 +42,13 @@ def _run_id() -> str:
     return "nvidia-live-smoke-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _served_model(result: tuple[str, str, str]) -> str:
+    """complete() returns (response_text, requested_model, served_model); an empty id is missing."""
+
+    served = result[2] if len(result) > 2 else ""
+    return served.strip() if isinstance(served, str) and served.strip() else "(missing)"
+
+
 def main(argv: list[str] | None = None) -> int:
     prepare_cli()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -67,15 +75,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Run hash: {run_hash}")
         return 1
 
+    served = _served_model(result)
+    requested = result[1] if isinstance(result[1], str) and result[1].strip() else args.model
     run_hash = trace.seal()
-    print(f"Requested: {args.model}")
-    print(f"Served: {result.served_model or '(missing)'}")
+    print(f"Requested: {requested}")
+    print(f"Served: {served}")
     print("Policy: require - accepted only when the served model remains in the NVIDIA Nemotron family.")
     print(f"Trace: {trace.path}")
     print(f"Run hash: {run_hash}")
     # The claim form is fixed, but ids are drawn from this trace: never call a routed
     # Nemotron-family answer an Ultra answer merely because Ultra was requested.
-    print(FIXED_CLAIM_TEMPLATE.format(requested=args.model, served=result.served_model or "(missing)"))
+    print(FIXED_CLAIM_TEMPLATE.format(requested=requested, served=served))
     return 0
 
 
