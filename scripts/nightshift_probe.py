@@ -147,6 +147,12 @@ def order_candidates(listed: list[str]) -> list[str]:
     return ranked + sorted(mid for mid in nemotron if mid not in ranked)
 
 
+def _chat_capable(model: str) -> bool:
+    """An embedding endpoint can be listed under Nemotron but is not a chat tier."""
+
+    return "-embed" not in model.lower()
+
+
 def probe_once(
     client: httpx.Client,
     base_url: str,
@@ -202,7 +208,13 @@ def probe_once(
 
 
 def recommend(attempts: list[Attempt]) -> dict[str, str] | None:
-    good = [a for a in attempts if a.status == 200 and a.nemotron and a.json_ok]
+    # Keep reporting every listed id, including embedding models, but never put one in
+    # MODEL_NAME: Gate 1 needs a chat-completions/reasoning lane.
+    good = [
+        a
+        for a in attempts
+        if a.status == 200 and a.nemotron and a.json_ok and _chat_capable(a.requested_model)
+    ]
     if not good:
         return None
     best = min(good, key=lambda a: a.seconds)
