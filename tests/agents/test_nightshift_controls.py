@@ -174,6 +174,47 @@ def test_probe_reports_failure_when_nothing_is_nemotron(tmp_path: Path, monkeypa
     assert statuses == [200, 400, 502]
 
 
+def test_public_base_drops_userinfo_and_query():
+    assert probe.public_base("https://user:real-token@nightshift.example/v1?account=acct-9") == "https://nightshift.example/v1"
+
+
+def test_redact_drops_routing_headers_and_the_response_body(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys):
+    monkeypatch.setenv("METERLESS_RUNTIME_TOKEN", "real-token")
+    monkeypatch.setenv("METERLESS_BASE_URL", "https://user:real-token@nightshift.example/v1")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "nvidia/nemotron-3.5-lightning-30b-a3b"}]})
+        return httpx.Response(
+            200,
+            headers={"meterless-account-id": "acct-9", "meterless-route": "fast"},
+            json={
+                "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+                "choices": [{"message": {"content": '{"ok": true, "task": "phoenix-probe"}'}}],
+            },
+        )
+
+    real_client = httpx.Client
+    monkeypatch.setattr(probe.httpx, "Client", lambda *a, **k: real_client(*a, transport=httpx.MockTransport(handler), **k))
+    plain = tmp_path / "plain.json"
+    redacted = tmp_path / "redacted.json"
+    assert probe.main(["--quick", "--out", str(plain)]) == 0
+    assert probe.main(["--quick", "--redact", "--out", str(redacted)]) == 0
+    captured = capsys.readouterr()
+    printed = captured.out + captured.err
+    for secret in ("real-token", "acct-9", "meterless-account-id", "user:real-token"):
+        assert secret not in printed
+    plain_text = plain.read_text(encoding="utf-8")
+    assert "meterless-account-id" in plain_text  # local logs/ file keeps routing; it is not for git
+    redacted_text = redacted.read_text(encoding="utf-8")
+    report = json.loads(redacted_text)
+    assert report["redacted"] is True
+    assert report["base_url"] == "https://nightshift.example/v1"
+    assert "routing" not in json.dumps(report["attempts"])
+    for secret in ("real-token", "acct-9", "meterless-account-id", "authorization"):
+        assert secret not in redacted_text
+
+
 def test_probe_without_token_is_a_usage_error(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("METERLESS_RUNTIME_TOKEN", "")
     monkeypatch.chdir(Path(probe.__file__).resolve().parent)  # no .env here

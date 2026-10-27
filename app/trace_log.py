@@ -67,6 +67,27 @@ def line_hash(record: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_body(record).encode("utf-8")).hexdigest()
 
 
+# Copied onto a new LLM line only. Not part of the cache key. Old traces omit the field.
+_REQUEST_SETTING_KEYS = ("enable_thinking", "reasoning_effort", "reasoning_budget", "temperature", "top_p", "max_tokens")
+
+
+def kept_request_settings(value: Any) -> dict[str, Any]:
+    """Scalar sampling flags. Drops anything that could carry a prompt, a header, or a token."""
+
+    if not isinstance(value, dict):
+        return {}
+    kept: dict[str, Any] = {}
+    for key in _REQUEST_SETTING_KEYS:
+        if key not in value:
+            continue
+        item = value[key]
+        if isinstance(item, bool) or item is None or isinstance(item, (int, float)):
+            kept[key] = item
+        elif isinstance(item, str) and 0 < len(item) <= 40 and "\n" not in item and " " not in item:
+            kept[key] = item
+    return kept
+
+
 def _summary(value: Any, secrets: list[str], limit: int = 500) -> str:
     if value is None:
         return ""
@@ -129,6 +150,9 @@ class HackathonTrace:
                     record["flags"].append("DISCARDED_BY_POLICY")
             if llm.get("prompt_version"):
                 record["prompt_version"] = str(llm["prompt_version"])
+            settings = kept_request_settings(llm.get("request_settings"))
+            if settings:
+                record["request_settings"] = settings
         record = sanitize_metadata(record)
         record["prev_hash"] = self._prev_hash
         missing = [field for field in FIELDS if field not in record]
