@@ -1,0 +1,160 @@
+{
+  "date": "2026-10-27T18:00:25.246193+00:00",
+  "run_id": "zetaris-eval16-0xmh-fichero-printer",
+  "run_hash": "b06e8b6878feed0d2618e81fa4f0a01c23363bc421983541476e253e4d9ec744",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\0xmh-fichero-printer --llm --run-id zetaris-eval16-0xmh-fichero-printer --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-0xmh-fichero-printer.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-0xmh-fichero-printer.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 9,
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 1
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": "0xMH/fichero-printer",
+    "total": 48.33,
+    "feasibility": 2,
+    "reason": "Selected protagonist 0xMH/fichero-printer with highest weighted total 48.33 (feasibility 2)."
+  },
+  "candidates": [
+    {
+      "repo_id": "0xMH/fichero-printer",
+      "verdict": "CANDIDATE",
+      "eligibility": true,
+      "total": 48.33,
+      "feasibility": 2,
+      "flags": [],
+      "criteria": {
+        "problem_severity": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The repo explicitly states the official Fichero app demands 26 permissions (location, camera, storage, ad tracking) just to print labels, creating a meaningful recurring pain point for users who only need basic label printing.",
+          "evidence_ids": [
+            "candidate:0xMH/fichero-printer"
+          ]
+        },
+        "demand_evidence": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "An alternative maintained project exists, indicating external interest, but no quantified demand signals (comments, reactions) are present; thus a weak/ambiguous signal.",
+          "evidence_ids": [
+            "prior:web:https://github.com/mrlitlsmile/fichero-printer"
+          ]
+        },
+        "differentiation": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 2: Missing capabilities: 'Web-based graphical interface', 'Python command-line interface', 'Bluetooth Low Energy connectivity', 'Classic Bluetooth SPP connectivity', 'Protocol documentation for Fichero D11s printer' (5 not covered by any maintained free OSS alternative). Alternatives checked: web:https://github.com/mrlitlsmile/fichero-printer (licence=no licence, unmaintained Noned). Candidate quotes: for 'Web-based graphical interface': \"Web GUI\"; for 'Python command-line interface': \"Python CLI\"; for 'Bluetooth Low Energy connectivity': \"Connects via BLE or Classic Bluetooth SPP\"; for 'Classic Bluetooth SPP connectivity': \"Connects via BLE or Classic Bluetooth SPP\"; for 'Protocol documentation for Fichero D11s printer': \"protocol documentation for the Fichero D11s thermal label printer\".",
+          "evidence_ids": [
+            "candidate:0xMH/fichero-printer",
+            "prior:web:https://github.com/mrlitlsmile/fichero-printer"
+          ]
+        },
+        "feasibility": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The repository contains a working Python CLI tool and Web GUI, with the protocol reverse‑engineered from the decompiled APK; no broken stubs or failing CI are indicated, giving a solid working baseline.",
+          "evidence_ids": [
+            "candidate:0xMH/fichero-printer"
+          ]
+        },
+        "productization_path": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The tool addresses an identifiable developer/hobbyist audience, but the monetization model is unspecified and no clear revenue stream beyond possible donations is demonstrated.",
+          "evidence_ids": [
+            "candidate:0xMH/fichero-printer"
+          ]
+        },
+        "moat": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No structural barrier to entry; the BLE/Classic Bluetooth protocol can be re‑reverse‑engineered and alternative implementations created with modest effort.",
+          "evidence_ids": []
+        }
+      },
+      "capabilities": [
+        {
+          "name": "Web-based graphical interface",
+          "quote": "Web GUI"
+        },
+        {
+          "name": "Python command-line interface",
+          "quote": "Python CLI"
+        },
+        {
+          "name": "Bluetooth Low Energy connectivity",
+          "quote": "Connects via BLE or Classic Bluetooth SPP"
+        },
+        {
+          "name": "Classic Bluetooth SPP connectivity",
+          "quote": "Connects via BLE or Classic Bluetooth SPP"
+        },
+        {
+          "name": "Protocol documentation for Fichero D11s printer",
+          "quote": "protocol documentation for the Fichero D11s thermal label printer"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:0xMH/fichero-printer",
+          "url": "https://github.com/0xMH/fichero-printer",
+          "text": "Fichero D11s thermal label printer - BLE protocol reverse engineering and Python CLI tool\n# fichero-printer\n\nWeb GUI, Python CLI, and protocol documentation for the Fichero D11s thermal label printer.\n\nBlog post: [Reverse Engineering Action's Cheap Fichero Labelprinter](https://blog.dbuglife.com/reverse-engineering-fichero-label-printer/)\n\nThe [Fichero](https://www.action.com/nl-nl/p/3212141/fichero-labelprinter/) is a cheap Bluetooth thermal label printer sold at Action. Internally it's an AiYin D11s made by Xiamen Print Future Technology. The official app is closed-source and doesn't expose the protocol, so this project reverse-engineers it from the decompiled APK.\n\n## The printer\n\n- 96px wide printhead, 203 DPI\n- Prints 1-bit raster images onto self-adhesive labels (14mm x 30mm default)\n- Connects via BLE or Classic Bluetooth SPP\n- 18500 Li-Ion battery (1200mAh), USB-C charging\n- Bluetooth names: `FICHERO_5836`, `D11s_`\n\n## Why not just use the app?\n\nThe Fichero app (`com.lj.fichero`) asks for 26 permissions. For a label printer. The notable ones:\n\n```\nACCESS_FINE_LOCATION         Your precise GPS location\nACCESS_COARSE_LOCATION       Your approximate location\nCAMERA                       Your camera\nREAD_EXTERNAL_STORAGE        Your files\nWRITE_EXTERNAL_STORAGE       Your files (write)\nREAD_MEDIA_IMAGES            Your photos\nINTERNET                     Full internet access\nACCESS_WIFI_STATE            Your WiFi info\nCHANGE_WIFI_STATE            Change your WiFi settings\nCHANGE_WIFI_MULTICAST_STATE  Multicast on your network\nAD_ID                        Your advertising ID\nACCESS_ADSERVICES_AD_ID      More ad tracking\nACCESS_ADSERVICES_ATTRIBUTION  Ad attribution tracking\nBIND_GET_INSTALL_REFERRER    Where you installed from\n```\n\nSome of these are reasonable. The location permissions exist because of how Android handles Bluetooth. Bluetooth signals can reveal where you physically are, think retail stores using Bluetooth beacons to track which aisle you're standing in. So Android won't let any app scan for Bluetooth devices unless it also has locatio\nFichero D11s thermal label printer - BLE protocol reverse engineering and Python CLI tool\nfor 26 permissions.\npx wide printhead, 203 DPI",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://github.com/mrlitlsmile/fichero-printer",
+          "url": "https://github.com/mrlitlsmile/fichero-printer",
+          "text": "mrlitlsmile/fichero-printer - # 🖨️ fichero-printer - Easy Thermal Label Printing Tool Download fichero-printer ## 📋 What is fichero-printer? fichero-printer is a simple tool to make thermal label printing easier. It works with the Fichero D11s printer using Bluetooth Low Energy (BLE). You can send print jobs from your computer using a clean and straightforward Python command line interface (CLI). This tool helps connect your computer to the printer without complex setup or extra software. ## 🖥️ System Requirements Before you start, make sure your computer meets these requirements: - Operating System: Windows 10 or later - Bluetooth: Your computer must have Bluetooth support - Python: No need to install manually; a ready-to-use version is included - Printer: Fichero D11s thermal label printer Most modern Windows compute\n# 🖨️ fichero-printer - Easy Thermal Label Printing Tool Download fichero-printer ## 📋 What is fichero-printer? fichero-printer is a simple tool to make thermal label pri",
+          "content_hash": null
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://github.com/mrlitlsmile/fichero-printer",
+          "overlap": "full",
+          "quote": "fichero-printer is a simple tool to make thermal label printing easier. It works with the Fichero D11s printer using Bluetooth Low Energy (BLE). You can send print jobs from your computer using a clean and straightforward Python command line interface (CLI). This tool helps connect your computer to the printer without complex setup or extra software.",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=305, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 477.9,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 306,
+          "forks": 74,
+          "open_issues_count": 17,
+          "external_breakage": 0,
+          "staleness_days": 239,
+          "stars_vs_staleness": 38.97,
+          "ci_state": "success",
+          "ci_date": "2026-03-02T16:22:21Z",
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "ineligible": [],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "0xMH/fichero-printer",
+      "verdict": "CANDIDATE",
+      "memory_id": "mem-044e9bc9a1bf",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

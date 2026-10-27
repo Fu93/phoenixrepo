@@ -1,0 +1,219 @@
+{
+  "date": "2026-10-27T15:11:39.134436+00:00",
+  "run_id": "zetaris-eval16-goodreasonai-scrapeserv",
+  "run_hash": "337c564a14e541947fc9aae7f2c60a5b611c33f09754134454b5f49301ec3ba0",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\goodreasonai-scrapeserv --llm --run-id zetaris-eval16-goodreasonai-scrapeserv --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-goodreasonai-scrapeserv.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-goodreasonai-scrapeserv.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 8,
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 5
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": "goodreasonai/ScrapeServ",
+    "total": 41.67,
+    "feasibility": 2,
+    "reason": "Selected protagonist goodreasonai/ScrapeServ with highest weighted total 41.67 (feasibility 2)."
+  },
+  "candidates": [
+    {
+      "repo_id": "goodreasonai/ScrapeServ",
+      "verdict": "CANDIDATE",
+      "eligibility": true,
+      "total": 41.67,
+      "feasibility": 2,
+      "flags": [
+        "LLM_FALLBACK"
+      ],
+      "criteria": {
+        "problem_severity": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Stated struggling job in description/README: 'A self-hosted API that takes a URL and returns a file with browser screenshots.'. Meaningful recurring workflow friction.",
+          "evidence_ids": [
+            "candidate:goodreasonai/ScrapeServ"
+          ]
+        },
+        "demand_evidence": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No external demand signals accepted by relevance judge (0 qualifying signals).",
+          "evidence_ids": []
+        },
+        "differentiation": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 2: Missing capabilities: 'Full-page screenshot capture with scrolling', 'JavaScript execution and rendering', 'HTTP response metadata retrieval', 'Automatic redirect handling', 'Download link handling' (5 not covered by any maintained free OSS alternative). Alternatives checked: web:https://www.openkova.dev/screenshot-api (licence=no licence, unmaintained Noned); web:https://github.com/hodlthedoor/screenforge (unmaintained Noned); web:https://github.com/wysie/groktocrawl (unmaintained Noned); web:https://github.com/vesper-astrena/snapforge (licence=no licence, unmaintained Noned); feder-cr/invisible_playwright (unmaintained Noned); YeDawa/Shotlink (unmaintained Noned). Candidate quotes: for 'Full-page screenshot capture with scrolling': \"Scrolls through the page and takes screenshots of different sections\"; for 'JavaScript execution and rendering': \"Browser-based (will run websites' Javascript)\"; for 'HTTP response metadata retrieval': \"Gives you the HTTP status code and headers from the first request\"; for 'Automatic redirect handling': \"Automatically handles redirects\"; for 'Download link handling': \"Handles download links properly\".",
+          "evidence_ids": [
+            "candidate:goodreasonai/ScrapeServ",
+            "prior:web:https://www.openkova.dev/screenshot-api",
+            "prior:web:https://github.com/hodlthedoor/screenforge",
+            "prior:web:https://github.com/wysie/groktocrawl",
+            "prior:web:https://github.com/vesper-astrena/snapforge",
+            "prior:feder-cr/invisible_playwright",
+            "prior:YeDawa/Shotlink"
+          ]
+        },
+        "feasibility": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Structured codebase with 6 non-boilerplate source paths (client/client.py, poster.webp, scraper/Dockerfile). Solid working baseline.",
+          "evidence_ids": [
+            "candidate:goodreasonai/ScrapeServ"
+          ]
+        },
+        "productization_path": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Identifiable user persona ('for each job.') for open-source utility; commercial SaaS/tier monetization is nascent.",
+          "evidence_ids": [
+            "candidate:goodreasonai/ScrapeServ"
+          ]
+        },
+        "moat": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 0: No structural power from Hamilton Helmer's 7 Powers (scale economies, network economies, counter-positioning, switching costs, branding, cornered resource, process power). Open-source utility with zero barriers to duplication.",
+          "evidence_ids": []
+        }
+      },
+      "capabilities": [
+        {
+          "name": "Full-page screenshot capture with scrolling",
+          "quote": "Scrolls through the page and takes screenshots of different sections"
+        },
+        {
+          "name": "JavaScript execution and rendering",
+          "quote": "Browser-based (will run websites' Javascript)"
+        },
+        {
+          "name": "HTTP response metadata retrieval",
+          "quote": "Gives you the HTTP status code and headers from the first request"
+        },
+        {
+          "name": "Automatic redirect handling",
+          "quote": "Automatically handles redirects"
+        },
+        {
+          "name": "Download link handling",
+          "quote": "Handles download links properly"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:goodreasonai/ScrapeServ",
+          "url": "https://github.com/goodreasonai/ScrapeServ",
+          "text": "A self-hosted API that takes a URL and returns a file with browser screenshots.\n# ScrapeServ: Simple URL to screenshots server\n\nYou run the API as a web server on your machine, you send it a URL, and you get back the website data as a file plus screenshots of the site. Simple as.\n\n<br/>\n<div align=\"center\" style=\"display:flex;justify-content:center;margin: 2rem 0px;\">\n<img alt=\"poster\" height=\"350px\" src=\"poster.webp\" />\n</div>\n<br/>\n\nThis project was made to support [Abbey](https://github.com/goodreasonai/abbey), an AI platform. Its author is [Gordon Kamer](https://x.com/gkamer8). Please leave a star if you like the project!\n\nSome highlights:\n- Scrolls through the page and takes screenshots of different sections\n- Runs in a docker container\n- Browser-based (will run websites' Javascript)\n- Gives you the HTTP status code and headers from the first request\n- Automatically handles redirects\n- Handles download links properly\n- Tasks are processed in a queue with configurable memory allocation\n- Blocking API\n- Zero state or other complexity\n\nThis web scraper is resource intensive but higher quality than many alternatives. Websites are scraped using Playwright, which launches a Firefox browser context for each job.\n\n## Setup\n\nYou should have Docker and `docker compose` installed.\n\n### Easy (using pre-built image)\n\nA pre-built image is available for your use called `usaiinc/scraper`. You can use it with `docker compose` by creating a file called `docker-compose.yml` and putting the following inside it:\n\n```\nservices:\n  scraper:\n    image: usaiinc/scraper:latest\n    ports:\n      - 5006:5006\n    # volumes:\n    #   - ./.env:/app/.env\n```\n\nThen you can run it by running `docker compose up` in the same directory as your file. See the [Usage](#usage) section below on how to interact with the server!\n\n### Customizable (build from source)\n\nAnother option is to clone the repo and build it yourself, which is also quite easy! This will also let you modify server settings like memory usage, the maximum length of the queue, and other default configurations.\n\n1. C\nA self-hosted API that takes a URL and returns a file with browser screenshots.\nfor each job.\nScrolls through the page and takes screenshots of different sections",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://www.openkova.dev/screenshot-api",
+          "url": "https://www.openkova.dev/screenshot-api",
+          "text": "Screenshot API — Self-Hosted, Free, No API Key | Openkova - ## What Openkova does differently Most screenshot APIs are SaaS products you pay for per screenshot. Openkova is different: it is an MIT-licensed, self-hostable REST API that runs on your own server with no usage caps and no vendor dependency. | Feature | Openkova (self-hosted) | Typical SaaS API | | --- | --- | --- | | Cost | Free (server only) | $17–$3,200+/mo | | Rate limits | None | Plan-based caps | | HTML snippet input | ✓ | Rarely | | File upload input | ✓ | Rarely | | URL capture | ✓ | ✓ | | Internal / VPN URLs | ✓ | ✗ | | PDF output | ✓ | Sometimes | | SSE streaming | ✓ | Rarely | | Data stays on your server | ✓ | ✗ | | License | MIT — fork freely | Proprietary | ... ## Deploy in minutes Openkova ships as a Docker image with bundled Chromium. One `docker compose up` and your scree\n## What Openkova does differently Most screenshot APIs are SaaS products you pay for per screenshot. Openkova is different: it is an MIT-li",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://github.com/hodlthedoor/screenforge",
+          "url": "https://github.com/hodlthedoor/screenforge",
+          "text": "hodlthedoor/screenforge - # ScreenForge CI License: MIT Docker Hub GHCR GitHub Stars npm downloads **Self-hostable screenshot, PDF, and OG image API.** Open-source alternative to ScreenshotOne, Urlbox, and similar services. --- ## Quick Start ```bash git clone https://github.com/hodlthedoor/screenforge.git cd screenforge cp .env.example .env # Generate required secrets: # openssl rand -hex 32 -> API_KEY_SALT # openssl rand -hex 32 -> SESSION_SECRET docker compose up -d ``` The API is available at `http://localhost:3100`, Swagger docs at `http://localhost:3100/docs`, and the dashboard at `http://localhost:3100/dashboard`. ... --- ## Features - **Screenshots** -- full page, viewport, or element-level capture in PNG/JPEG/WebP with custom dimensions, dark mode, device scale factor, and delay - **PDF generation** -- ren\n# ScreenForge CI License: MIT Docker Hub GHCR GitHub Stars npm downloads **Self-hostable screenshot, PDF, and OG image API.** Open-source alternative to ScreenshotOne, Urlbo",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://github.com/wysie/groktocrawl",
+          "url": "https://github.com/wysie/groktocrawl",
+          "text": "wysie/groktocrawl - # GroktoCrawl **Self-hosted, API-compatible Firecrawl alternative with Agent endpoint. MIT licensed. One `docker compose up` and you're running.** GroktoCrawl implements the Firecrawl v2 API surface — scrape, search, map, crawl, extract, browser sessions, monitors, and the **Agent** endpoint (autonomous web research) — without the closed-source dependencies. Runs entirely in Docker on your own hardware. Bring your own LLM or use the built-in fixtures. ## Quick Start ```bash cp .env.sample .env docker compose up --build -d ``` Eight containers start. The stack includes SearXNG for real web search, a smart scraper, and an Ofelia-scheduled monitor system. ```bash # CLI ./groktocrawl scrape https://example.com ./groktocrawl search \"raspberry pi 5\" --limit 3 ./groktocrawl agent \"What were the k\n# GroktoCrawl **Self-hosted, API-compatible Firecrawl alternative with Agent endpoint. MIT licensed. One `docker compose up` and you're running.** GroktoCrawl implements the Firec",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://github.com/vesper-astrena/snapforge",
+          "url": "https://github.com/vesper-astrena/snapforge",
+          "text": "vesper-astrena/snapforge - # SnapForge Self-hosted Screenshot & PDF API powered by Playwright. One file, one command, zero cloud dependencies. Replace Browserless ($200/mo), ScreenshotOne, or your janky Puppeteer setup with a single Python file. ## Quick Start ```bash pip install playwright aiohttp playwright install chromium python snapforge.py ``` API is now running on `http://localhost:8787`. ## API ### Screenshot ```bash curl -X POST http://localhost:8787/screenshot \\ -H \"Content-Type: application/json\" \\ -d '{\"url\": \"https://example.com\", \"full_page\": true}' \\ --output screenshot.png ``` ### PDF ```bash curl -X POST http://localhost:8787/pdf \\ -H \"Content-Type: application/json\" \\ -d '{\"url\": \"https://example.com\", \"format\": \"A4\"}' \\ --output page.pdf ``` ### HTML to Image ```bash curl -X POST http://localhost:\n# SnapForge Self-hosted Screenshot & PDF API powered by Playwright. One file, one command, zero cloud dependencies. Replace Browserless ($200/mo), ScreenshotOne, or your ja",
+          "content_hash": null
+        },
+        {
+          "id": "prior:feder-cr/invisible_playwright",
+          "url": "https://github.com/feder-cr/invisible_playwright",
+          "text": "Playwright that anti-bots cannot see, so no captchas: same API, anti-detect stealth headless Firefox, undetected fingerprint, bypass bot detection, Python web scraping and browser automation.\n<div align=\"center\">\n<picture>\n  <source media=\"(max-width: 374px) and (prefers-color-scheme: dark)\" srcset=\"https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-small-dark.gif\">\n  <source media=\"(max-width: 374px)\" srcset=\"https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-small-light.gif\">\n  <source media=\"(max-width: 1239px) and (prefers-color-scheme: dark)\" srcset=\"https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-phone-dark.gif\">\n  <source media=\"(max-width: 1239px)\" srcset=\"https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner-phone-light.gif\">\n  <source media=\"(prefers-color-scheme: dark)\" srcset=\"https://raw.githubusercontent.com/feder-cr/invisible_playwright/main/docs/banner",
+          "content_hash": null
+        },
+        {
+          "id": "prior:YeDawa/Shotlink",
+          "url": "https://github.com/YeDawa/Shotlink",
+          "text": "Shotlink is a lightweight and efficient REST API service written in Go that allows you to capture high-quality screenshots of websites programmatically.\n<div align='center'>\n   <img src='https://i.imgur.com/yejUTRS.png' width='96px' style='text-align:center;' /> \n</div>\n\n[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/shotlink?referralCode=U520U6)\n\n**Shotlink** is a lightweight and efficient REST API service written in Go that allows you to capture high-quality screenshots of websites programmatically. Designed for developers, automation tools, monitoring systems, and visual reporting platforms, Shotlink leverages Chrome Headless via `chromedp` to render fully interactive web pages—including dynamic JavaScript content and custom styles.\n\n# How to use\n\n1. **Make a request**: Send a GET request to `https://shotlink.nexvul.com/get?url=<URL>`, replacing `<URL>` with the website you want to capture.\n2. **Receive the screenshot**: The server will respond wit",
+          "content_hash": null
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://www.openkova.dev/screenshot-api",
+          "overlap": "full",
+          "quote": "it is an MIT-licensed, self-hostable REST API that runs on your own server with no usage caps and no vendor dependency",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=1174, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://github.com/hodlthedoor/screenforge",
+          "overlap": "full",
+          "quote": "Self-hostable screenshot, PDF, and OG image API.",
+          "reason": "did not block: not mature or official: stars=0, candidate_stars=1174, official=False"
+        },
+        {
+          "alternative": "web:https://github.com/wysie/groktocrawl",
+          "overlap": "full",
+          "quote": "Self-hosted, API-compatible Firecrawl alternative",
+          "reason": "did not block: not mature or official: stars=0, candidate_stars=1174, official=False"
+        },
+        {
+          "alternative": "web:https://github.com/vesper-astrena/snapforge",
+          "overlap": "full",
+          "quote": "Self-hosted Screenshot & PDF API powered by Playwright.",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=1174, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "YeDawa/Shotlink",
+          "overlap": "full",
+          "quote": "Shotlink is a lightweight and efficient REST API service written in Go that allows you to capture high-quality screenshots of websites programmatically.",
+          "reason": "did not block: last update 2025-09-01 is 421 days before 2026-10-27; not mature or official: stars=1, candidate_stars=1174, official=False"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 1399.7,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 1174,
+          "forks": 83,
+          "open_issues_count": 4,
+          "external_breakage": 0,
+          "staleness_days": 597,
+          "stars_vs_staleness": 59.86,
+          "ci_state": "no_ci",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "ineligible": [],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "goodreasonai/ScrapeServ",
+      "verdict": "CANDIDATE",
+      "memory_id": "mem-b9fe4b04f303",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

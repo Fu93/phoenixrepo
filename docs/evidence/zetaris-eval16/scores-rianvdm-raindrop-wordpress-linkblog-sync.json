@@ -1,0 +1,187 @@
+{
+  "date": "2026-10-27T15:58:58.410220+00:00",
+  "run_id": "zetaris-eval16-rianvdm-raindrop-wordpress-linkblog-sync",
+  "run_hash": "d6a868d0718ae012771759fb7fdd0853993f48f35db65c06215ed69d25882351",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\rianvdm-raindrop-wordpress-linkblog-sync --llm --run-id zetaris-eval16-rianvdm-raindrop-wordpress-linkblog-sync --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-rianvdm-raindrop-wordpress-linkblog-sync.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-rianvdm-raindrop-wordpress-linkblog-sync.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 11,
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 2
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": "rianvdm/raindrop-wordpress-linkblog-sync",
+    "total": 55.0,
+    "feasibility": 2,
+    "reason": "Selected protagonist rianvdm/raindrop-wordpress-linkblog-sync with highest weighted total 55.0 (feasibility 2)."
+  },
+  "candidates": [
+    {
+      "repo_id": "rianvdm/raindrop-wordpress-linkblog-sync",
+      "verdict": "CANDIDATE",
+      "eligibility": true,
+      "total": 55.0,
+      "feasibility": 2,
+      "flags": [],
+      "criteria": {
+        "problem_severity": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Auto-syncing tagged Raindrop.io bookmarks into WordPress link posts is a meaningful recurring pain for content curators and bloggers who maintain link blogs. The candidate repo describes hourly cron sync with tag-based filtering, and the elezea blog post author built an equivalent Cloudflare Worker because they wanted to publish tagged Raindrop links as link posts automatically.",
+          "evidence_ids": [
+            "candidate:rianvdm/raindrop-wordpress-linkblog-sync",
+            "prior:web:https://elezea.com/2025/06/automatic-syncing-from-raindrop-io-to-wordpress-link-posts/"
+          ]
+        },
+        "demand_evidence": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Verified external demand exists outside the candidate repo: the IFTTT page lists 12 ready-made Raindrop.io-to-WordPress applets with visible user reactions (e.g. \"2\" and \"1+\" engagement), indicating recurring interest in this sync job.",
+          "evidence_ids": [
+            "prior:web:https://ifttt.com/connect/raindrop/wordpress"
+          ]
+        },
+        "differentiation": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 2: Missing capabilities: 'Automatic Sync', 'Tag-based Filtering', 'Markdown Support', 'Link Post Format', 'Deduplication' (5 not covered by any maintained free OSS alternative). Alternatives checked: web:https://ifttt.com/connect/raindrop/wordpress (licence=no licence, unmaintained Noned); web:https://github.com/rosswintle/sync-raindrop (licence=no licence, unmaintained Noned); web:https://elezea.com/2025/06/automatic-syncing-from-raindrop-io-to-wordpress-link-posts/ (licence=no licence, unmaintained Noned). Candidate quotes: for 'Automatic Sync': \"Hourly cron job syncs new bookmarks\"; for 'Tag-based Filtering': \"Only syncs bookmarks with specific tags\"; for 'Markdown Support': \"Converts Raindrop notes to WordPress content\"; for 'Link Post Format': \"Creates proper WordPress link posts\"; for 'Deduplication': \"Prevents duplicate posts\".",
+          "evidence_ids": [
+            "candidate:rianvdm/raindrop-wordpress-linkblog-sync",
+            "prior:web:https://ifttt.com/connect/raindrop/wordpress",
+            "prior:web:https://github.com/rosswintle/sync-raindrop",
+            "prior:web:https://elezea.com/2025/06/automatic-syncing-from-raindrop-io-to-wordpress-link-posts/"
+          ]
+        },
+        "feasibility": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Solid working baseline: TypeScript Cloudflare Worker with a clear README setup guide, hourly cron trigger, tag-based filtering, markdown-to-content conversion, deduplication, dry-run mode, error logging, and clean dependencies (Node 18+, Cloudflare Workers).",
+          "evidence_ids": [
+            "candidate:rianvdm/raindrop-wordpress-linkblog-sync"
+          ]
+        },
+        "productization_path": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The beachhead persona is identifiable (Raindrop.io-using bloggers/content curators) and distribution is reachable via the Cloudflare Workers deploy button, but no clear monetization model beyond the free MIT-licensed open-source tool is evident.",
+          "evidence_ids": [
+            "candidate:rianvdm/raindrop-wordpress-linkblog-sync"
+          ]
+        },
+        "moat": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No structural power from Hamilton Helmer's 7 Powers applies; the tool is easily replicated over a weekend using public Raindrop and WordPress APIs.",
+          "evidence_ids": []
+        }
+      },
+      "capabilities": [
+        {
+          "name": "Automatic Sync",
+          "quote": "Hourly cron job syncs new bookmarks"
+        },
+        {
+          "name": "Tag-based Filtering",
+          "quote": "Only syncs bookmarks with specific tags"
+        },
+        {
+          "name": "Markdown Support",
+          "quote": "Converts Raindrop notes to WordPress content"
+        },
+        {
+          "name": "Link Post Format",
+          "quote": "Creates proper WordPress link posts"
+        },
+        {
+          "name": "Deduplication",
+          "quote": "Prevents duplicate posts"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:rianvdm/raindrop-wordpress-linkblog-sync",
+          "url": "https://github.com/rianvdm/raindrop-wordpress-linkblog-sync",
+          "text": "A Cloudflare Worker that automatically syncs bookmarks with a specified tag from Raindrop.io to WordPress as link posts.\n# Raindrop to WordPress Sync\n\n[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)\n[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)\n[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange.svg)](https://workers.cloudflare.com/)\n[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-green.svg)](https://nodejs.org/)\n[![Raindrop.io](https://img.shields.io/badge/Raindrop.io-API-6B46C1.svg)](https://developer.raindrop.io/)\n[![WordPress](https://img.shields.io/badge/WordPress-REST_API-21759B.svg)](https://developer.wordpress.org/rest-api/)\n\nA Cloudflare Worker that automatically syncs bookmarks from Raindrop.io to WordPress as link posts. Tag a bookmark with your configured tag in Raindrop, and it will automatically appear as a WordPress post with proper formatting and metadata.\n\n[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/rianvdm/raindrop-wordpress-linkblog-sync)\n\n## Features\n\n- 🔄 **Automatic Sync**: Hourly cron job syncs new bookmarks\n- 🏷️ **Tag-based Filtering**: Only syncs bookmarks with specific tags\n- 📝 **Markdown Support**: Converts Raindrop notes to WordPress content\n- 🔗 **Link Post Format**: Creates proper WordPress link posts\n- 🚫 **Deduplication**: Prevents duplicate posts\n- 📊 **Error Logging**: Built-in error tracking and reporting\n- 🧪 **Dry Run Mode**: Test without creating actual posts\n- ⚡ **Edge Computing**: Fast, globally distributed via Cloudflare Workers\n\n## Prerequisites\n\n- [Cloudflare account](https://cloudflare.com) (free tier works)\n- [Raindrop.io account](https://raindrop.io) \n- WordPress site with REST API enabled\n- Node.js 18+ and npm\n\n## Setup Guide\n\n### 1. Clone and Install\n\n```bash\ngit clone https://github.com/rianvdm/raindrop-wordpress-linkblog-sync.git\ncd raindrop-wordpress-linkblog-sync\nnpm install\n```\n\n###\nA Cloudflare Worker that automatically syncs bookmarks with a specified tag from Raindrop.io to WordPress as link posts.\nA Cloudflare Worker that automatically s\n🔄 **Automatic Sync**: Hourly cron job syncs new bookmarks",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://ifttt.com/connect/raindrop/wordpress",
+          "url": "https://ifttt.com/connect/raindrop/wordpress",
+          "text": "Connect Raindrop.io to WordPress - 12 ready-made automations - IFTTT - TT # Raindrop.io to WordPress integrations When you save a bookmark to Raindrop.io, IFTTT turns it into a WordPress post. You collect links once, publish everywhere, and keep your blog fed without extra work. ## 12 ready-made Raindrop.io and WordPress Applets Turn one on, or build your own. Raindrop.io can start an automation with \"Item moved to collection\", and IFTTT can then run \"Create a photo post\" on WordPress. - Post new Raindrop.io bookmarks as photo posts on WordPress estaberenjenamerecelapena 2 - Save new WordPress posts as bookmarks in Raindrop.io ifttt - Share new tagged Raindrop.io items to WordPress ifttt - Share new Raindrop.io bookmarks to WordPress ifttt - Create a WordPress post when a new Raindrop.io item is saved ifttt - - 1+ Post new RSS feed items to blogs, notes, and\nTT # Raindrop.io to WordPress integrations When you save a bookmark to Raindrop.io, IFTTT turns it into a WordPress post. You col",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://github.com/rosswintle/sync-raindrop",
+          "url": "https://github.com/rosswintle/sync-raindrop",
+          "text": "rosswintle/sync-raindrop - ## README === Sync Raindrop === Contributors: magicroundabout Tags: raindrop, sync, bookmarks Requires at least: 5.1 Tested up to: 6.9 Stable tag: 1.1.0 License: GPLv2 or later License URI: https://www.gnu.org/licenses/gpl-2.0.html Copies bookmarks from raindrop.io into a custom post type. == Description == This plugin copies bookmarks from raindrop.io into a custom post type and the Raindrop tags into a custom taxonomy. *Note:* This is not an official Raindrop.io plugin. If you have any problems please direct them to the WordPress support forums for this plugin. This plugin: * runs automatically using either wp-cron or manually using wp-cli * uses the official Raindrop API (you will need an API token) * obeys the API's rate limits * allows you to choose an author for synced bookmarks * al\n## README === Sync Raindrop === Contributors: magicroundabout Tags: raindrop, sync, bookmarks Requires at least: 5.1 Tested up to: 6.9 Stable tag: 1.1.0 License: GPLv2 or l",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://elezea.com/2025/06/automatic-syncing-from-raindrop-io-to-wordpress-link-posts/",
+          "url": "https://elezea.com/2025/06/automatic-syncing-from-raindrop-io-to-wordpress-link-posts/",
+          "text": "Automatic syncing from Raindrop.io to Wordpress link posts - 25 # Automatic syncing from Raindrop.io to Wordpress link posts I read Ethan Marcotte’s Link bug this week, which led me to Sophie Koonin’s Automated weekly links posts with raindrop.io and Eleventy, and that is such a cool idea that I had to do something similar. Thanks to getting nerdswiped by Ethan and Sophie I now have a Cloudflare Worker that takes links that I tag with `blog` on Raindrop.io, and posts them (with excerpts taken from the Notes section) as link posts to this blog. You can just scroll down to see a bunch of examples. It’s not fancy but it works beautifully! Every hour it checks for new links in Raindrop.io with the `blog` tag, and then it creates a posts like this: # Link title This is my note about the article, with markdown support. → Article Title If this is something\n25 # Automatic syncing from Raindrop.io to Wordpress link posts I read Ethan Marcotte’s Link bug this week, which led me to Sophie Koonin’",
+          "content_hash": null
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://ifttt.com/connect/raindrop/wordpress",
+          "overlap": "full",
+          "quote": "When you save a bookmark to Raindrop.io, IFTTT turns it into a WordPress post",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=3, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://github.com/rosswintle/sync-raindrop",
+          "overlap": "full",
+          "quote": "Copies bookmarks from raindrop.io into a custom post type and the Raindrop tags into a custom taxonomy",
+          "reason": "did not block: not mature or official: stars=0, candidate_stars=3, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://elezea.com/2025/06/automatic-syncing-from-raindrop-io-to-wordpress-link-posts/",
+          "overlap": "full",
+          "quote": "takes links that I tag with `blog` on Raindrop.io, and posts them (with excerpts taken from the Notes section) as link posts to this blog",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=3, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 95.4,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 3,
+          "forks": 0,
+          "open_issues_count": 0,
+          "external_breakage": 0,
+          "staleness_days": 424,
+          "stars_vs_staleness": 0.22,
+          "ci_state": "ci_configured_zero_runs",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "ineligible": [],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "rianvdm/raindrop-wordpress-linkblog-sync",
+      "verdict": "CANDIDATE",
+      "memory_id": "mem-d844084cd72b",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

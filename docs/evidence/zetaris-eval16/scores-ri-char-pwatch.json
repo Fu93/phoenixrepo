@@ -1,0 +1,264 @@
+{
+  "date": "2026-10-27T16:35:01.613852+00:00",
+  "run_id": "zetaris-eval16-ri-char-pwatch",
+  "run_hash": "db65f156a76b4fdcdd97f04c126e4c43521cb6e988a4f9dd1f380e17d600a496",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\ri-char-pwatch --llm --run-id zetaris-eval16-ri-char-pwatch --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-ri-char-pwatch.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-ri-char-pwatch.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 1,
+    "nvidia/nemotron-3-ultra-550b-a55b": 15
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": "ri-char/pwatch",
+    "total": 41.67,
+    "feasibility": 2,
+    "reason": "Selected protagonist ri-char/pwatch with highest weighted total 41.67 (feasibility 2)."
+  },
+  "candidates": [
+    {
+      "repo_id": "ri-char/pwatch",
+      "verdict": "CANDIDATE",
+      "eligibility": true,
+      "total": 41.67,
+      "feasibility": 2,
+      "flags": [],
+      "criteria": {
+        "problem_severity": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Developers and reverse engineers need low-overhead hardware watchpoints/breakpoints on a running process without attaching a full debugger. The Stack Overflow question on debugging without a debugger (58 upvotes, accepted answer) demonstrates a recurring pain point for an identifiable persona, and pwatch directly addresses it by installing hardware breakpoints on x86_64 and arm64/Android.",
+          "evidence_ids": [
+            "candidate:ri-char/pwatch",
+            "prior:web:https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger"
+          ]
+        },
+        "demand_evidence": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No external demand signal (issue, discussion, search trend, or marketplace reaction) was found outside the candidate repository that specifically indicates user need or struggle for pwatch.",
+          "evidence_ids": []
+        },
+        "differentiation": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 2: Missing capabilities: 'Install hardware breakpoints/watchpoints on a process', 'Debug processes without attaching a debugger', 'Support for x86_64, arm64, and rooted Android', 'Target individual threads instead of entire process', 'Print backtrace when watchpoint triggers' (5 not covered by any maintained free OSS alternative). Alternatives checked: web:https://github.com/RinHizakura/kmemsnoop (licence=no licence, unmaintained Noned); web:https://docs.hyperdbg.org/commands/extension-commands/monitor (licence=no licence, unmaintained Noned); web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/ (licence=no licence, unmaintained Noned); web:https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger (licence=no licence, unmaintained Noned); web:https://github.com/torvalds/linux/blob/master/arch/x86/kernel/hw_breakpoint.c (licence=NOASSERTION, unmaintained Noned); web:https://sourceware.org/gdb/current/onlinedocs/gdb.html/Set-Watchpoints.html (licence=no licence, unmaintained Noned); web:https://jvns.ca/blog/2014/04/20/debug-your-programs-like-theyre-closed-source/ (licence=no licence, unmaintained Noned); microdoc/process_vm_io (unmaintained Noned); block/stoic (unmaintained Noned); danylo-volchenko/watchpoint-km (licence=no licence, unmaintained Noned). Candidate quotes: for 'Install hardware breakpoints/watchpoints on a process': \"A cli tool to install a hardware breakpoint/watchpoint on a process in linux.\"; for 'Debug processes without attaching a debugger': \"This is useful for debugging a process without having to attach a debugger to it.\"; for 'Support for x86_64, arm64, and rooted Android': \"Now it supports x86_64 and arm64. You can use it on rooted Android devices as well.\"; for 'Target individual threads instead of entire process': \"-t                         whether the target is a thread or a process\"; for 'Print backtrace when watchpoint triggers': \"-b, --backtrace            whether to print backtrace\".",
+          "evidence_ids": [
+            "candidate:ri-char/pwatch",
+            "prior:web:https://github.com/RinHizakura/kmemsnoop",
+            "prior:web:https://docs.hyperdbg.org/commands/extension-commands/monitor",
+            "prior:web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/",
+            "prior:web:https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger",
+            "prior:web:https://github.com/torvalds/linux/blob/master/arch/x86/kernel/hw_breakpoint.c",
+            "prior:web:https://sourceware.org/gdb/current/onlinedocs/gdb.html/Set-Watchpoints.html",
+            "prior:web:https://jvns.ca/blog/2014/04/20/debug-your-programs-like-theyre-closed-source/",
+            "prior:microdoc/process_vm_io",
+            "prior:block/stoic",
+            "prior:danylo-volchenko/watchpoint-km"
+          ]
+        },
+        "feasibility": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The repository provides a functional CLI with documented usage, working builds for x86_64 and arm64, rooted Android support, and clear help text. No broken CI or missing test suite is indicated, presenting a solid working baseline.",
+          "evidence_ids": [
+            "candidate:ri-char/pwatch"
+          ]
+        },
+        "productization_path": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Audience includes Linux kernel developers, reverse engineers, and Android developers – an identifiable group. Distribution channel is GitHub releases (reachable). However, the tool is offered free on GitHub with no clear monetization model beyond optional donations, making the path vague.",
+          "evidence_ids": [
+            "candidate:ri-char/pwatch"
+          ]
+        },
+        "moat": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No 7 Powers moat is present: there are no scale or network economies, counter-positioning, switching costs, branding, or cornered resources. The watchpoint-installation capability can be replicated by existing kernel modules or other CLI tools over a weekend.",
+          "evidence_ids": []
+        }
+      },
+      "capabilities": [
+        {
+          "name": "Install hardware breakpoints/watchpoints on a process",
+          "quote": "A cli tool to install a hardware breakpoint/watchpoint on a process in linux."
+        },
+        {
+          "name": "Debug processes without attaching a debugger",
+          "quote": "This is useful for debugging a process without having to attach a debugger to it."
+        },
+        {
+          "name": "Support for x86_64, arm64, and rooted Android",
+          "quote": "Now it supports x86_64 and arm64. You can use it on rooted Android devices as well."
+        },
+        {
+          "name": "Target individual threads instead of entire process",
+          "quote": "-t                         whether the target is a thread or a process"
+        },
+        {
+          "name": "Print backtrace when watchpoint triggers",
+          "quote": "-b, --backtrace            whether to print backtrace"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:ri-char/pwatch",
+          "url": "https://github.com/ri-char/pwatch",
+          "text": "A cli tool to install a hardware breakpoint/watchpoint on a process in linux.\n# pwatch\n\nA cli tool to install a hardware breakpoint/watchpoint on a process in linux. This is useful for debugging a process without having to attach a debugger to it.\n\nNow it supports x86_64 and arm64. You can use it on rooted Android devices as well.\n\n## Usage\n\n```\npwatch <pid> <type> <addr>\npwatch -t <tid> <type> <addr>\n```\nFor example:\n```bash\npwatch 31737 rw4 0x55fa689a90\n```\nThis will install a read/write 4 byte watchpoint on the address `0x55fa689a90` of all threads in the process with pid `31737`.\n\nfull arguments:\n```\nUsage: pwatch [OPTIONS] <PID> <TYPE> <ADDR>\n\nArguments:\n  <PID>   target pid, if thread is true, this is the tid of the target thread\n  <TYPE>  watchpoint type, can be read(r), write(w), readwrite(rw) or execve(x). if it is one of r, w, rw, the watchpoint length is needed. Valid length is 1, 2, 4, 8. For example, r4 means a read watchpoint with length 4 and rw1 means a readwrite watchpoint with length 1\n  <ADDR>  watchpoint address, in hex format. 0x prefix is optional\n\nOptions:\n      --buf-size <BUF_SIZE>  buffer size, in power of 2. For example, 2 means 2^2 pages = 4 * 4096 bytes [default: 0]\n  -t                         whether the target is a thread or a process\n  -b, --backtrace            whether to print backtrace\n  -h, --help                 Print help\n```\n\n## Output\n\n![output](img/output.png)\nA cli tool to install a hardware breakpoint/watchpoint on a process in linux.\nfor debugging a process without having to\nbuf-size <BUF_SIZE>  buffer size, in power of 2. For example, 2 means 2^2 pages = 4 * 4096 bytes [default: 0]",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://github.com/RinHizakura/kmemsnoop",
+          "url": "https://github.com/RinHizakura/kmemsnoop",
+          "text": "RinHizakura/kmemsnoop - # kmemsnoop ## Introduction On specific processors, hardware breakpoint registers are supported to monitor memory access or instruction execution in hardware manner. The great advantage of using these is that it causes little overhead on trace. With the `kmemsnoop`, you can easily install a hardware breakpoint/watchpoint in Linux kernel, as long as it is supported for your platform. This enables us to trace/debug the running Linux kernel without KGDB or hardware debugger. ## Usage ### Prerequisite `kmemsnoop` relies on eBPF CO-RE(Compile Once – Run Everywhere) to enable complete kernel tracing, so the following kernel config **must** be required. ``` CONFIG_DEBUG_INFO_BTF=y CONFIG_PAHOLE_HAS_SPLIT_BTF=y CONFIG_DEBUG_INFO_BTF_MODULES=y ``` Besides, you may want to expose more kernel symbols\n# kmemsnoop ## Introduction On specific processors, hardware breakpoint registers are supported to monitor memory access or instruction execution in hardware manner. The great",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://docs.hyperdbg.org/commands/extension-commands/monitor",
+          "url": "https://docs.hyperdbg.org/commands/extension-commands/monitor",
+          "text": "N/A - # !monitor (monitor read/write/execute to a range of memory) Description of the '!monitor' command in HyperDbg. ### Command > !monitor ### Syntax > !monitor [Attribute (string)] [FromAddress (hex)] [ToAddress (hex)] [MemoryType (vapa)] [pid ProcessId (hex)] [core CoreId (hex)] [imm IsImmediate (yesno)] [sc EnableShortCircuiting (onoff)] [stage CallingStage (prepostall)] [buffer PreAllocatedBuffer (hex)] [script { Script (string) }] [asm condition { Condition (assembly/hex) }] [asm code { Code (assembly/hex) }] [output {OutputName (string)}] > > !monitor [MemoryType (vapa)] [Attribute (string)] [FromAddress (hex)] [l Length (hex)] [MemoryType (vapa)] [pid ProcessId (hex)] [core CoreId (hex)] [imm IsImmediate (yesno)] [sc EnableShortCircuiting (onoff)] [stage CallingStage (prepostall)] [buff\n# !monitor (monitor read/write/execute to a range of memory) Description of the '!monitor' command in HyperDbg. ### Command > !monitor ### Syntax > !monitor [Attribute (string)] [FromAddress (h",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/",
+          "url": "https://edwardtay.github.io/awesome-reverse-engineering/c/memory/",
+          "text": "Memory & Process Analysis: 3 reverse engineering tools compared (2026) - Memory & Process Analysis: 3 reverse engineering tools compared (2026) # Memory & Process Analysis Inspect a live process or an offline memory image. 3 entries · reviewed 2026-10-10 · GitHub data 2026-10-19 | Tool | Use it when | Cost | Last push · Stars | | --- | --- | --- | --- | | Sysinternals | Process Explorer, Process Monitor and friends for watching what a Windows program does. | Free | website | | Volatility 3 | Offline memory image analysis: processes, modules, handles, network. | Free | 2026-10 · ★ 4.5k | | PE-sieve | Scans a running process for implants, hooks and in-memory patches and dumps them.▶ runs | Free | 2026-06 · ★ 3.9k | Flags: ▶ runs code (use an isolated VM) · ☁ sends code to a third party · ◆ commonly impersonated (official link only) · ⚠ maintenance concern ---\nMemory & Process Analysis: 3 reverse engineering tools compared (2026) # Memory & Process Analysis Inspect a live process or an of",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger",
+          "url": "https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger",
+          "text": "How to debug a program without a debugger? - ### Answer by Michal Sznajder (score: 58 [ACCEPTED]) Actually you have quite a lot of possibilities. Either with recompilation of source code or without. With recompilation. Additional logging. Either into program's logs or using system logging (eg. OutputDebugString or Events Log on Windows). Also use following steps: Always include timestamp at least up to seconds resolution. Consider adding thread-id in case of multithreaded apps. Add some nice output of your structures Do not print out enums with just %d. Use some ToString() or create some EnumToString() function (whatever suits your language) ... and beware: logging changes timings so in case of heavily multithreading you problems might disappear. More details on this here. Introduce more asserts Unit tests \"Audio-visual\" monitoring:\n### Answer by Michal Sznajder (score: 58 [ACCEPTED]) Actually you have quite a lot of possibilities. Either with recompilation of source code or without. W",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://github.com/torvalds/linux/blob/master/arch/x86/kernel/hw_breakpoint.c",
+          "url": "https://github.com/torvalds/linux/blob/master/arch/x86/kernel/hw_breakpoint.c",
+          "text": "arch/x86/kernel/hw_breakpoint.c - /* * Install a perf counter breakpoint. * * We seek a free debug address register and use it for this * breakpoint. Eventually we enable it in the debug control register. * * Atomic: we hold the counter->ctx->lock and we only handle variables * and registers local to this cpu. */ int arch_install_hw_breakpoint(struct perf_event *bp) { struct arch_hw_breakpoint *info = counter_arch_bp(bp); unsigned long *dr7; int i; lockdep_assert_irqs_disabled(); for (i = 0; i < HBP_NUM; i++) { struct perf_event **slot = this_cpu_ptr(&bp_per_reg[i]); if (!*slot) { *slot = bp; break; } } if (WARN_ONCE(i == HBP_NUM, \"Can't find any breakpoint slot\")) return -EBUSY; set_debugreg(info->address, i); __this_cpu_write(cpu_debugreg[i], info->address); dr7 = this_cpu_ptr(&cpu_dr7); *dr7 |= encode_dr7(i, info->len,\n/* * Install a perf counter breakpoint. * * We seek a free debug address register and use it for this * breakpoint. Eventually we enable it in the debug control regis",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://sourceware.org/gdb/current/onlinedocs/gdb.html/Set-Watchpoints.html",
+          "url": "https://sourceware.org/gdb/current/onlinedocs/gdb.html/Set-Watchpoints.html",
+          "text": "Set Watchpoints (Debugging with GDB) - Sourceware - Depending on your system, watchpoints may be implemented in software or hardware. GDB does software watchpointing by single-stepping your program and testing the variable’s value each time, which is hundreds of times slower than normal execution. (But this may still be worth it, to catch errors where you have no clue what part of your program is the culprit.) On some systems, such as most PowerPC or x86-based targets, GDB includes support for hardware watchpoints, which do not slow down the running of your program. watch [-l|-location] expr [thread thread-id] [mask maskvalue] [task task-id] : Set a watchpoint for an expression. GDB will break when the expression expr is written into by the program and its value changes. The simplest (and the most popular) use of this command is to watch th\nDepending on your system, watchpoints may be implemented in software or hardware. GDB does software watchpointing by single-stepping your program a",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://jvns.ca/blog/2014/04/20/debug-your-programs-like-theyre-closed-source/",
+          "url": "https://jvns.ca/blog/2014/04/20/debug-your-programs-like-theyre-closed-source/",
+          "text": "Debug your programs like they're closed source! - ## execve `execve` starts programs. All programs. There’s no way to start a program except to use `execve`. We can use `strace` to spy on `execve` calls too! For example! I was trying to understand a Ruby script that was basically just running some `ssh` commands. I could have read the Ruby code! But I really just wanted to know which damn command it was running! I did this by running `strace -f -s3000 -e trace=execve` and read zero code! The `-f` option is super important here. It also tracks the system calls of every subprocess! I basically use `-f` all the time. Use `-f`. ([longer blog post about using strace + execve to poke at Ruby programs]). ... ## When are these tools useful? These systems-level debugging tools are only appropriate sometimes. If you’re writing a graph traversal alg\n## execve `execve` starts programs. All programs. There’s no way to start a program except to use `execve`. We can use `strace` to spy on `execve` ca",
+          "content_hash": null
+        },
+        {
+          "id": "prior:microdoc/process_vm_io",
+          "url": "https://github.com/microdoc/process_vm_io",
+          "text": "I/O access to virtual memory contents of processes\n[![crates.io](https://img.shields.io/crates/v/process_vm_io.svg)](https://crates.io/crates/process_vm_io)\r\n[![docs.rs](https://docs.rs/process_vm_io/badge.svg)](https://docs.rs/process_vm_io)\r\n[![license](https://img.shields.io/github/license/microdoc/process_vm_io?color=black)](https://raw.githubusercontent.com/microdoc/process_vm_io/master/LICENSE.txt)\r\n[![dependency status](https://deps.rs/crate/process_vm_io/1.0.14/status.svg)](https://deps.rs/crate/process_vm_io/1.0.14)\r\n\r\n# I/O access to virtual memory contents of processes\r\n\r\nRead and write data from/to the current process and other processes.\r\nThis can be used for process monitoring, debugging, testing, communication, etc.\r\n\r\n## Examples\r\n\r\nReading the stack of the currently running process, through this library:\r\n\r\n```rust\r\n# fn main() -> Result<(), Box<dyn std::error::Error>> {\r\nuse process_vm_io::ProcessVirtualMemoryIO;\r\nuse std::io::Read;\r\n\r\n// Perform I/O on this current p",
+          "content_hash": null
+        },
+        {
+          "id": "prior:block/stoic",
+          "url": "https://github.com/block/stoic",
+          "text": "Run code within any debuggable Android process, without modifying its APK\n# Stoic <img src=\"./assets/logo.svg\" alt=\"App logo\" width=\"25\">\n\n> *\"Σκόπει εἰς σεαυτόν. Ἐντὸς σοῦ πηγὴ ἀγαθοῦ ἐστιν, ἡ ἀεὶ ἐκβρύειν ἑτοίμη, ἐὰν ἀεὶ σκάπτῃς.\"*\n>\n> \"Look within. Within is the fountain of good, and it will ever bubble up, if you will ever dig.\"\n\n*- Marcus Aurelius (121-180 AD), Roman Emperor and Stoic philosopher*\n\n> *\"Ignis aurum probat, miseria fortes.\"*\n>\n> \"Fire tests gold and adversity tests the brave.\"\n\n*- Seneca the Younger (c. 4 BC - AD 65), Roman statesman and Stoic philosopher*\n\nRun code inside Android processes from your laptop. No APK modifications needed for debuggable apps.\n\nStoic opens a communication channel into your app. Write plugins that hook methods, inspect heap objects, or call internal APIs—all from the command line.\n\nFirst attach takes 2-3 seconds. After that, under a second.\n\n## Quick Start\n\n```bash\nbrew install block/tap/stoic\nstoic helloworld\n```\n\nThis runs against a de",
+          "content_hash": null
+        },
+        {
+          "id": "prior:danylo-volchenko/watchpoint-km",
+          "url": "https://github.com/danylo-volchenko/watchpoint-km",
+          "text": "Linux kernel module to set hardware breakpoint at given virtual memory address\n# Watchpoint Kernel Module\n\n<a href=\"#\"><img alt=\"C\" src = \"https://img.shields.io/badge/C-black.svg?style=for-the-badge&logo=c&logoColor=white\"></a>\n<a href=\"#\"><img alt=\"Linux kernel\" src=\"https://img.shields.io/badge/Linux kernel-black?style=for-the-badge&logo=linux&logoColor=white\"></a>\n<a href=\"#\"><img alt=\"Make\" src=\"https://img.shields.io/badge/Make-black?style=for-the-badge&logo=gnu&logoColor=white\"></a>\n\n## Description\n\n#### This Linux kernel module sets a hardware breakpoints on a specified memory addresses.\n#### When the memory address is accessed (either read or write), the module's callbacks are called, and information about access provided.\n#### On architectures that support R,W,X,RW type of hardware breakpoints it will set 2 breakpoints (1 for READ and 1 for WRITE) for each watchpoint.\n#### On architectures that do not support exclusive read (R) hardware breakpoint it will set R|W and infer ac",
+          "content_hash": null
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://github.com/RinHizakura/kmemsnoop",
+          "overlap": "full",
+          "quote": "you can easily install a hardware breakpoint/watchpoint in Linux kernel",
+          "reason": "did not block: not mature or official: stars=0, candidate_stars=265, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "microdoc/process_vm_io",
+          "overlap": "full",
+          "quote": "I/O access to virtual memory contents of processes",
+          "reason": "did not block: not mature or official: stars=5, candidate_stars=265, official=False"
+        },
+        {
+          "alternative": "danylo-volchenko/watchpoint-km",
+          "overlap": "full",
+          "quote": "Linux kernel module to set hardware breakpoint at given virtual memory address",
+          "reason": "did not block: last update 2025-07-06 is 478 days before 2026-10-27; not mature or official: stars=3, candidate_stars=265, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://edwardtay.github.io/awesome-reverse-engineering/c/memory/",
+          "overlap": "partial",
+          "quote": "PE-sieve | Scans a running process for implants, hooks and in-memory patches and dumps them",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=265, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://stackoverflow.com/questions/1592457/how-to-debug-a-program-without-a-debugger",
+          "overlap": "partial",
+          "quote": "Actually you have quite a lot of possibilities. Either with recompilation of source code or without.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=265, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://github.com/torvalds/linux/blob/master/arch/x86/kernel/hw_breakpoint.c",
+          "overlap": "partial",
+          "quote": "Install a perf counter breakpoint",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; not mature or official: stars=0, candidate_stars=265, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://sourceware.org/gdb/current/onlinedocs/gdb.html/Set-Watchpoints.html",
+          "overlap": "partial",
+          "quote": "watchpoints may be implemented in software or hardware",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=265, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://jvns.ca/blog/2014/04/20/debug-your-programs-like-theyre-closed-source/",
+          "overlap": "partial",
+          "quote": "These systems-level debugging tools are only appropriate sometimes.",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=265, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 577.3,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 265,
+          "forks": 64,
+          "open_issues_count": 4,
+          "external_breakage": 2,
+          "staleness_days": 843,
+          "stars_vs_staleness": 9.57,
+          "ci_state": "ci_configured_zero_runs",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "ineligible": [],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "ri-char/pwatch",
+      "verdict": "CANDIDATE",
+      "memory_id": "mem-253c2d935e23",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

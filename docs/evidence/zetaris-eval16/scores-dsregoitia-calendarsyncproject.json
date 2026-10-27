@@ -1,0 +1,174 @@
+{
+  "date": "2026-10-27T14:59:13.311858+00:00",
+  "run_id": "zetaris-eval16-dsregoitia-calendarsyncproject",
+  "run_hash": "7c523c4db6670e8c7500179921bdf9142664efdd4f3558e76ec18ccddd653c05",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\dsregoitia-calendarsyncproject --llm --run-id zetaris-eval16-dsregoitia-calendarsyncproject --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-dsregoitia-calendarsyncproject.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-dsregoitia-calendarsyncproject.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 12,
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 2
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": "DSRegoitia/CalendarSyncProject",
+    "total": 61.67,
+    "feasibility": 2,
+    "reason": "Selected protagonist DSRegoitia/CalendarSyncProject with highest weighted total 61.67 (feasibility 2)."
+  },
+  "candidates": [
+    {
+      "repo_id": "DSRegoitia/CalendarSyncProject",
+      "verdict": "CANDIDATE",
+      "eligibility": true,
+      "total": 61.67,
+      "feasibility": 2,
+      "flags": [],
+      "criteria": {
+        "problem_severity": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Engineers using FullCalendar.io need to sync events with Google Calendar, representing a meaningful recurring pain point for developers managing events across both platforms.",
+          "evidence_ids": [
+            "candidate:DSRegoitia/CalendarSyncProject"
+          ]
+        },
+        "demand_evidence": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The Stack Overflow question demonstrates verified external developer interest in Google Calendar–FullCalendar integration, confirming demand for this sync direction.",
+          "evidence_ids": [
+            "prior:web:https://stackoverflow.com/questions/11129723/2-way-sync-google-calendar-with-fullcalendar"
+          ]
+        },
+        "differentiation": {
+          "score": 3,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Score 3: Missing capabilities: 'Sync FullCalendar.io events to Google Calendar', 'Create Google API credentials for calendar access' (2 not covered by any maintained free OSS alternative with external user demand pull). Alternatives checked: web:https://www.janusscheduler.com/docs/topics/google-calendar-sync (licence=no licence, unmaintained Noned); web:https://demo.mobiscroll.com/javascript/eventcalendar/sync-events-google-calendar (licence=no licence, unmaintained Noned); web:https://stackoverflow.com/questions/11129723/2-way-sync-google-calendar-with-fullcalendar (licence=no licence, unmaintained Noned). Candidate quotes: for 'Sync FullCalendar.io events to Google Calendar': \"App used to sync FullCalendar.io calendar to Google Calendar\"; for 'Create Google API credentials for calendar access': \"you will need to create Google API Credentials in Google Consolse\". External user demand quote for 'Sync FullCalendar.io events to Google Calendar': \"2 way sync Google Calendar with Fullcalendar\" (https://stackoverflow.com/questions/11129723/2-way-sync-google-calendar-with-fullcalendar).",
+          "evidence_ids": [
+            "candidate:DSRegoitia/CalendarSyncProject",
+            "prior:web:https://www.janusscheduler.com/docs/topics/google-calendar-sync",
+            "prior:web:https://demo.mobiscroll.com/javascript/eventcalendar/sync-events-google-calendar",
+            "prior:web:https://stackoverflow.com/questions/11129723/2-way-sync-google-calendar-with-fullcalendar"
+          ]
+        },
+        "feasibility": {
+          "score": 2,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "The repository provides a working Python application with documented requirements (PyCharm, ODBC driver, pandas, tkinter, Google API credentials), indicating a solid working baseline with clean dependencies.",
+          "evidence_ids": [
+            "candidate:DSRegoitia/CalendarSyncProject"
+          ]
+        },
+        "productization_path": {
+          "score": 1,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "Developer‑focused utility with no clear monetization model beyond possible donations; audience is vague and distribution is via personal GitHub without an established channel.",
+          "evidence_ids": [
+            "candidate:DSRegoitia/CalendarSyncProject"
+          ]
+        },
+        "moat": {
+          "score": 0,
+          "original_score": null,
+          "status": "SUPPORTED",
+          "rationale": "No structural moat from the 7 powers; a straightforward Python script connecting two calendar APIs could be easily replicated over a weekend.",
+          "evidence_ids": []
+        }
+      },
+      "capabilities": [
+        {
+          "name": "Sync FullCalendar.io events to Google Calendar",
+          "quote": "App used to sync FullCalendar.io calendar to Google Calendar"
+        },
+        {
+          "name": "Create Google API credentials for calendar access",
+          "quote": "you will need to create Google API Credentials in Google Consolse"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "candidate:DSRegoitia/CalendarSyncProject",
+          "url": "https://github.com/DSRegoitia/CalendarSyncProject",
+          "text": "App used to sync FullCalendar.io calendar to Google Calendar\n# CalendarSyncProject\nApp used to sync FullCalendar.io calendar to Google Calendar\n\nFull Calendar.io is a javascript based calendar and in this project I will create an app that will sync the events from on Calendar to the Google Calendar\n\n\n# Requirements\nThe app has been developed using PyCharm IDE\nfor the Application to run you will need to install OBDC driver from microsoft\n\nSee more: https://learn.microsoft.com/en-us/sql/connect/odbc/microsoft-odbc-driver-for-sql-server?view=sql-server-ver16\n\nYou will have to install pandas and tkinter\n\nFinally, you will need to create Google API Credentials in Google Consolse. \n\nSee more: https://developers.google.com/calendar/api/quickstart/python\nApp used to sync FullCalendar.io calendar to Google Calendar\nfor the Application to\nApp used to sync FullCalendar.io calendar to Google Calendar",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://www.janusscheduler.com/docs/topics/google-calendar-sync",
+          "url": "https://www.janusscheduler.com/docs/topics/google-calendar-sync",
+          "text": "Janus Scheduler — Framework-Agnostic Web Scheduling Component - Janus Scheduler — Framework-Agnostic Web Scheduling Component # Google Calendar sync `@janus-scheduler/integrations` (also published as `@janus-scheduler/google-calendar`) provides a high-performance, bidirectional synchronization engine between Janus Scheduler and Google Calendar API v3. It features optimistic UI updates, incremental delta syncing via `syncToken`, automatic conflict rollbacks, and native RFC 5545 recurrence translation. Bidirectional Engine Zero-latency optimistic UI with enterprise reliability All operations are queued and reconciled without blocking client rendering or requiring exposed OAuth client secrets. syncToken delta RFC 5545 RRULE auto-rollback offline queue ... ## How Sync Works Janus isolates visual scheduling state from network latencies using an asynchronous\nJanus Scheduler — Framework-Agnostic Web Scheduling Component # Google Calendar sync `@janus-scheduler/integrations` (also published as",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://demo.mobiscroll.com/javascript/eventcalendar/sync-events-google-calendar",
+          "url": "https://demo.mobiscroll.com/javascript/eventcalendar/sync-events-google-calendar",
+          "text": "Javascript Event calendar Google Calendar Sync Example - the integration plugin. This needs to be added to the download ... Google calendars and provides functions for CRUD operations. It takes care of loading the ... required format so that they can be displayed on the Mobiscroll calendar separately or mixed ---\nthe integration plugin. This needs to be added to the download ... Google calendars and provides functions for CRUD operations. It takes care of loading the ... required format so that they can be displayed on the Mobiscroll calendar separately or mixed ---",
+          "content_hash": null
+        },
+        {
+          "id": "prior:web:https://stackoverflow.com/questions/11129723/2-way-sync-google-calendar-with-fullcalendar",
+          "url": "https://stackoverflow.com/questions/11129723/2-way-sync-google-calendar-with-fullcalendar",
+          "text": "2 way sync Google Calendar with Fullcalendar - a different angle and was able to solve the problem of duplicate entries appearing on my fullcalendar. ... events id, (minus the @google), to the gcal ids I stored in the ... FullCalendar's 'removeEvents' to remove the duplicate event from the Calendar ---\na different angle and was able to solve the problem of duplicate entries appearing on my fullcalendar. ... events id, (minus the @google), to the gcal ids I stored in the ... FullCalendar's 'removeEvents' to remove the duplicate event from the Calendar ---",
+          "content_hash": null
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://www.janusscheduler.com/docs/topics/google-calendar-sync",
+          "overlap": "partial",
+          "quote": "Janus Scheduler — Framework-Agnostic Web Scheduling Component",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence; domain www.janusscheduler.com is not the vendor of the product the page describes"
+        },
+        {
+          "alternative": "web:https://demo.mobiscroll.com/javascript/eventcalendar/sync-events-google-calendar",
+          "overlap": "partial",
+          "quote": "Javascript Event calendar Google Calendar Sync Example",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://stackoverflow.com/questions/11129723/2-way-sync-google-calendar-with-fullcalendar",
+          "overlap": "partial",
+          "quote": "2 way sync Google Calendar with Fullcalendar",
+          "reason": "did not block: overlap is partial, not the same job on the same platform; no push or release date; not mature or official: stars=0, candidate_stars=0, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 131.5,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 0,
+          "forks": 0,
+          "open_issues_count": 0,
+          "external_breakage": 0,
+          "staleness_days": 1315,
+          "stars_vs_staleness": 0.0,
+          "ci_state": "no_ci",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "ineligible": [],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "DSRegoitia/CalendarSyncProject",
+      "verdict": "CANDIDATE",
+      "memory_id": "mem-5fde046d9937",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

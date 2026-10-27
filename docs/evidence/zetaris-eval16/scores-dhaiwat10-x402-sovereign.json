@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-27T17:51:27.196111+00:00",
+  "run_id": "zetaris-eval16-dhaiwat10-x402-sovereign",
+  "run_hash": "4d144cdbfe9e7f03e46c9929cc288938cad2423147eed5495b8a07eacdf8df1f",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\dhaiwat10-x402-sovereign --llm --run-id zetaris-eval16-dhaiwat10-x402-sovereign --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-dhaiwat10-x402-sovereign.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-dhaiwat10-x402-sovereign.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3-ultra-550b-a55b": 9,
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 1
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": null,
+    "total": 0.0,
+    "feasibility": 0,
+    "reason": "No candidates provided."
+  },
+  "candidates": [],
+  "ineligible": [
+    {
+      "repo_id": "Dhaiwat10/x402-sovereign",
+      "verdict": "ALREADY_EXISTS",
+      "reason": "verified full-overlap alternative https://docs.x402.org/dev-tools/facilitators already solves the same problem (quote: 'Coinbase-hosted facilitator with KYT/OFAC checks on every transaction | with optional self-hosted Docker deployment'); overrides LLM CANDIDATE. Method: llm+verified quote (requested=nvidia/nemotron-3-ultra-550b-a55b, served=nvidia/nemotron-3.5-super-vl-120b-a12b).",
+      "eligibility": false,
+      "decision_evidence": [
+        {
+          "alternative": "web:https://docs.x402.org/dev-tools/facilitators",
+          "overlap": "full",
+          "quote": "Coinbase-hosted facilitator with KYT/OFAC checks on every transaction | with optional self-hosted Docker deployment",
+          "reason": "verified full-overlap alternative https://docs.x402.org/dev-tools/facilitators already solves the same problem (quote: 'Coinbase-hosted facilitator with KYT/OFAC checks on every transaction | with optional self-hosted Docker deployment'); overrides LLM CANDIDATE"
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://docs.x402.org/dev-tools/facilitators.md",
+          "overlap": "full",
+          "quote": "Anyone can run a facilitator. You can [run your own](/core-concepts/network-and-token-support#running-your-own-facilitator) or [self-facilitate](https://github.com/x402-foundation/x402/tree/main/examples/typescript/servers/self-fa",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=62, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "Sperax/x402-stablecoin",
+          "overlap": "full",
+          "quote": "x402 payment protocol enabling AI agents to autonomously pay for APIs on Arbitrum",
+          "reason": "did not block: not mature or official: stars=12, candidate_stars=62, official=False"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 130.7,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 62,
+          "forks": 16,
+          "open_issues_count": 1,
+          "external_breakage": 0,
+          "staleness_days": 367,
+          "stars_vs_staleness": 5.14,
+          "ci_state": "no_ci",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "Dhaiwat10/x402-sovereign",
+      "verdict": "ALREADY_EXISTS",
+      "memory_id": "mem-b8d9ead4caba",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}

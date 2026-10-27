@@ -1,0 +1,105 @@
+{
+  "date": "2026-10-27T15:26:11.085556+00:00",
+  "run_id": "zetaris-eval16-selfdb-io-selfdb",
+  "run_hash": "2f6b1de3ccbca6bf62c262d6835765c8206a8cb539bcfeae8805d5f815ae1ee2",
+  "command": "scripts\\score_candidates.py --snapshot C:\\Users\\nn201\\phoenixrepo-zeval16\\data\\eval16\\repos\\selfdb-io-selfdb --llm --run-id zetaris-eval16-selfdb-io-selfdb --log-dir C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16 --output-json C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-selfdb-io-selfdb.json --output-md C:\\Users\\nn201\\phoenixrepo-zeval16\\logs\\zetaris-eval16\\scores-selfdb-io-selfdb.md",
+  "llm_used": true,
+  "model_calls": {
+    "nvidia/nemotron-3.5-super-vl-120b-a12b": 2,
+    "nvidia/nemotron-3-ultra-550b-a55b": 8
+  },
+  "evidence_source": "zetaris",
+  "model_mismatch_count": 0,
+  "warnings": [],
+  "duplicated_vectors": [],
+  "duplicated_score_vectors": [],
+  "protagonist": {
+    "repo_id": null,
+    "total": 0.0,
+    "feasibility": 0,
+    "reason": "No candidates provided."
+  },
+  "candidates": [],
+  "ineligible": [
+    {
+      "repo_id": "Selfdb-io/SelfDB",
+      "verdict": "ALREADY_EXISTS",
+      "reason": "verified full-overlap alternative https://github.com/Erudika/para already solves the same problem (quote: 'Multitenant backend server for building web and mobile apps rapidly. The backend for busy developers. (self-hosted or hosted)'). Method: llm+verified quote (requested=nvidia/nemotron-3-ultra-550b-a55b, served=nvidia/nemotron-3-ultra-550b-a55b).",
+      "eligibility": false,
+      "decision_evidence": [
+        {
+          "alternative": "Erudika/para",
+          "overlap": "full",
+          "quote": "Multitenant backend server for building web and mobile apps rapidly. The backend for busy developers. (self-hosted or hosted)",
+          "reason": "verified full-overlap alternative https://github.com/Erudika/para already solves the same problem (quote: 'Multitenant backend server for building web and mobile apps rapidly. The backend for busy developers. (self-hosted or hosted)')"
+        }
+      ],
+      "must_beat": [
+        {
+          "alternative": "web:https://appwrite.io/alternative-to/firebase",
+          "overlap": "full",
+          "quote": "Appwrite is open source and runs anywhere Docker runs, with the same APIs, SDKs, and Console as Appwrite Cloud.",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=164, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://www.open-source-tools.com/alternatives/supabase",
+          "overlap": "full",
+          "quote": "Open source alternatives to Supabase",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=164, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://fossy.dev/alternative-to/firebase",
+          "overlap": "full",
+          "quote": "An open, sub-millisecond, single-executable Firebase alternative with type-safe APIs, built-in WebAssembly runtime, realtime subscriptions, auth, and admin UI built on Rust, SQLite & Wasmtime.",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=164, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://nself.org/",
+          "overlap": "full",
+          "quote": "Your backend. Your rules. Free forever. nSelf gives you a complete production backend — PostgreSQL, GraphQL, Auth, Storage, SSL, monitoring — on your own server in five minutes. MIT licensed. No cloud lock-in.",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=164, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "web:https://trailbase.io/",
+          "overlap": "full",
+          "quote": "An open, sub-millisecond, single-executable Firebase alternative with type-safe REST & realtime APIs, multi-DB, WebAssembly runtime, geospatial support, SSR, auth and admin UI built on Rust, Wasmtime & SQLite (or now experimentally Postgres).",
+          "reason": "did not block: no push or release date; not mature or official: stars=0, candidate_stars=164, official=False; candidate is free and self-hostable; the alternative has no free tier or permissive licence"
+        },
+        {
+          "alternative": "powabase-ai/powabase",
+          "overlap": "full",
+          "quote": "Powabase — self-hostable OSS AI Backend-as-a-Service. Single-project Supabase stack + Studio dashboard + the powabase-ai AI backend. `docker compose up`. Apache-2.0.",
+          "reason": "did not block: not mature or official: stars=26, candidate_stars=164, official=False"
+        }
+      ],
+      "evidence_source": "zetaris",
+      "rescue_potential": {
+        "score": 247.5,
+        "changes_verdict": false,
+        "source": "github_api",
+        "components": {
+          "stars": 164,
+          "forks": 26,
+          "open_issues_count": 3,
+          "external_breakage": 0,
+          "staleness_days": 315,
+          "stars_vs_staleness": 15.85,
+          "ci_state": "no_ci",
+          "ci_date": null,
+          "dependabot_open": 0,
+          "renovate_open": 0
+        }
+      }
+    }
+  ],
+  "hmem_verdict_memory": [
+    {
+      "repo_id": "Selfdb-io/SelfDB",
+      "verdict": "ALREADY_EXISTS",
+      "memory_id": "mem-460349fbb746",
+      "remembered_before": [],
+      "verdict_changed": false,
+      "note": "First verdict H-MEM holds for this repository."
+    }
+  ]
+}
