@@ -9,7 +9,7 @@ from datetime import date
 
 import pytest
 
-from app.agents.blocker import commodity_category_overlap
+from app.agents.blocker import commodity_category_overlap, commodity_rule_enabled
 from app.agents.relevance import RelevanceClient, judge_discovery
 
 AS_OF = date(2026, 10, 26)
@@ -131,14 +131,64 @@ def _invoice_rows() -> list[dict]:
     return [_excel(), _canva(), _canva_templates(), _invoice_ninja(), _stale_github()]
 
 
-def test_invoice_three_domains_already_exists_on_both_candidate_paths(tmp_path):
+@pytest.fixture
+def commodity_on(monkeypatch):
+    """The rule is opt-in. Flag-on tests set an explicit truthy value."""
+    monkeypatch.setenv("PHOENIX_COMMODITY_CATEGORY_RULE", "1")
+
+
+def test_default_off_matches_pre_pr_verdicts(monkeypatch, tmp_path):
+    """Unset flag: the three-domain invoice case stays on the pre-PR verdicts."""
+    monkeypatch.delenv("PHOENIX_COMMODITY_CATEGORY_RULE", raising=False)
+    assert commodity_rule_enabled() is False
     rows = _invoice_rows()
-    for payload in (_llm_candidate(), _llm_names_stale_github()):
+
+    model_candidate = judge_discovery(
+        _candidate(),
+        prior_rows=[],
+        demand_rows=[],
+        client=_client(tmp_path / "candidate", _llm_candidate()),
+        problem_alternatives=rows,
+    )
+    assert model_candidate[0] == "CANDIDATE", model_candidate[1]
+    assert model_candidate[1].startswith("No maintained alternative covers the same invoice workflow.")
+    assert "COMMODITY_CATEGORY" not in model_candidate[1]
+    beat = {item["alternative"] for item in model_candidate.must_beat}
+    assert any("excel.cloud.microsoft" in name for name in beat)
+    assert any("canva.com/invoice/" in name for name in beat)
+    assert any("invoiceninja.com" in name for name in beat)
+
+    named = judge_discovery(
+        _candidate(),
+        prior_rows=[],
+        demand_rows=[],
+        client=_client(tmp_path / "named", _llm_names_stale_github()),
+        problem_alternatives=rows,
+    )
+    assert named[0] == "CANDIDATE", named[1]
+    assert named[1].startswith("must beat jeroenvheel/MyClientBase: did not block:")
+    assert "COMMODITY_CATEGORY" not in named[1]
+
+
+def test_only_explicit_truthy_values_enable_the_rule(monkeypatch):
+    monkeypatch.delenv("PHOENIX_COMMODITY_CATEGORY_RULE", raising=False)
+    assert commodity_rule_enabled() is False
+    for flag in ("", "0", "off", "false", "no", "disabled", "maybe"):
+        monkeypatch.setenv("PHOENIX_COMMODITY_CATEGORY_RULE", flag)
+        assert commodity_rule_enabled() is False, flag
+    for flag in ("1", "true", "yes", "on", "enabled", "TRUE", "On"):
+        monkeypatch.setenv("PHOENIX_COMMODITY_CATEGORY_RULE", flag)
+        assert commodity_rule_enabled() is True, flag
+
+
+def test_invoice_three_domains_already_exists_on_both_candidate_paths(commodity_on, tmp_path):
+    rows = _invoice_rows()
+    for name, payload in (("candidate", _llm_candidate()), ("named", _llm_names_stale_github())):
         judged = judge_discovery(
             _candidate(),
             prior_rows=[],
             demand_rows=[],
-            client=_client(tmp_path, payload),
+            client=_client(tmp_path / name, payload),
             problem_alternatives=rows,
         )
         assert judged[0] == "ALREADY_EXISTS", judged[1]
@@ -149,7 +199,7 @@ def test_invoice_three_domains_already_exists_on_both_candidate_paths(tmp_path):
         assert "github.com" not in judged[1].split("Method:", 1)[0]
 
 
-def test_two_commercial_domains_stay_candidate(tmp_path):
+def test_two_commercial_domains_stay_candidate(commodity_on, tmp_path):
     rows = [_excel(), _canva(), _canva_templates(), _stale_github()]
     judged = judge_discovery(
         _candidate(),
@@ -162,7 +212,7 @@ def test_two_commercial_domains_stay_candidate(tmp_path):
     assert "COMMODITY_CATEGORY" not in judged[1]
 
 
-def test_listicle_aggregator_and_review_rows_are_excluded(tmp_path):
+def test_listicle_aggregator_and_review_rows_are_excluded(commodity_on, tmp_path):
     rows = [
         _excel(),
         _canva(),
@@ -196,7 +246,7 @@ def test_listicle_aggregator_and_review_rows_are_excluded(tmp_path):
     assert "COMMODITY_CATEGORY" not in judged[1]
 
 
-def test_unverified_quote_is_excluded(tmp_path):
+def test_unverified_quote_is_excluded(commodity_on, tmp_path):
     zoho = _web(
         "https://www.zoho.com/invoice/",
         "Zoho Invoice",
@@ -215,7 +265,7 @@ def test_unverified_quote_is_excluded(tmp_path):
     assert judged[0] != "ALREADY_EXISTS"
 
 
-def test_free_core_differentiator_skips_paid_only_vendors(tmp_path):
+def test_free_core_differentiator_skips_paid_only_vendors(commodity_on, tmp_path):
     def paid(url: str, title: str, token: str) -> dict:
         quote = f"{token} invoicing is subscription required and paid-only."
         return _web(url, title, quote)
@@ -265,7 +315,7 @@ def test_flag_off_keeps_the_old_candidate(monkeypatch, tmp_path, flag):
     assert "COMMODITY_CATEGORY" not in judged[1]
 
 
-def test_novel_candidate_with_two_weak_commercial_pages_stays_candidate(tmp_path):
+def test_novel_candidate_with_two_weak_commercial_pages_stays_candidate(commodity_on, tmp_path):
     candidate = {
         "repo_id": "orangekame3/mirrormate",
         "description": "A voice-first assistant that lives in a mirror.",
@@ -306,7 +356,7 @@ def test_novel_candidate_with_two_weak_commercial_pages_stays_candidate(tmp_path
     assert "COMMODITY_CATEGORY" not in judged[1]
 
 
-def test_github_row_counts_only_when_blocker_checks_pass():
+def test_github_row_counts_only_when_blocker_checks_pass(commodity_on):
     candidate = _candidate(repo_id="someone/invoice-app", stars=10)
     mature = {
         "alternative_id": "invoice-org/server",

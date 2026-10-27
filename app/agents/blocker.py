@@ -474,16 +474,17 @@ _PUBLIC_SUFFIXES = {
     "tools", "software", "cloud", "cn", "ru", "in", "kr", "gg", "to", "cc", "ly",
     "fm", "md", "edu", "gov", "mil", "int",
 }
-_COMMODITY_OFF = {"0", "off", "false", "no", "disabled"}
+# Opt-in. Unset, blank, and every other string leave verdicts unchanged.
+_COMMODITY_ON = {"1", "true", "yes", "on", "enabled"}
 _PRODUCT_KINDS = {"product", "tool", "template"}
 
 
 def commodity_rule_enabled() -> bool:
-    """PHOENIX_COMMODITY_CATEGORY_RULE defaults on. 0/off/false/no/disabled turn it off."""
+    """PHOENIX_COMMODITY_CATEGORY_RULE is off unless set to 1, true, yes, on, or enabled."""
     raw = os.environ.get("PHOENIX_COMMODITY_CATEGORY_RULE")
-    if raw is None or not str(raw).strip():
-        return True
-    return str(raw).strip().lower() not in _COMMODITY_OFF
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in _COMMODITY_ON
 
 
 def _registrable_domain(host: str) -> str:
@@ -613,9 +614,11 @@ def commodity_category_overlap(
     Supporters are full-overlap rows with same_problem and a verified quote. Forge web links,
     listicles, category pages, aggregators, review sites, and the candidate itself are out.
     A web row counts only as a first-party product, tool, or template page. A GitHub row
-    counts only when evaluate_blocker already refuses on it (checks A-E). Returns None when
+    counts only when evaluate_blocker already refuses on it (checks A-E). The check is off
+    unless PHOENIX_COMMODITY_CATEGORY_RULE is 1, true, yes, on, or enabled. Returns None when
     the rule is off, the threshold is missed, or the candidate's free core is the paid-only
-    differentiator those pages do not match.
+    differentiator those pages do not match. It was designed on the same 16 scored cases,
+    has no held-out validation, and is not part of any reported number.
     """
     if not commodity_rule_enabled():
         return None

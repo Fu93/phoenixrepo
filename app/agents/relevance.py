@@ -1729,8 +1729,8 @@ def judge_discovery(
     Falls back to phrase/keyword decide_discovery when no RelevanceClient is configured.
     Enforces that absence is not evidence: insufficient coverage blocks CANDIDATE verdict.
     Before a CANDIDATE is returned, COMMODITY_CATEGORY can refuse when several verified
-    full-overlap vendors already cover the same job. PHOENIX_COMMODITY_CATEGORY_RULE
-    turns that check off.
+    full-overlap vendors already cover the same job. That check stays off unless
+    PHOENIX_COMMODITY_CATEGORY_RULE is 1, true, yes, on, or enabled.
     """
     from app.agents.market_filter import decide_discovery
 
