@@ -72,13 +72,15 @@ One committed rescue plan is not verified execution. The file is `docs/rescue/tr
 
 Each of the 16 scored traces has an `evidence_source` line whose output is `evidence_source=csv` and `prior_rows=0`. `docs/SCORED_RUN_AUDIT.md` says no scored verdict used a Zetaris query or a `prior_art` row.
 
-The 2-repository gate-1 run is a different file. Its `evidence_source` line is `evidence_source=zetaris` and `prior_rows=6`. `README.md` records the command as `EVIDENCE_SOURCE=zetaris` and `python scripts/score_candidates.py --snapshot data/real --llm`, on 26 Oct 2026, run hash `4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad`. The two `DISCOVERY_FILTER` lines are `tharani-2006/Invoice-generator-application` `ALREADY_EXISTS` and `SergioMendolia/ytkb` `CANDIDATE`, both with `evidence_source` `zetaris`. `README.md` says this run is not part of the scored table. The scored Invoice trace is `CANDIDATE`.
+In a separate run (27 Oct 2026, not the scored v3 record, which stays evidence_source=csv) all 16 labelled repositories read their record from Zetaris; the prior_art and demand_signals views were empty in that run; see docs/evidence/zetaris-eval16/.
+
+The older run (26 Oct 2026) is a 2-repository gate-1 file. Its `evidence_source` line is `evidence_source=zetaris` and `prior_rows=6`. `README.md` records the command as `EVIDENCE_SOURCE=zetaris` and `python scripts/score_candidates.py --snapshot data/real --llm`, on 26 Oct 2026, run hash `4f340332cd1349884bb5355d471f03e89d5b778cf378ccb20ccda4b74472ebad`. The two `DISCOVERY_FILTER` lines are `tharani-2006/Invoice-generator-application` `ALREADY_EXISTS` and `SergioMendolia/ytkb` `CANDIDATE`, both with `evidence_source` `zetaris`. `README.md` says this run is not part of the scored table. The scored Invoice trace is `CANDIDATE`.
 
 The Invoice `prior_art` query in the Zetaris trace selects `licence_spdx`, `stars`, and `pushed_at` and records `row_count` 1. The ytkb `prior_art` query records `row_count` 5. `data/real/prior_art.csv` has the `al1abb/invoify` row: MIT, 6376 stars, pushed `2026-08-24T02:55:34Z`. Those digits are not in the trace file. The scored Invoice trace has `prior_rows=0` and does not contain `invoify`. The Zetaris `DISCOVERY_FILTER` for Invoice names alternative `al1abb/invoify`.
 
 `scripts/zetaris_check.py` calls no model. The module docstring says "No model call." The file loads rows, prints query ids and content hashes, and seals a trace. It writes no verdict. `README.md` says that sealed trace is not in this checkout.
 
-H-MEM in this repository is its own implementation of the public Meterless spec (`app/engines/hmem/`, spec URL in `metadata.json`). `metadata.json` says the official TypeScript conformance suite was not run. The Zetaris gate-1 trace has no `HMEM_VERDICT_MEMORY` line. The scored 16 traces have none either (`README.md`).
+H-MEM in this repository is its own implementation of the public Meterless spec (`app/engines/hmem/`, spec URL in `metadata.json`). `metadata.json` says the official TypeScript conformance suite was not run. The older 26 Oct 2026 Zetaris gate-1 trace has no `HMEM_VERDICT_MEMORY` line. The scored 16 traces have none either (`README.md`). The 16 Zetaris-run traces each carry one HMEM_VERDICT_MEMORY line (first verdict in a fresh store; none flagged as changed).
 
 ## 5. CalendarSyncProject gave different verdicts across runs
 
