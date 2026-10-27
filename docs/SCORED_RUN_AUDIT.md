@@ -20,6 +20,29 @@ Eight of the twelve v3 `CANDIDATE` verdicts use a reason that starts with `must 
 
 ## Limits and next
 
+`python scripts/audit_disclosures.py` recomputes the 8-of-12 reason-format count
+and the four false-pass paths from pinned committed traces. This does not recover
+the model's raw verdict. A cache-only check must use an isolated copy and stop
+without a model call when no unique historical response can be linked. The v3
+single-repo runner put its cache under a temporary snapshot that was removed on
+normal completion; persistent caches from other runs cannot substitute for it.
+
+Pull request #67 is closed (not merged as a pull request); its change is on `main`
+as commit `37ab838`. It can add `GATE_DECISION` to new runs, subject to its trace
+switch. It cannot restore that event to v3. Pull request #63 is deferred tonight. None of the proposed policy
+changes below is merged or enabled by this document update.
+
+Provider counts for the 16 scored traces: 50 `nvidia-direct` `LLM_CALL` answers (plus
+3 failed `nvidia-direct` attempts, status `error`, not used answers), and 158 other
+`LLM_CALL` answers with no `provider` field, plus 10 `LLM_SCORE` lines (Ultra 7,
+Lightning 3) with no `provider` field. The checker's `Nightshift 168` is a default
+label for a missing `provider` field (158 + 10), not a recorded route.
+
+The separate post-v3 Zetaris eval16 run uses newly collected evidence for the
+same repository names. It is not the old CSV evidence, a held-out set, or a
+replacement for the 10/16 audit. Its aggregate result is withheld until every
+expected report has a stable, pinned, sealed trace and verified Nemotron answers.
+
 These are post-v3 and unvalidated. Pull requests #59, #62, #65, and #66 are not merged and are not on this branch. Each switch is default off: it runs only when set to `1`, `true`, `yes`, `on`, or `enabled`. Unset stays off. None of them are part of any reported number. None are described as fixed.
 
 | Change | Where | Switch |
