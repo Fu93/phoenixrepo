@@ -2195,11 +2195,11 @@ class SearchResultsList(list):
 
 
 # Web-search rows store stars=0 and no push date. That zero is a placeholder, not a
-# measured star count. Looking up github.com/<owner>/<repo> through the GitHub tool
-# fills the real facts. Default on. 0/off/false/no/disabled keeps the placeholder.
-# This does not rescore a finished run.
+# measured star count. Looking the repository up is opt-in: unset does not call GitHub
+# and does not change a verdict. An explicit truthy value fills stars, push date,
+# licence and archived. This does not rescore a finished run.
 PHOENIX_WEB_GITHUB_API_LOOKUP = "PHOENIX_WEB_GITHUB_API_LOOKUP"
-_WEB_GITHUB_LOOKUP_OFF = frozenset({"0", "off", "false", "no", "disabled"})
+_WEB_GITHUB_LOOKUP_ON = frozenset({"1", "true", "yes", "on", "enabled"})
 _MATURITY_UNKNOWN = "unknown"
 _GITHUB_SITE_ROOTS = frozenset({
     "about",
@@ -2236,11 +2236,15 @@ _GITHUB_SITE_ROOTS = frozenset({
 
 
 def web_github_api_lookup_enabled() -> bool:
-    """True unless ``PHOENIX_WEB_GITHUB_API_LOOKUP`` is an off value. Unset means on."""
+    """True only when ``PHOENIX_WEB_GITHUB_API_LOOKUP`` is an explicit on value.
+
+    Unset, blank, ``0``, ``off``, ``false``, ``no``, ``disabled``, and any other string
+    stay off. On values are ``1``, ``true``, ``yes``, ``on``, and ``enabled``.
+    """
     raw = os.environ.get(PHOENIX_WEB_GITHUB_API_LOOKUP)
-    if raw is None or not str(raw).strip():
-        return True
-    return str(raw).strip().lower() not in _WEB_GITHUB_LOOKUP_OFF
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in _WEB_GITHUB_LOOKUP_ON
 
 
 def github_repo_slug(url: str) -> str | None:
@@ -2397,9 +2401,9 @@ def _unknown_maturity_hold(
 ) -> tuple[str, dict[str, Any]] | None:
     """A would-be CANDIDATE whose full-overlap quote has unknown maturity, not a known immature one.
 
-    Returns ``(reason, row)``. The reason is ``UNKNOWN_MATURITY: <alt>``. Off with the lookup flag,
-    so the previous verdict is what a comparison run records. ``ALREADY_EXISTS`` is decided earlier
-    and is not rewritten here.
+    Returns ``(reason, row)``. The reason is ``UNKNOWN_MATURITY: <alt>``. The hold uses the same
+    opt-in flag as the lookup, so an unset variable records the previous verdict.
+    ``ALREADY_EXISTS`` is decided earlier and is not rewritten here.
     """
     if not web_github_api_lookup_enabled():
         return None
@@ -2428,8 +2432,8 @@ def search_prior_art(
     counted as a source (its search page is behind a bot challenge).
     Deduplicates results, excludes candidate itself and its forks, keeps at most 15 results.
     A web result whose URL is a github.com repository is looked up through the GitHub tool
-    (``PHOENIX_WEB_GITHUB_API_LOOKUP``, default on) so stars, push date, licence and archived
-    are real. A failed lookup is ``unknown``, not ``stars=0``.
+    only when ``PHOENIX_WEB_GITHUB_API_LOOKUP`` is an explicit on value (default off). A failed
+    lookup is ``unknown``, not ``stars=0``.
     ``language`` is accepted for compatibility and deliberately not used to filter: prior art
     written in another language still solves the same problem.
     Never uses candidate's own stars or forks anywhere.

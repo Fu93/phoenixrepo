@@ -1,5 +1,6 @@
-"""Web-search GitHub repositories are looked up before the maturity rule.
+"""Opt-in lookup of web-search GitHub repositories before the maturity rule.
 
+The flag defaults off, which is the pre-change path: no extra GitHub call and no verdict change.
 Mocked GitHub responses only. No socket, and the scored v3 traces are not read.
 """
 from __future__ import annotations
@@ -16,6 +17,7 @@ from app.agents.relevance import (
     github_repo_slug,
     judge_discovery,
     search_prior_art,
+    web_github_api_lookup_enabled,
 )
 from app.agents.repo_facts import RepoFactsClient
 from app.github_auth import reset_for_tests
@@ -34,6 +36,12 @@ CANDIDATE = {
     "self_hostable": True,
 }
 TOKEN = "ghp_web_lookup_secret"
+
+
+@pytest.fixture
+def lookup_on(monkeypatch):
+    """The only way the lookup and the UNKNOWN_MATURITY hold run."""
+    monkeypatch.setenv("PHOENIX_WEB_GITHUB_API_LOOKUP", "on")
 
 
 @pytest.fixture(autouse=True)
@@ -139,7 +147,7 @@ def test_slug_accepts_a_repository_subpath_and_rejects_site_sections():
     assert github_repo_slug("https://example.com/acme/widget") is None
 
 
-def test_active_well_starred_web_repo_blocks(tmp_path):
+def test_active_well_starred_web_repo_blocks(tmp_path, lookup_on):
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         if "/search/repositories" in url:
@@ -159,7 +167,7 @@ def test_active_well_starred_web_repo_blocks(tmp_path):
     assert "acme/widget" in judged[1]
 
 
-def test_archived_old_and_tiny_web_repos_do_not_block(tmp_path):
+def test_archived_old_and_tiny_web_repos_do_not_block(tmp_path, lookup_on):
     cases = [
         _repo_body(stargazers_count=8000, archived=True),
         _repo_body(stargazers_count=8000, pushed_at=OLD),
@@ -180,7 +188,7 @@ def test_archived_old_and_tiny_web_repos_do_not_block(tmp_path):
         assert "did not block" in judged.must_beat[0]["reason"]
 
 
-def test_lookup_failure_is_unknown_and_needs_review_not_candidate(tmp_path):
+def test_lookup_failure_is_unknown_and_needs_review_not_candidate(tmp_path, lookup_on):
     def handler(request: httpx.Request) -> httpx.Response:
         if "/search/repositories" in str(request.url):
             return httpx.Response(200, json={"items": []})
@@ -203,7 +211,7 @@ def test_lookup_failure_is_unknown_and_needs_review_not_candidate(tmp_path):
     assert judged.evidence[0]["alternative"] == "web:https://github.com/acme/widget"
 
 
-def test_releases_url_looks_up_the_repository_not_the_subpath():
+def test_releases_url_looks_up_the_repository_not_the_subpath(lookup_on):
     def handler(request: httpx.Request) -> httpx.Response:
         if "/search/repositories" in str(request.url):
             return httpx.Response(200, json={"items": []})
@@ -216,7 +224,7 @@ def test_releases_url_looks_up_the_repository_not_the_subpath():
     assert not any(url.rstrip("/").endswith("/releases") for url in calls)
 
 
-def test_topics_url_is_not_looked_up():
+def test_topics_url_is_not_looked_up(lookup_on):
     def handler(request: httpx.Request) -> httpx.Response:
         if "/search/repositories" in str(request.url):
             return httpx.Response(200, json={"items": []})
@@ -249,7 +257,60 @@ def test_flag_off_keeps_placeholder_stars_and_candidate(tmp_path, monkeypatch, f
     assert "did not block" in judged.must_beat[0]["reason"]
 
 
-def test_lookups_are_sequential_and_capped_by_the_github_quota():
+@pytest.mark.parametrize("raw", [None, "", "0", "off", "false", "no", "disabled", "maybe"])
+def test_lookup_stays_off_unless_the_value_is_explicitly_truthy(monkeypatch, raw):
+    if raw is None:
+        monkeypatch.delenv("PHOENIX_WEB_GITHUB_API_LOOKUP", raising=False)
+    else:
+        monkeypatch.setenv("PHOENIX_WEB_GITHUB_API_LOOKUP", raw)
+    assert web_github_api_lookup_enabled() is False
+
+
+@pytest.mark.parametrize("raw", ["1", "true", "yes", "on", "enabled", "TRUE", "On"])
+def test_explicit_truthy_values_enable_the_lookup(monkeypatch, raw):
+    monkeypatch.setenv("PHOENIX_WEB_GITHUB_API_LOOKUP", raw)
+    assert web_github_api_lookup_enabled() is True
+
+
+def test_default_off_matches_pre_pr_behaviour(tmp_path, monkeypatch):
+    """Unset flag: no repo lookup, placeholder stars=0, and no UNKNOWN_MATURITY hold."""
+    monkeypatch.delenv("PHOENIX_WEB_GITHUB_API_LOOKUP", raising=False)
+    assert web_github_api_lookup_enabled() is False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/search/repositories" in str(request.url):
+            return httpx.Response(200, json={"items": []})
+        raise AssertionError("default off called the repo API")
+
+    found, calls = _search("https://github.com/acme/widget", handler)
+    row = _annotate(_web_row(found))
+    assert row["stars"] == 0
+    assert row["pushed_at"] == ""
+    assert "web_github_lookup" not in row
+    assert not any("/repos/" in url for url in calls)
+    judged = _judge(tmp_path, [row], found)
+    assert judged[0] == "CANDIDATE"
+    assert judged[0] != "ALREADY_EXISTS"
+    assert "UNKNOWN_MATURITY" not in judged[1]
+    assert "stars=0" in judged.must_beat[0]["reason"]
+
+    unknown = _annotate({
+        "alternative_id": "web:https://github.com/acme/widget",
+        "url": "https://github.com/acme/widget",
+        "source": "web",
+        "stars": "unknown",
+        "pushed_at": "unknown",
+        "licence_spdx": "unknown",
+        "archived": "unknown",
+        "web_github_lookup": "failed",
+        "description": QUOTE,
+    })
+    held = _judge(tmp_path / "unknown", [unknown])
+    assert held[0] == "CANDIDATE"
+    assert "UNKNOWN_MATURITY" not in held[1]
+
+
+def test_lookups_are_sequential_and_capped_by_the_github_quota(lookup_on):
     class _GitHub:
         name = "github"
 
@@ -295,7 +356,7 @@ def test_lookups_are_sequential_and_capped_by_the_github_quota():
     assert all(row["stars"] == "unknown" and row["stars"] != 0 for row in failed)
 
 
-def test_token_is_sent_and_not_recorded(tmp_path, capsys):
+def test_token_is_sent_and_not_recorded(tmp_path, capsys, lookup_on):
     seen: list[str | None] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -318,7 +379,7 @@ def test_token_is_sent_and_not_recorded(tmp_path, capsys):
     assert TOKEN not in captured.err
 
 
-def test_placeholder_zero_is_not_unknown_maturity(tmp_path):
+def test_placeholder_zero_is_not_unknown_maturity(tmp_path, lookup_on):
     row = _annotate({
         "alternative_id": "web:https://github.com/acme/widget",
         "url": "https://github.com/acme/widget",
@@ -334,7 +395,7 @@ def test_placeholder_zero_is_not_unknown_maturity(tmp_path):
     assert "stars=0" in judged.must_beat[0]["reason"]
 
 
-def test_known_immature_facts_are_not_held_for_unknown_maturity(tmp_path):
+def test_known_immature_facts_are_not_held_for_unknown_maturity(tmp_path, lookup_on):
     stale = _annotate({
         "alternative_id": "web:https://github.com/acme/old",
         "url": "https://github.com/acme/old",
@@ -362,7 +423,7 @@ def test_known_immature_facts_are_not_held_for_unknown_maturity(tmp_path):
         assert "UNKNOWN_MATURITY" not in judged[1]
 
 
-def test_unverified_quote_does_not_hold_unknown_maturity(tmp_path):
+def test_unverified_quote_does_not_hold_unknown_maturity(tmp_path, lookup_on):
     row = {
         "alternative_id": "web:https://github.com/acme/widget",
         "url": "https://github.com/acme/widget",
@@ -383,7 +444,7 @@ def test_unverified_quote_does_not_hold_unknown_maturity(tmp_path):
     assert "UNKNOWN_MATURITY" not in judged[1]
 
 
-def test_already_exists_is_not_rewritten_by_an_unknown_row(tmp_path):
+def test_already_exists_is_not_rewritten_by_an_unknown_row(tmp_path, lookup_on):
     mature = _annotate({
         "alternative_id": "other/mature",
         "url": "https://github.com/other/mature",
