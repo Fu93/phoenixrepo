@@ -348,9 +348,13 @@
     var line = check.ok ? "PASS" : "FAIL";
     var extra = "";
     if (recorded && recorded.run_hash) {
+      var pageHash = String(check.detail || "").trim();
+      var same = pageHash === recorded.run_hash;
       extra = " Recorded run " + recorded.run_id + " hash " + recorded.run_hash +
-        " is in " + recorded.source + ". jsonl_committed " + recorded.jsonl_committed +
-        ". This page's seal is a different hash.";
+        " is in " + recorded.source + ". jsonl_committed " + recorded.jsonl_committed + ". " +
+        (same
+          ? "The hash this page verified is that run hash."
+          : "The hash this page verified is a different hash.");
     }
     textOf("chain-status", line + " " + (check.detail || "") + "." + extra);
     document.getElementById("chain-status").className = check.ok ? "ok" : "fail";
