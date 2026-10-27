@@ -166,11 +166,11 @@ One committed rescue-plan trace, not part of the 218: `docs/rescue/trace-rescue-
 
 ## Why Nemotron
 
-Target prize: Best use of NVIDIA Nemotron.
+### Eligibility conditions for Best use of NVIDIA Nemotron
 
-This repository has no rule text numbered 15.2. The three rows are the eligibility items the README mapped to that prize before this rewrite. Each cell was checked against the files and traces in this checkout. A cell that did not match was corrected. None was dropped.
+Three conditions. Each row names the file and the trace that shows it.
 
-| Rule 15.2 item | File | Trace / evidence |
+| Condition | File | Trace / evidence |
 | --- | --- | --- |
 | At least one Nemotron model, through Meterless Nightshift | Nightshift is posted first (`_do_post` to `METERLESS_BASE_URL` in `app/agents/relevance.py`). An HTTP 200 that is kept calls `_store` with `provider="nightshift"` (around line 1113). `_observe` omits `provider` when the value is `nightshift` (default argument, around lines 685 and 722). | Scored v3: the 158 `LLM_CALL` lines in [Nemotron use](#nemotron-use). Zetaris gate-1 trace `data/replays/zetaris-gate1-tharani-2006-invoice-generator-application/trace.jsonl`: 27 of 27 answers used were Nemotron's, 21 through Nightshift and 6 through nvidia-direct. The 21 have the Nightshift routing block. The 6 store `provider` `nvidia-direct` and `fallback_reason` `nightshift HTTP 502`. |
 | In a working feature | The gate-1 judge in `app/agents/relevance.py` (`problem`, `alternative`, `coverage`, `demand`, `discovery`), called from `scripts/score_candidates.py`. | The 16 scored traces and the Zetaris trace above are that feature. Gate 2 verified execution has not run on a real `CANDIDATE`. The committed rescue plan `docs/rescue/trace-rescue-0xmh__fichero-printer-20261027T001117Z.jsonl` is one answer: Requested and Served `nvidia/nemotron-3-ultra-550b-a55b`, `provider` `nvidia-direct`, `fallback_reason` `nightshift HTTP 502`. |
@@ -209,14 +209,40 @@ The cause for each case is in [What the audit of our own run found](docs/SCORED_
 
 ### Before and after: the same 16 repositories
 
-The scored row is the regression and audit set above (16 cases, 10 agree, 5 must-reject, 4 false passes). It is not an accuracy benchmark. The 25 Oct cells are the comparison written in this README before the rewrite. Those Gemini traces are not files in this checkout, so 5 of 16, 11 of 11, and 0 of 5 were not recomputed from a committed trace. The scored cells match the `eval-summary-table` slot and the 16 `DISCOVERY_FILTER` lines.
+The v3 row has traces that can be verified. The 10/25 batch has only human audit labels, so it is a different evidence level. It is not a model comparison and it is not an accuracy benchmark.
 
-| Run | Answers by | Verdicts inside the human label | Over-refusals | False passes |
+The 10/25 counts are recomputed from `data/eval/gate1_labels.json`. Sixteen cases have an `audit` object dated 2026-10-25. Classes are LEGIT 5, WEAK 8, WRONG 3. The file stores no model id and no batch verdict string. The row states that all 16 were refused. A case agrees when `acceptable` contains `ALREADY_EXISTS`: 5 of 16, and those 5 are class LEGIT. A should-pass case does not list `ALREADY_EXISTS`: 11 cases, class WEAK 8 and WRONG 3, all refused, so over-refusals are 11 of 11. A must-reject case has `acceptable` equal to `ALREADY_EXISTS`: 5 cases, all class LEGIT, so false passes are 0 of 5. The scored cells match the `eval-summary-table` slot and the 16 `DISCOVERY_FILTER` lines.
+
+| Run | What is recorded | Verdicts inside the human label | Over-refusals | False passes |
 | --- | --- | --- | --- | --- |
-| 25 Oct 2026 batch | Judged by Gemini models (`gemini-3.1-flash-lite` and `gemini-3.5-flash-lite`). Those traces request `meterless/auto`. The traces are not in this checkout. | 5 of 16 | 11 of 11 | 0 of 5 |
-| Scored run, 26 Oct 2026 | Nemotron. Served ids are in [Nemotron use](#nemotron-use). | 10 of 16 | 1 of 11 | 4 of 5 |
+| 10/25 batch (all 16 refused; human audit recorded in data/eval/gate1_labels.json) | Human audit labels only. No model id is in the file. | 5 of 16 | 11 of 11 | 0 of 5 |
+| Scored v3 run | Traces in `data/replays/`. Served ids are in [Nemotron use](#nemotron-use). | 10 of 16 | 1 of 11 | 4 of 5 |
 
-The code changed between the two runs as well as the model, so the table is the pipeline and the model together. In that recorded comparison the 25 Oct row is 11 of 11 over-refusals and 0 of 5 false passes, and the scored row is 1 of 11 and 4 of 5. The cause of each scored false pass is the per-case table in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md).
+The v3 row has traces that can be verified. The 10/25 batch has only human audit labels, so it is a different evidence level. It is not a model comparison and it is not an accuracy benchmark. The cause of each scored false pass is the per-case table in [What the audit of our own run found](docs/SCORED_RUN_AUDIT.md).
+
+Agree, 5 of 16:
+
+```bash
+python -c "import json;a=[c for c in json.load(open('data/eval/gate1_labels.json'))['cases'] if c.get('audit')];print(sum('ALREADY_EXISTS' in c['acceptable'] for c in a),len(a))"
+```
+
+Classes, LEGIT 5, WEAK 8, WRONG 3:
+
+```bash
+python -c "import json;from collections import Counter;a=[c for c in json.load(open('data/eval/gate1_labels.json'))['cases'] if c.get('audit')];print(dict(Counter(c['audit']['class'] for c in a)))"
+```
+
+Over-refusals, 11 of 11 (should-pass cases whose audit class is WEAK or WRONG):
+
+```bash
+python -c "import json;a=[c for c in json.load(open('data/eval/gate1_labels.json'))['cases'] if c.get('audit')];sp=[c for c in a if 'ALREADY_EXISTS' not in c['acceptable']];print(sum(c['audit']['class'] in ('WEAK','WRONG') for c in sp), len(sp))"
+```
+
+False passes, 0 of 5 (must-reject cases whose audit class is not LEGIT):
+
+```bash
+python -c "import json;a=[c for c in json.load(open('data/eval/gate1_labels.json'))['cases'] if c.get('audit')];mr=[c for c in a if set(c['acceptable'])=={'ALREADY_EXISTS'}];print(sum(c['audit']['class']!='LEGIT' for c in mr), len(mr))"
+```
 
 <!-- BEGIN numbers: eval-summary-table -->
 | Measure | Result |

@@ -23,7 +23,7 @@ py -3 scripts/nightshift_probe.py
 It lists the `nvidia/nemotron-*` ids Nightshift offers, calls each with three request variants, and prints status, latency and served model per call. The report is `logs/nightshift_probe-<utc>.json`.
 
 - **Exit 0**: some variant was served by Nemotron. Copy the printed `MODEL_NAME=` and `PHOENIX_LLM_*` lines into `.env`.
-- **Exit 1**: nothing was served by Nemotron. In the Nightshift Console, Providers tab, temporarily turn off the non-NVIDIA providers (Gemini, OpenRouter), then run the probe again. If it still exits 1, keep `MODEL_MISMATCH` and write the probe result in the README and the video. Do not hide it.
+- **Exit 1**: nothing was served by Nemotron. In the Nightshift Console, Providers tab, temporarily turn off the non-NVIDIA providers (OpenRouter and any other non-NVIDIA provider), then run the probe again. If it still exits 1, keep `MODEL_MISMATCH` and write the probe result in the README and the video. Do not hide it.
 - **Exit 2**: token missing or Nightshift not reachable.
 
 Changing `MODEL_NAME` changes the relevance cache key, so earlier finished calls are not reused. Plan reruns for that.
