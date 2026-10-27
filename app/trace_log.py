@@ -67,25 +67,71 @@ def line_hash(record: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_body(record).encode("utf-8")).hexdigest()
 
 
-# Copied onto a new LLM line only. Not part of the cache key. Old traces omit the field.
-_REQUEST_SETTING_KEYS = ("enable_thinking", "reasoning_effort", "reasoning_budget", "temperature", "top_p", "max_tokens")
+# Closed allowlist for a new LLM line. Not part of the cache key. Old traces omit the field.
+# reasoning_budget is kept only when an extra body sent a safe scalar; it is not a default.
+_REQUEST_SETTING_SCALARS = ("temperature", "top_p", "max_tokens", "reasoning_effort", "reasoning_budget")
+
+
+def _safe_setting_value(value: Any, *, allow_bool: bool) -> bool:
+    """A number or a short token. Not a prompt, a URL, a header, or an API key."""
+
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return allow_bool
+    if isinstance(value, (int, float)):
+        return True
+    if not isinstance(value, str):
+        return False
+    if not value or len(value) > 40 or any(char in value for char in " \n\r\t/"):
+        return False
+    lowered = value.lower()
+    if "://" in lowered or lowered.startswith("bearer"):
+        return False
+    if _TOKEN_PATTERNS.search(value):
+        return False
+    return True
 
 
 def kept_request_settings(value: Any) -> dict[str, Any]:
-    """Scalar sampling flags. Drops anything that could carry a prompt, a header, or a token."""
+    """Allowlisted sampling flags. Unknown keys are dropped, not recorded.
+
+    ``chat_template_kwargs`` keeps only ``enable_thinking``. A flattened
+    ``enable_thinking`` bool (the previous extractor) is stored under that nest.
+    Tokens, prompts, headers, and endpoints never pass the value check.
+    """
 
     if not isinstance(value, dict):
         return {}
     kept: dict[str, Any] = {}
-    for key in _REQUEST_SETTING_KEYS:
+    for key in _REQUEST_SETTING_SCALARS:
         if key not in value:
             continue
         item = value[key]
-        if isinstance(item, bool) or item is None or isinstance(item, (int, float)):
+        numeric = key in ("temperature", "top_p", "max_tokens")
+        if numeric and isinstance(item, str):
+            continue
+        if _safe_setting_value(item, allow_bool=False):
             kept[key] = item
-        elif isinstance(item, str) and 0 < len(item) <= 40 and "\n" not in item and " " not in item:
-            kept[key] = item
+    template = value.get("chat_template_kwargs")
+    thinking = None
+    found = False
+    if isinstance(template, dict) and "enable_thinking" in template:
+        thinking = template["enable_thinking"]
+        found = True
+    elif "enable_thinking" in value:
+        thinking = value["enable_thinking"]
+        found = True
+    if found and (thinking is None or isinstance(thinking, bool)):
+        kept["chat_template_kwargs"] = {"enable_thinking": thinking}
     return kept
+
+
+def request_settings_sha256(settings: dict[str, Any]) -> str:
+    """sha256 of the canonical allowlisted object. The digest covers no other field."""
+
+    body = json.dumps(settings, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 def _summary(value: Any, secrets: list[str], limit: int = 500) -> str:
@@ -152,7 +198,10 @@ class HackathonTrace:
                 record["prompt_version"] = str(llm["prompt_version"])
             settings = kept_request_settings(llm.get("request_settings"))
             if settings:
+                # Top-level so a truncated summary cannot drop them. The same object
+                # is also inside output_summary, and both sit in the hashed body.
                 record["request_settings"] = settings
+                record["request_settings_sha256"] = request_settings_sha256(settings)
         record = sanitize_metadata(record)
         record["prev_hash"] = self._prev_hash
         missing = [field for field in FIELDS if field not in record]

@@ -10,6 +10,10 @@ when a line was altered, the previous-hash link breaks, or the run hash differs.
 status is not error or rejected) has a served_model in the nvidia/nemotron-* family, and
 prints how many answers were used and which provider wrote them. served_model and the
 provider are inside each line's hash, so a line edited to say Nemotron fails the chain first.
+
+After a chain that matches, the script prints how many LLM_CALL lines carry request_settings
+(top-level, or inside output_summary). That line is informational. A trace written before
+the field existed still exits 0.
 """
 
 from __future__ import annotations
@@ -37,6 +41,53 @@ def _provider(summary: object) -> str:
     if isinstance(summary, dict):
         return str(summary.get("provider") or "nightshift")
     return "nightshift"
+
+
+def _summary_object(summary: object) -> dict:
+    if isinstance(summary, dict):
+        return summary
+    if isinstance(summary, str):
+        try:
+            parsed = json.loads(summary)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def line_has_request_settings(record: dict) -> bool:
+    """True when this line stored an allowlisted request_settings object.
+
+    Older lines keep it only as a top-level field. New lines also copy it into
+    output_summary. Either one counts. An empty object does not.
+    """
+
+    top = record.get("request_settings")
+    if isinstance(top, dict) and top:
+        return True
+    nested = _summary_object(record.get("output_summary")).get("request_settings")
+    return isinstance(nested, dict) and bool(nested)
+
+
+def request_settings_report(path: Path) -> str:
+    """How many LLM_CALL lines carry request_settings. Never a pass/fail by itself."""
+
+    total = present = 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if not isinstance(record, dict):
+            continue
+        if record.get("action") != "LLM_CALL" and record.get("event") != "LLM_CALL":
+            continue
+        total += 1
+        if line_has_request_settings(record):
+            present += 1
+    return (
+        f"request_settings: present on {present} of {total} LLM_CALL lines "
+        "(informational; absence is not a failure)"
+    )
 
 
 def nemotron_report(path: Path) -> dict:
@@ -119,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
         print(detail)
         return 1
     print(detail)
+    print(request_settings_report(Path(args.trace)))
     if args.require_nemotron:
         report = nemotron_report(Path(args.trace))
         split = ", ".join(f"{name} {count}" for name, count in report["providers"].items()) or "none"
