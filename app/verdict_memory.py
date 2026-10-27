@@ -41,6 +41,21 @@ def _current(records: list[Any]) -> list[Any]:
     return sorted(live, key=lambda r: r.timestamp, reverse=True)
 
 
+def _trace_error(trace: Any, *, run_id: str = "", repo_id: str = "", exc: BaseException) -> None:
+    """Record an H-MEM failure. A broken trace must not escape into gate 1."""
+
+    try:
+        trace.event(
+            agent_name="hmem",
+            action="HMEM_VERDICT_MEMORY",
+            input_summary={"run_id": run_id, "repo_id": repo_id},
+            output_summary={"error": f"{type(exc).__name__}: {str(exc)[:200]}"},
+            status="error",
+        )
+    except Exception:
+        return
+
+
 def remember(
     rows: list[dict[str, Any]],
     *,
@@ -52,62 +67,82 @@ def remember(
     """Write one H-MEM verdict memory per row and trace what was remembered before.
 
     ``rows`` are ``{"repo_id", "verdict", "reason"}``. Returns the per-repo summaries it traced.
+    This never raises and never writes back into ``rows``.
     """
     if os.environ.get("PHOENIX_HMEM", "").strip().lower() in {"off", "0", "false", "no"}:
         return []
     try:
         store = _store(log_dir)
     except Exception as exc:  # H-MEM must never stop gate 1
-        trace.event(agent_name="hmem", action="HMEM_VERDICT_MEMORY", input_summary={"run_id": run_id},
-                    output_summary={"error": f"{type(exc).__name__}: {str(exc)[:200]}"}, status="error")
+        _trace_error(trace, run_id=run_id, exc=exc)
         return []
+    try:
+        return _remember_rows(store, rows, trace=trace, run_id=run_id, served_by_repo=served_by_repo)
+    except Exception as exc:
+        _trace_error(trace, run_id=run_id, exc=exc)
+        return []
+
+
+def _remember_rows(
+    store: Any,
+    rows: list[dict[str, Any]],
+    *,
+    trace: Any,
+    run_id: str,
+    served_by_repo: dict[str, str] | None,
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for row in rows:
-        repo_id = str(row.get("repo_id") or "").strip()
-        verdict = str(row.get("verdict") or "").strip()
-        if not repo_id or not verdict:
-            continue
-        try:
-            prior = _current(store.find_verdicts(repo_id))
-            history = [{"verdict": str(r.extra.get("verdict") or ""), "run_id": str(r.source)} for r in prior[:5]]
-            record = store.add(
-                f"{repo_id} gate-1 verdict {verdict}: {str(row.get('reason') or '')[:400]}",
-                source=run_id,
-                origin="model_response",
-                label="gate1_verdict",
-                layer="long_term",
-                entities=[repo_id],
-                tags=["gate1", verdict],
-                extra={"kind": "verdict", "verdict": verdict, "served_model": (served_by_repo or {}).get(repo_id, "")},
-            )
-            if prior:
-                store.supersede(prior[0].id, record.id)
-            changed = bool(prior) and history[0]["verdict"] != verdict
-            if changed:
-                store.ledger.append(
-                    record.id,
-                    "conflict_detected",
-                    previous_state={"verdict": history[0]["verdict"], "run_id": history[0]["run_id"]},
-                    new_state={"verdict": verdict, "run_id": run_id},
-                    details={"repo_id": repo_id, "kept": "both; the older one is superseded, not deleted"},
+    # One lock covers recall, add, supersede and the conflict line, so a second
+    # gate-1 run cannot replace the JSON store between those steps.
+    with store.exclusive():
+        for row in rows:
+            repo_id = ""
+            try:
+                if not isinstance(row, dict):
+                    continue
+                repo_id = str(row.get("repo_id") or "").strip()
+                verdict = str(row.get("verdict") or "").strip()
+                if not repo_id or not verdict:
+                    continue
+                prior = _current(store.find_verdicts(repo_id))
+                history = [{"verdict": str(r.extra.get("verdict") or ""), "run_id": str(r.source)} for r in prior[:5]]
+                record = store.add(
+                    f"{repo_id} gate-1 verdict {verdict}: {str(row.get('reason') or '')[:400]}",
+                    source=run_id,
+                    origin="model_response",
+                    label="gate1_verdict",
+                    layer="long_term",
+                    entities=[repo_id],
+                    tags=["gate1", verdict],
+                    extra={"kind": "verdict", "verdict": verdict, "served_model": (served_by_repo or {}).get(repo_id, "")},
                 )
-            summary = {
-                "repo_id": repo_id,
-                "verdict": verdict,
-                "memory_id": record.id,
-                "remembered_before": history,
-                "verdict_changed": changed,
-                "note": (
-                    f"H-MEM remembered {history[0]['verdict']} from run {history[0]['run_id']}; "
-                    "this run disagrees, so a person should look before acting on it."
-                    if changed else
-                    ("H-MEM holds the same verdict from an earlier run." if prior else "First verdict H-MEM holds for this repository.")
-                ),
-            }
-            trace.event(agent_name="hmem", action="HMEM_VERDICT_MEMORY", input_summary={"repo_id": repo_id},
-                        output_summary=summary, status="ok", summary_limit=1500)
-            out.append(summary)
-        except Exception as exc:
-            trace.event(agent_name="hmem", action="HMEM_VERDICT_MEMORY", input_summary={"repo_id": repo_id},
-                        output_summary={"error": f"{type(exc).__name__}: {str(exc)[:200]}"}, status="error")
+                if prior:
+                    store.supersede(prior[0].id, record.id)
+                changed = bool(prior) and history[0]["verdict"] != verdict
+                if changed:
+                    store.ledger.append(
+                        record.id,
+                        "conflict_detected",
+                        previous_state={"verdict": history[0]["verdict"], "run_id": history[0]["run_id"]},
+                        new_state={"verdict": verdict, "run_id": run_id},
+                        details={"repo_id": repo_id, "kept": "both; the older one is superseded, not deleted"},
+                    )
+                summary = {
+                    "repo_id": repo_id,
+                    "verdict": verdict,
+                    "memory_id": record.id,
+                    "remembered_before": history,
+                    "verdict_changed": changed,
+                    "note": (
+                        f"H-MEM remembered {history[0]['verdict']} from run {history[0]['run_id']}; "
+                        "this run disagrees, so a person should look before acting on it."
+                        if changed else
+                        ("H-MEM holds the same verdict from an earlier run." if prior else "First verdict H-MEM holds for this repository.")
+                    ),
+                }
+                trace.event(agent_name="hmem", action="HMEM_VERDICT_MEMORY", input_summary={"repo_id": repo_id},
+                            output_summary=summary, status="ok", summary_limit=1500)
+                out.append(summary)
+            except Exception as exc:
+                _trace_error(trace, run_id=run_id, repo_id=repo_id, exc=exc)
     return out

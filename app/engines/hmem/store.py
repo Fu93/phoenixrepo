@@ -5,6 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
@@ -52,6 +55,53 @@ def _tokens(text: str) -> list[str]:
     return [token for token in cleaned if len(token) > 1]
 
 
+class _FileLock:
+    """Exclusive lock on a sibling file. Re-entrant for this object, blocking across processes."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._handle = None
+        self.depth = 0
+
+    def __enter__(self) -> "_FileLock":
+        if self.depth == 0:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._handle = open(self.path, "a+b")
+            if os.name == "nt":
+                import msvcrt
+
+                self._handle.seek(0, os.SEEK_END)
+                if self._handle.tell() == 0:
+                    self._handle.write(b"\0")
+                    self._handle.flush()
+                self._handle.seek(0)
+                msvcrt.locking(self._handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX)
+        self.depth += 1
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        self.depth -= 1
+        if self.depth == 0 and self._handle is not None:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    self._handle.seek(0)
+                    msvcrt.locking(self._handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                self._handle.close()
+                self._handle = None
+        return False
+
+
 class MemoryStoreService:
     def __init__(
         self,
@@ -68,16 +118,41 @@ class MemoryStoreService:
         self.embedder = embedder or HashEmbedder()
         self.actor = actor
         self.records: dict[str, MemoryRecord] = {}
+        self._lock = _FileLock(path.with_name(path.name + ".lock")) if path is not None else None
+
+    @contextmanager
+    def exclusive(self):
+        """Hold the store lock and reload from disk once for a read-modify-write.
+
+        Nested calls on this same object do not reload, so a batch can add several
+        records without dropping the ones it just wrote. A second process blocks.
+        """
+
+        if self._lock is None:
+            yield self
+            return
+        outer = self._lock.depth == 0
+        with self._lock:
+            if outer:
+                self._reload()
+            yield self
+
+    def _reload(self) -> None:
+        if self.path is None:
+            return
+        if not self.path.exists():
+            self.records = {}
+            return
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        self.records = {
+            item["id"]: MemoryRecord.model_validate(item) for item in payload.get("records", [])
+        }
 
     def hydrate(self) -> int:
-        if self.path and self.path.exists():
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-            self.records = {
-                item["id"]: MemoryRecord.model_validate(item) for item in payload.get("records", [])
-            }
-        self._apply_forgetting()
-        self._save()
-        return len(self.records)
+        with self.exclusive():
+            self._apply_forgetting()
+            self._save()
+            return len(self.records)
 
     def add(
         self,
@@ -103,6 +178,46 @@ class MemoryStoreService:
             raise ValueError("H-MEM refuses an empty memory.")
         if not source.strip():
             raise ValueError("H-MEM requires source.")
+        with self.exclusive():
+            return self._add_loaded(
+                content,
+                source=source,
+                origin=origin,
+                label=label,
+                layer=layer,
+                memory_type=memory_type,
+                domain=domain,
+                namespace=namespace,
+                tags=tags,
+                entities=entities,
+                confidence=confidence,
+                refs=refs,
+                derived_from=derived_from,
+                goal_run_id=goal_run_id,
+                extra=extra,
+                memory_id=memory_id,
+            )
+
+    def _add_loaded(
+        self,
+        content: str,
+        *,
+        source: str,
+        origin: ProvenanceOrigin,
+        label: str,
+        layer: MemoryLayer = "working",
+        memory_type: MemoryType = "factual",
+        domain: str = "repository",
+        namespace: str = "phoenixrepo",
+        tags: list[str] | None = None,
+        entities: list[str] | None = None,
+        confidence: float = 0.9,
+        refs: list[str] | None = None,
+        derived_from: list[str] | None = None,
+        goal_run_id: str | None = None,
+        extra: dict | None = None,
+        memory_id: str | None = None,
+    ) -> MemoryRecord:
         now = int(self.clock())
         record = MemoryRecord(
             id=memory_id or f"mem-{uuid4().hex[:12]}",
@@ -136,52 +251,56 @@ class MemoryStoreService:
         return list(self.records.values())
 
     def promote(self, memory_id: str, layer: MemoryLayer) -> MemoryRecord:
-        record = self._require(memory_id)
-        previous = record.layer
-        record.layer = layer
-        self.ledger.append(
-            memory_id,
-            "promote",
-            previous_state={"layer": previous},
-            new_state={"layer": layer},
-        )
-        self._save()
-        return record
+        with self.exclusive():
+            record = self._require(memory_id)
+            previous = record.layer
+            record.layer = layer
+            self.ledger.append(
+                memory_id,
+                "promote",
+                previous_state={"layer": previous},
+                new_state={"layer": layer},
+            )
+            self._save()
+            return record
 
     def touch(self, memory_id: str) -> None:
-        record = self._require(memory_id)
-        record.last_accessed = int(self.clock())
-        record.access_count += 1
-        self.ledger.append(memory_id, "read", details={"access_count": record.access_count})
-        self._save()
+        with self.exclusive():
+            record = self._require(memory_id)
+            record.last_accessed = int(self.clock())
+            record.access_count += 1
+            self.ledger.append(memory_id, "read", details={"access_count": record.access_count})
+            self._save()
 
     def supersede(self, old_id: str, new_id: str) -> None:
-        old = self._require(old_id)
-        new = self._require(new_id)
-        old.superseded_by = new_id
-        new.supersedes = old_id
-        if old_id not in new.related_to:
-            new.related_to.append(old_id)
-            new.related_to = new.related_to[:RELATED_CAP]
-        self.ledger.append(
-            old_id,
-            "conflict_resolved",
-            previous_state={"superseded_by": None},
-            new_state={"superseded_by": new_id},
-            details={"kept": new_id},
-        )
-        self._save()
+        with self.exclusive():
+            old = self._require(old_id)
+            new = self._require(new_id)
+            old.superseded_by = new_id
+            new.supersedes = old_id
+            if old_id not in new.related_to:
+                new.related_to.append(old_id)
+                new.related_to = new.related_to[:RELATED_CAP]
+            self.ledger.append(
+                old_id,
+                "conflict_resolved",
+                previous_state={"superseded_by": None},
+                new_state={"superseded_by": new_id},
+                details={"kept": new_id},
+            )
+            self._save()
 
     def apply_feedback(self, memory_id: str, kind: str) -> MemoryRecord:
         from app.engines.hmem.types import FEEDBACK_DELTAS
 
         if kind not in FEEDBACK_DELTAS:
             raise ValueError(f"Unknown feedback kind: {kind}")
-        record = self._require(memory_id)
-        record.confidence = max(0.0, min(1.0, record.confidence + FEEDBACK_DELTAS[kind]))
-        self.ledger.append(memory_id, "feedback", details={"kind": kind, "confidence": record.confidence})
-        self._save()
-        return record
+        with self.exclusive():
+            record = self._require(memory_id)
+            record.confidence = max(0.0, min(1.0, record.confidence + FEEDBACK_DELTAS[kind]))
+            self.ledger.append(memory_id, "feedback", details={"kind": kind, "confidence": record.confidence})
+            self._save()
+            return record
 
     def backup(self) -> dict:
         return {"records": [record.model_dump(mode="json") for record in self.records.values()]}
@@ -218,20 +337,21 @@ class MemoryStoreService:
         goal_run_id: str | None,
         refs: list[str],
     ) -> MemoryRecord:
-        record = self._require(memory_id)
-        record.content = content.strip()
-        record.embedding = self.embedder.embed(record.content)
-        record.confidence = max(0.0, min(1.0, confidence))
-        record.last_accessed = int(self.clock())
-        record.goal_run_id = goal_run_id
-        record.provenance.refs = list(refs)
-        self.ledger.append(
-            memory_id,
-            "update",
-            new_state={"confidence": record.confidence, "goal_run_id": goal_run_id},
-        )
-        self._save()
-        return record
+        with self.exclusive():
+            record = self._require(memory_id)
+            record.content = content.strip()
+            record.embedding = self.embedder.embed(record.content)
+            record.confidence = max(0.0, min(1.0, confidence))
+            record.last_accessed = int(self.clock())
+            record.goal_run_id = goal_run_id
+            record.provenance.refs = list(refs)
+            self.ledger.append(
+                memory_id,
+                "update",
+                new_state={"confidence": record.confidence, "goal_run_id": goal_run_id},
+            )
+            self._save()
+            return record
 
     def _apply_forgetting(self) -> None:
         now = int(self.clock())
@@ -249,10 +369,25 @@ class MemoryStoreService:
         return record
 
     def _save(self) -> None:
+        """Replace the JSON file in one step. A crash leaves the previous file intact."""
+
         if self.path is None:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.backup(), indent=2), encoding="utf-8")
+        payload = json.dumps(self.backup(), indent=2, ensure_ascii=False) + "\n"
+        fd, name = tempfile.mkstemp(prefix=self.path.name + ".", suffix=".tmp", dir=self.path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(name, self.path)
+        except Exception:
+            try:
+                os.unlink(name)
+            except OSError:
+                pass
+            raise
 
 
 # Imported by retrieval for the documented layer weights.

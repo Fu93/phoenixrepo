@@ -217,6 +217,14 @@ def test_reasoning_excerpt_accepts_a_lone_closing_think_tag():
     # No think tags yields none.
     assert reasoning_excerpt({}, '{"verdict": "CANDIDATE"}') == ""
     assert reasoning_excerpt({}, "plain prose with no tags") == ""
+    # A </think> inside the answer is not a reasoning boundary. The excerpt must
+    # not be a slice of that answer.
+    answer = '{"verdict": "CANDIDATE", "reason": "the readme shows </think>"}'
+    assert reasoning_excerpt({}, answer) == ""
+    both = 'saw </think> in a quote</think>{"verdict": "CANDIDATE"}'
+    excerpt = reasoning_excerpt({}, both)
+    assert excerpt == "saw </think> in a quote"
+    assert "CANDIDATE" not in excerpt
 
 
 def test_invalid_policy_is_rejected(tmp_path: Path):

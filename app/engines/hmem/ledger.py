@@ -57,5 +57,5 @@ class TrustLedgerService:
         if self.path is None:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as handle:
+        with self.path.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(entry.model_dump(mode="json"), ensure_ascii=False) + "\n")

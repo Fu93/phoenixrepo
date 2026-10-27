@@ -66,3 +66,21 @@ def test_hmem_error_never_stops_gate1(tmp_path, monkeypatch):
     monkeypatch.setattr(vm, "_store", boom)
     trace, out = _run(tmp_path, "run-1", "CANDIDATE")
     assert out == [] and _events(trace)[0]["status"] == "error"
+
+
+def test_a_bad_row_or_a_broken_trace_does_not_change_the_verdict(tmp_path):
+    row = {"repo_id": "o/r", "verdict": "CANDIDATE", "reason": "café — 中文"}
+    trace = HackathonTrace("run-1", log_dir=tmp_path)
+    out = remember(["not-a-row", row], trace=trace, log_dir=tmp_path, run_id="run-1")
+    assert out[0]["verdict"] == "CANDIDATE" and row["verdict"] == "CANDIDATE"
+    store = json.loads((tmp_path / "hmem" / "gate1_verdicts.json").read_bytes().decode("utf-8"))
+    assert "café" in store["records"][0]["content"] and "中文" in store["records"][0]["content"]
+
+    class BoomTrace(HackathonTrace):
+        def event(self, **kwargs):
+            raise RuntimeError("trace down")
+
+    again = {"repo_id": "o/r", "verdict": "NO_GO", "reason": "why"}
+    broken = BoomTrace("run-2", log_dir=tmp_path)
+    assert remember([again], trace=broken, log_dir=tmp_path, run_id="run-2") == []
+    assert again["verdict"] == "NO_GO"

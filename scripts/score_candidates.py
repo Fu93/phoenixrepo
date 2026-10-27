@@ -1641,7 +1641,22 @@ def _do_score_candidates(
         {"repo_id": r.get("repo_id"), "verdict": r.get("verdict"), "reason": r.get("reason")}
         for r in [*ineligible_repos, *candidates_output]
     ]
-    hmem_summary = hmem_remember(hmem_rows, trace=trace, log_dir=active_log_dir, run_id=active_run_id)
+    try:
+        hmem_summary = hmem_remember(hmem_rows, trace=trace, log_dir=active_log_dir, run_id=active_run_id)
+    except Exception as exc:
+        # remember() already catches its own failures. This is the last guard so a
+        # bug there cannot skip the seal or change a verdict already stored on the row.
+        hmem_summary = []
+        try:
+            trace.event(
+                agent_name="hmem",
+                action="HMEM_VERDICT_MEMORY",
+                input_summary={"run_id": active_run_id},
+                output_summary={"error": f"{type(exc).__name__}: {str(exc)[:200]}"},
+                status="error",
+            )
+        except Exception:
+            pass
 
     # 6. Seal trace
     run_hash = trace.seal()
