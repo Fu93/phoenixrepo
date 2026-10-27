@@ -1,21 +1,20 @@
 """Post-v3 quote-failure behaviour. The scored v3 traces are not inputs here.
 
-PHOENIX_QUOTE_FAIL_FLAG defaults on. A failed verbatim quote on a full-overlap
-claim is retried once. If that retry still does not verify, the claim is not a
-competitor and it cannot return CANDIDATE or ALREADY_EXISTS.
+PHOENIX_QUOTE_FAIL_FLAG defaults off. When it is on, a failed verbatim quote on
+a full-overlap claim is retried once. If that retry still does not verify, the
+claim is not a competitor and it cannot return CANDIDATE or ALREADY_EXISTS.
+There is no minimum quote length.
 """
 from __future__ import annotations
 
 import json
 
 from app.agents.relevance import (
-    MIN_VERBATIM_QUOTE_CHARS,
     FallbackBudget,
     RelevanceClient,
     filter_relevant_alternatives,
     judge_discovery,
     quote_fail_flag_enabled,
-    quote_in_text,
 )
 
 PROBLEM_QUOTE = "Generate invoices from a browser form"
@@ -89,35 +88,21 @@ def _judge(tmp_path, rows, claims):
     )
 
 
-def test_quote_fail_flag_defaults_on_and_recognises_off_values(monkeypatch):
+def test_quote_fail_flag_defaults_off_and_recognises_on_values(monkeypatch):
     monkeypatch.delenv("PHOENIX_QUOTE_FAIL_FLAG", raising=False)
-    assert quote_fail_flag_enabled() is True
-    monkeypatch.setenv("PHOENIX_QUOTE_FAIL_FLAG", "1")
-    assert quote_fail_flag_enabled() is True
-    for off in ("0", "off", "false", "no", "disabled", "OFF", " False "):
+    assert quote_fail_flag_enabled() is False
+    monkeypatch.setenv("PHOENIX_QUOTE_FAIL_FLAG", "  ")
+    assert quote_fail_flag_enabled() is False
+    for off in ("0", "off", "false", "no", "disabled", "OFF", " False ", "maybe"):
         monkeypatch.setenv("PHOENIX_QUOTE_FAIL_FLAG", off)
         assert quote_fail_flag_enabled() is False
+    for on in ("1", "on", "true", "yes", "enabled", "ON", " True "):
+        monkeypatch.setenv("PHOENIX_QUOTE_FAIL_FLAG", on)
+        assert quote_fail_flag_enabled() is True
 
 
-def test_quote_shorter_than_minimum_is_rejected_and_markup_tolerance_stays():
-    """Length is counted after whitespace normalisation, before markup folding."""
-    assert MIN_VERBATIM_QUOTE_CHARS == 20
-    text = "01234567890123456789 is the stored readme sentence"
-    assert not quote_in_text("0123456789012345678", text)  # 19
-    assert quote_in_text("01234567890123456789", text)  # 20
-    assert not quote_in_text("sync", "sync files across every laptop you own today")
-    padded = "  sync   files   across   every  "
-    assert len(" ".join(padded.split())) >= MIN_VERBATIM_QUOTE_CHARS
-    assert quote_in_text(padded, "sync files across every laptop you own today")
-    page = "Wait for it\u2026 then continue with the rest of the sentence"
-    assert quote_in_text("Wait for it... then continue with the rest of the sentence", page)
-    dashed = "A \u2014 B is the product name in this document"
-    assert quote_in_text("A - B is the product name in this document", dashed)
-    bold = "**Rammingen** is a self-hosted file synchronization and backup system."
-    assert quote_in_text("Rammingen is a self-hosted file synchronization and backup system.", bold)
-
-
-def test_failing_full_overlap_quote_retries_then_needs_review_never_candidate(tmp_path):
+def test_failing_full_overlap_quote_retries_then_needs_review_never_candidate(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOENIX_QUOTE_FAIL_FLAG", "1")
     calls: list[str] = []
 
     def llm(prompt: str, sys: str) -> str:
@@ -152,7 +137,8 @@ def test_failing_full_overlap_quote_retries_then_needs_review_never_candidate(tm
     assert judged.evidence == []
 
 
-def test_batch_full_overlap_failures_list_every_name_and_never_block(tmp_path):
+def test_batch_full_overlap_failures_list_every_name_and_never_block(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOENIX_QUOTE_FAIL_FLAG", "1")
     def llm(prompt: str, sys: str) -> str:
         if "BATCH MODE" in sys:
             return _batch_json([
@@ -181,7 +167,8 @@ def test_batch_full_overlap_failures_list_every_name_and_never_block(tmp_path):
     assert verdict != "ALREADY_EXISTS"
 
 
-def test_retry_success_is_a_normal_verified_competitor(tmp_path):
+def test_retry_success_is_a_normal_verified_competitor(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOENIX_QUOTE_FAIL_FLAG", "1")
     def llm(prompt: str, sys: str) -> str:
         if "Judge whether this candidate is CANDIDATE" in prompt:
             return _discovery()
@@ -208,7 +195,7 @@ def test_retry_success_is_a_normal_verified_competitor(tmp_path):
 
 
 def test_flag_off_keeps_the_old_drop_without_retry_or_downgrade(tmp_path, monkeypatch):
-    monkeypatch.setenv("PHOENIX_QUOTE_FAIL_FLAG", "off")
+    monkeypatch.delenv("PHOENIX_QUOTE_FAIL_FLAG", raising=False)
     calls: list[str] = []
 
     def llm(prompt: str, sys: str) -> str:
@@ -230,7 +217,8 @@ def test_flag_off_keeps_the_old_drop_without_retry_or_downgrade(tmp_path, monkey
     assert "unverified full-overlap claim" not in reason
 
 
-def test_partial_overlap_failed_quote_is_not_retried(tmp_path):
+def test_partial_overlap_failed_quote_is_not_retried(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOENIX_QUOTE_FAIL_FLAG", "1")
     calls: list[str] = []
 
     def llm(prompt: str, sys: str) -> str:
@@ -247,29 +235,9 @@ def test_partial_overlap_failed_quote_is_not_retried(tmp_path):
     assert STRICT_MARK not in calls[0]
 
 
-def test_too_short_in_text_quote_does_not_verify_or_become_candidate(tmp_path):
-    text = "Sync notes across every laptop you own today."
-    short = "Sync notes"
-
-    def llm(prompt: str, sys: str) -> str:
-        return _alt_json("rival/notes", overlap="full", quotes=[short])
-
-    client = _client(tmp_path, llm)
-    rows = filter_relevant_alternatives(
-        PROBLEM, CANDIDATE["repo_id"], [_rival("rival/notes", text)], client=client,
-    )
-    assert short in text
-    assert not quote_in_text(short, text)
-    assert rows == []
-    claims = list(getattr(rows, "unverified_full_overlap_claims", []) or [])
-    assert [c["alternative_id"] for c in claims] == ["rival/notes"]
-    verdict, reason = _judge(tmp_path, rows, claims)
-    assert verdict == "NEEDS_REVIEW"
-    assert "rival/notes" in reason
-
-
-def test_unverified_row_cannot_block_even_when_its_quote_is_a_substring(tmp_path):
+def test_unverified_row_cannot_block_even_when_its_quote_is_a_substring(tmp_path, monkeypatch):
     """A full-overlap claim that failed verification is not a competitor."""
+    monkeypatch.setenv("PHOENIX_QUOTE_FAIL_FLAG", "1")
     leaked = {
         "alternative_id": "rival/biller",
         "url": "https://github.com/rival/biller",

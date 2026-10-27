@@ -1462,43 +1462,31 @@ def _normalize_for_quote(text: str) -> str:
     return _DASH_SPACING.sub("-", normalize_whitespace(str(text or "").translate(_MARKUP_TRANS))).casefold()
 
 
-# A verified quote must be at least this many characters after whitespace
-# normalisation (`normalize_whitespace`). Shorter strings are trivial substrings
-# and fail `quote_in_text` even when they occur in the text. Markdown emphasis,
-# typographic dashes and ellipsis are still folded by `_normalize_for_quote`
-# before the substring test. This threshold does not change that folding. Length
-# is counted on the whitespace-collapsed quote, before markup folding.
-MIN_VERBATIM_QUOTE_CHARS = 20
-
-_QUOTE_FAIL_OFF = frozenset({"0", "off", "false", "no", "disabled"})
+# Opt-in. Unset is off, so the default path matches the scored behaviour.
+# On values are compared case-insensitively after stripping. Anything else,
+# including the historical off spellings, stays off so a typo cannot enable it.
+_QUOTE_FAIL_ON = frozenset({"1", "on", "true", "yes", "enabled"})
 
 
 def quote_fail_flag_enabled() -> bool:
-    """``PHOENIX_QUOTE_FAIL_FLAG`` defaults on.
+    """``PHOENIX_QUOTE_FAIL_FLAG`` defaults off.
 
-    Off values, compared case-insensitively after stripping, are ``0``, ``off``,
-    ``false``, ``no`` and ``disabled``. An unset or blank value is on.
+    On values, compared case-insensitively after stripping, are ``1``, ``on``,
+    ``true``, ``yes`` and ``enabled``. Unset, blank, ``0``, ``off``, ``false``,
+    ``no``, ``disabled`` and any other value leave the flag off.
     """
     raw = os.environ.get("PHOENIX_QUOTE_FAIL_FLAG")
-    if raw is None or not str(raw).strip():
-        return True
-    return str(raw).strip().lower() not in _QUOTE_FAIL_OFF
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in _QUOTE_FAIL_ON
 
 
 def quote_in_text(quote: str, text: str) -> bool:
     """Deterministic quote verification: case-insensitive substring check after normalising
-    whitespace, Markdown emphasis marks and typographic quotes.
-
-    Quotes shorter than ``MIN_VERBATIM_QUOTE_CHARS`` after whitespace normalisation
-    are rejected. The Markdown, dash and ellipsis tolerance is unchanged for quotes
-    that meet that length.
-    """
+    whitespace, Markdown emphasis marks and typographic quotes."""
     if not quote or not text:
         return False
-    collapsed = normalize_whitespace(quote)
-    if len(collapsed) < MIN_VERBATIM_QUOTE_CHARS:
-        return False
-    if collapsed.casefold() in normalize_whitespace(text).casefold():
+    if normalize_whitespace(quote).casefold() in normalize_whitespace(text).casefold():
         return True
     nq = _normalize_for_quote(quote)
     return bool(nq) and nq in _normalize_for_quote(text)
@@ -1741,7 +1729,12 @@ def _evidence_rows(rows: list[dict[str, Any]] | None) -> list[dict[str, str]]:
 
 
 def _verified_competitor_row(row: dict[str, Any]) -> bool:
-    """False for an unverified full-overlap claim. Those rows must not block."""
+    """False for an unverified full-overlap claim when the flag is on.
+
+    Those rows must not block. With the flag off every row is treated as before.
+    """
+    if not quote_fail_flag_enabled():
+        return True
     if row.get("quote_verified") is False:
         return False
     return str(row.get("kind") or "") != "unverified full-overlap claim"
@@ -2576,15 +2569,7 @@ def _quote_failure(quotes: Any, text: str) -> tuple[str, str | None] | None:
         return ("no quotes provided for same_problem alternative", None)
     for q in quotes:
         q_str = str(q or "").strip()
-        if not q_str:
-            return (f"unverified quote '{q_str}' not found in alternative text", q_str)
-        if len(normalize_whitespace(q_str)) < MIN_VERBATIM_QUOTE_CHARS:
-            return (
-                f"unverified quote '{q_str}' shorter than {MIN_VERBATIM_QUOTE_CHARS} "
-                "characters after whitespace normalisation",
-                q_str,
-            )
-        if not quote_in_text(q_str, text):
+        if not q_str or not quote_in_text(q_str, text):
             return (f"unverified quote '{q_str}' not found in alternative text", q_str)
     return None
 
@@ -2811,8 +2796,7 @@ BATCH_INSTRUCTION = (
 QUOTE_RETRY_INSTRUCTION = (
     "\n\nSTRICT VERBATIM QUOTE: your previous quote was not an exact substring of this "
     "alternative's description or README. Quote again by copying contiguous text from that "
-    "excerpt only. Do not paraphrase, summarise, or join separate sentences. Each quote must "
-    f"be at least {MIN_VERBATIM_QUOTE_CHARS} characters after whitespace is collapsed. "
+    "excerpt only. Do not paraphrase, summarise, or join separate sentences. "
     "Output the same strict JSON."
 )
 
