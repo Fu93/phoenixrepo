@@ -1,3 +1,2 @@
-# Trace and replay files keep their committed bytes. Do not renormalise line endings.
-*.jsonl -text
-data/replays/** -text
+# Committed bytes are canonical. No EOL renormalisation anywhere.
+* -text
