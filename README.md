@@ -276,6 +276,8 @@ H-MEM is this repository's own implementation of the public Meterless spec (`app
 
 ## Limitations
 
+**Known limits of the judge.** Per-item invalid JSON is dropped and the chunk still counts as judged (`app/agents/relevance.py` around 2540, 2842, and 3158). Only error text containing 502, 503, 504, 429, timeout, timed out, or `http 5` leaves the chunk unjudged. A failed verbatim quote is `UNVERIFIED_ALTERNATIVE_QUOTE` and is not unjudged. Unjudged chunks never return `CANDIDATE` (`judge_partial_alternatives`: `ALREADY_EXISTS` if a verified full overlap already blocks, else `NEEDS_REVIEW`). That hold does not cover those two drops. The four scored false passes (Invoice-generator-application, ScrapeServ, raindrop-wordpress-linkblog-sync, go-file-sync) have no invalid-JSON drop and 2, 1, 2, and 0 quote drops. Those events omit overlap, so a verdict change is not established. In each, several verified full-overlap rows did not block. Their `must_beat` lines cite no push or release date and/or `stars=0`; other lines cite a stale push date or only a missing free tier. A reasoning field is present on 0 of 16 scored traces; the recorded check is the verbatim quote. `trace_class` (`RECORDED` or `SAMPLE`) sits in `manifest.json` and `record.json`, outside the JSONL hash. A re-sealed trace verifies unless `--expected-run-hash` is set.
+
 - The v3 table is one labelled audit run. It is not a generalisable accuracy benchmark. There is no held-out set in this repository.
 - Scored v3 traces do not record temperature, thinking mode, or `PHOENIX_NEMOTRON_POLICY`.
 - `verify_trace.py` prints `nightshift` for a missing `provider`. That print is not a stored field. `LLM_SCORE` never sets `provider`.
