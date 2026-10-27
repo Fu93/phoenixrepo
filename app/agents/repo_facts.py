@@ -86,6 +86,14 @@ class RepoFactsClient:
         alt = str(row.get("alternative_id") or "")
         host, api = _api_url(url or alt)
         merged = dict(row)
+        # A web-search GitHub lookup already spent the tool budget. Do not fetch again.
+        looked_up = str(merged.get("web_github_lookup") or "")
+        if looked_up == "ok":
+            merged["fetch_status"] = merged.get("fetch_status") or "ok"
+            return merged
+        if looked_up == "failed":
+            merged["fetch_status"] = "unknown"
+            return merged
         if host is None or api is None:
             return merged
         if merged.get("stars") not in (None, "") and merged.get("pushed_at") and "archived" in merged and merged.get("licence_spdx"):
