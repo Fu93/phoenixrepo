@@ -268,8 +268,9 @@ class RelevanceLLMError(InvestigationError):
 class InfraFallbackStop(Exception):
     """The alternatives phase stopped for infrastructure, with any rows already verified.
 
-    ``cause`` is ``time_cap`` or ``infra_failures``. ``verified`` is the same-problem rows
-    whose quotes already checked out. ``unjudged_chunks`` is how many chunks never finished.
+    ``cause`` is ``time_cap``, ``infra_failures``, or ``unusable_reply``. ``verified`` is the
+    same-problem rows whose quotes already checked out. ``unjudged_chunks`` is how many chunks
+    never finished.
     The caller applies the maturity rule to ``verified``; this exception is not itself a verdict.
     """
 
@@ -327,12 +328,51 @@ FALLBACK_INFRA_LIMIT = 2
 ALTERNATIVES_BUDGET_FLOOR_S = 600.0
 ALTERNATIVES_CHUNK_SECONDS = 90.0
 ALTERNATIVES_BUDGET_CAP_S = 3600.0
-_INFRA_ERROR_TOKENS = ("502", "503", "504", "429", "timeout", "timed out", "http 5")
+# Prefixes the Nightshift client actually raises. A per-item error can embed a model
+# quote ("unverified LLM quote: '...'"), and that quote must not be searched: a quote
+# that says "timeout" or "429" is not an infrastructure failure.
+_INFRA_ERROR_PREFIXES = (
+    "nightshift returned http 429",
+    "nightshift returned http 5",
+    "nightshift request timed out",
+    "nightshift call exceeded total timeout",
+)
+_INFRA_TRANSPORT_PREFIX = "nightshift request failed:"
+_INFRA_TRANSPORT_TOKENS = ("502", "503", "504", "429", "timeout", "timed out", "http 5")
+
+# An unusable per-item reply is not a judgement of "no competitor". Default on.
+# Set to 0, off, false, no, or disabled to restore the previous drop-and-continue path.
+PHOENIX_UNUSABLE_REPLY_UNJUDGED = "PHOENIX_UNUSABLE_REPLY_UNJUDGED"
+_UNUSABLE_REPLY_OFF = frozenset({"0", "false", "off", "no", "disabled"})
+_ALTERNATIVE_REQUIRED_KEYS = ("same_problem", "overlap", "reason", "quotes")
 
 
 def _infra_error(message: str) -> bool:
-    low = str(message or "").lower()
-    return any(token in low for token in _INFRA_ERROR_TOKENS)
+    """True only for a structured infrastructure error, matched on its prefix."""
+    low = str(message or "").strip().lower()
+    if any(low.startswith(prefix) for prefix in _INFRA_ERROR_PREFIXES):
+        return True
+    if low.startswith(_INFRA_TRANSPORT_PREFIX):
+        detail = low.split(":", 1)[1]
+        return any(token in detail for token in _INFRA_TRANSPORT_TOKENS)
+    return False
+
+
+def unusable_reply_unjudged_enabled() -> bool:
+    """True unless ``PHOENIX_UNUSABLE_REPLY_UNJUDGED`` is an off value. Unset means on."""
+    raw = os.environ.get(PHOENIX_UNUSABLE_REPLY_UNJUDGED)
+    if raw is None or not str(raw).strip():
+        return True
+    return str(raw).strip().lower() not in _UNUSABLE_REPLY_OFF
+
+
+def _missing_alternative_keys(obj: dict[str, Any]) -> list[str]:
+    return [key for key in _ALTERNATIVE_REQUIRED_KEYS if key not in obj or obj.get(key) is None]
+
+
+def _unusable_reply_error(message: str) -> bool:
+    text = str(message or "").strip()
+    return text == "LLM output invalid JSON" or text.startswith("LLM output missing required keys")
 
 
 def _env_float(name: str, default: float) -> float:
@@ -387,8 +427,10 @@ class FallbackBudget:
         self.batch_502s = 0
         self.per_item_502s = 0
         self.completed_calls = 0
+        self.unusable_replies = 0
         self.infra_seconds = 0.0
         self.last_cause = ""
+        self.last_unusable = ""
 
     def remaining(self) -> float:
         return self.seconds - self.infra_seconds
@@ -405,9 +447,13 @@ class FallbackBudget:
                 f"infra: time cap exceeded after {self.completed_calls} completed alternative calls "
                 f"with {self.batch_502s} batch 502s and {self.per_item_502s} per-item 502s"
             )
+        elif cause == "unusable_reply":
+            message = f"unusable model reply; {self.unusable_replies} alternative(s) unjudged"
+            if self.last_unusable:
+                message = f"{message}; cause: {self.last_unusable}"
         else:
             message = f"infra: stopped after {self.failures} infrastructure failures"
-        if self.last_cause:
+        if cause != "unusable_reply" and self.last_cause:
             message = f"{message}; cause: {self.last_cause}"
         return InfraFallbackStop(
             message,
@@ -448,6 +494,14 @@ class FallbackBudget:
                 self.batch_502s += 1
             else:
                 self.per_item_502s += 1
+
+    def charge_unusable(self, message: str) -> None:
+        """Count one per-item reply that was not a judgement. Not an HTTP failure."""
+        text = str(message or "").strip()
+        self.unusable_replies += 1
+        if text:
+            self.last_unusable = text[:180]
+            self.last_cause = self.last_unusable
 
     def note(self, message: str) -> None:
         """Compatibility for callers that only know an error string."""
@@ -2740,6 +2794,17 @@ def judge_alternative_relevance(
             "dropped": True,
         }
 
+    if unusable_reply_unjudged_enabled():
+        missing = _missing_alternative_keys(obj)
+        if missing:
+            return None, {
+                "requested_model": req_m,
+                "served_model": srv_m,
+                "fallback": True,
+                "error": "LLM output missing required keys: " + ", ".join(missing),
+                "dropped": True,
+            }
+
     same_problem = bool(obj.get("same_problem"))
     overlap = str(obj.get("overlap") or "none").strip().lower()
     reason = str(obj.get("reason") or "").strip()
@@ -2987,6 +3052,19 @@ def _apply_entries(
     return verified, missing
 
 
+def _trace_unusable_reply(trace: Any | None, alternative: str, reason: str) -> None:
+    """Name the alternative whose reply could not be judged."""
+    if trace is None:
+        return
+    trace.event(
+        agent_name="orchestrator",
+        action="UNUSABLE_ALTERNATIVE_REPLY",
+        input_summary={"alternative": alternative, "rule": PHOENIX_UNUSABLE_REPLY_UNJUDGED},
+        output_summary={"alternative": alternative, "reason": reason, "unjudged": True},
+        status="error",
+    )
+
+
 def _per_item(
     problem_statement: dict[str, Any],
     candidate_repo_id: str,
@@ -3031,6 +3109,10 @@ def _per_item(
         error = str(meta.get("error") or "")
         if error and _infra_error(error):
             budget.charge_failure(budget.clock() - started, error, kind="per_item")
+        elif error and unusable_reply_unjudged_enabled() and _unusable_reply_error(error):
+            alt_name = str(res.get("alternative_id") or "").strip()
+            budget.charge_unusable(f"{alt_name}: {error}" if alt_name else error)
+            _trace_unusable_reply(trace, alt_name, error)
         else:
             budget.note_completed()
     if alt_row is not None and alt_row.get("same_problem"):
@@ -3299,7 +3381,10 @@ def filter_relevant_alternatives(
     batch chunk is reused from the relevance cache, whose key includes the requested model.
     Repeated infrastructure failures, or that budget running out, raise InfraFallbackStop
     carrying the rows already verified, the chunk indexes that finished, and how many chunks
-    were left unjudged.
+    were left unjudged. An unusable per-item reply (invalid JSON, or a JSON object missing
+    same_problem, overlap, reason, or quotes) takes that same stop when
+    PHOENIX_UNUSABLE_REPLY_UNJUDGED is on, which is the default, so it cannot finish as
+    CANDIDATE. A failed quote verification is still a dropped judgement, not this stop.
     The candidate's own package, docs, homepage, fork, and mirror are removed before the call
     and again from whatever the model returns.
     """
@@ -3322,6 +3407,7 @@ def filter_relevant_alternatives(
             budget.guard_new_chunk()
             chunk = rows[start:start + ALTERNATIVE_CHUNK_SIZE]
             judged = False
+            unusable_before = budget.unusable_replies
             if len(chunk) > 1:
                 batch = judge_alternatives_batch(
                     problem_statement, candidate_repo_id, chunk, client=client, trace=trace,
@@ -3329,6 +3415,10 @@ def filter_relevant_alternatives(
                 )
                 if batch is not None:
                     verified_alts.extend(batch)
+                    # A per-item salvage inside the batch can still be unusable. Those rows
+                    # are not a finished judgement of the chunk.
+                    if unusable_reply_unjudged_enabled() and budget.unusable_replies > unusable_before:
+                        raise budget.stop("unusable_reply")
                     judged = True
             if not judged:
                 if budget.time_exhausted():
@@ -3338,20 +3428,25 @@ def filter_relevant_alternatives(
                     if budget.time_exhausted():
                         raise budget.stop("time_cap")
                     before = budget.failures
+                    before_unusable = budget.unusable_replies
                     alt_row = _per_item(
                         problem_statement, candidate_repo_id, res, client, trace, budget,
                         chunk_index=chunk_index,
                     )
-                    if budget.failures > before:
+                    if budget.failures > before or budget.unusable_replies > before_unusable:
                         per_item_failures += 1
                     if alt_row is not None:
                         verified_alts.append(alt_row)
                 # A batch that failed open can still finish on the per-item salvage.
-                # Those rows are judged. A per-item infrastructure error leaves the chunk unjudged.
+                # Those rows are judged. A per-item infrastructure error leaves the chunk
+                # unjudged. So does an unusable reply (invalid JSON or missing keys) when
+                # PHOENIX_UNUSABLE_REPLY_UNJUDGED is on: that is not "no competitor".
                 judged = per_item_failures == 0
             if judged:
                 verified_chunk_indexes.append(chunk_index)
                 finished += 1
+            elif unusable_reply_unjudged_enabled() and budget.unusable_replies > unusable_before:
+                raise budget.stop("unusable_reply")
             elif budget.failures >= FALLBACK_INFRA_LIMIT:
                 raise budget.stop("infra_failures")
             elif budget.time_exhausted():
